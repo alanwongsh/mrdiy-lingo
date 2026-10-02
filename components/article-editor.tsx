@@ -193,13 +193,23 @@ export function ArticleEditor({
     });
   }, [sourceLanguage, allTargets]);
 
+  const translationToken = `${targetLang}:${targetTranslation?.id ?? ""}:${targetTranslation?.updated_at ?? ""}`;
+  const translationTokenRef = useRef<string | null>(null);
+
   useEffect(() => {
+    // Skip first run — draft already seeded from useState so we don't remount TipTap.
+    if (translationTokenRef.current === null) {
+      translationTokenRef.current = translationToken;
+      return;
+    }
+    if (translationTokenRef.current === translationToken) return;
+    translationTokenRef.current = translationToken;
     setDraft(fieldsFromTranslation(targetTranslation));
     setBodyEpoch((n) => n + 1);
     setShowHistory(false);
     setVersions([]);
     setHistoryError("");
-  }, [targetLang, targetTranslation?.id, targetTranslation?.updated_at]);
+  }, [translationToken, targetTranslation]);
 
   function loadHistory() {
     setShowHistory(true);
@@ -506,8 +516,8 @@ export function ArticleEditor({
             </Field>
             <Field label="Body">
               <HtmlEditor
-                key={`source-body-${article.id}`}
                 ref={sourceBodyRef}
+                revision={`source-${article.id}`}
                 value={source.body}
                 onChange={(html) =>
                   setSource((s) => ({ ...s, body: html }))
@@ -558,7 +568,7 @@ export function ArticleEditor({
             </Field>
             <Field label="Body">
               <HtmlEditor
-                key={`target-body-${article.id}-${targetLang}-${bodyEpoch}`}
+                revision={`target-${article.id}-${targetLang}-${bodyEpoch}`}
                 value={draft.body}
                 disabled={isTranslating}
                 onChange={(html) => setDraft((d) => ({ ...d, body: html }))}

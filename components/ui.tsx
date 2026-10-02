@@ -193,17 +193,24 @@ export function Badge({
 export function Field({
   label,
   children,
+  htmlFor,
 }: {
   label: string;
   children: React.ReactNode;
+  htmlFor?: string;
 }) {
+  // Do NOT wrap controls in <label> — nested TipTap/toolbars steal focus
+  // (caret flashes then jumps to the first button, e.g. Bold).
   return (
-    <label className="block space-y-1.5">
-      <span className="text-xs font-semibold tracking-wide text-[var(--hub-muted-strong)]">
+    <div className="block space-y-1.5">
+      <label
+        htmlFor={htmlFor}
+        className="block text-xs font-semibold tracking-wide text-[var(--hub-muted-strong)]"
+      >
         {label}
-      </span>
+      </label>
       {children}
-    </label>
+    </div>
   );
 }
 

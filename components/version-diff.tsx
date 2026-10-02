@@ -1,7 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { diffWords, summarizeDiff, type DiffToken } from "@/lib/diff";
+import {
+  diffHtml,
+  diffWords,
+  summarizeDiff,
+  type DiffToken,
+} from "@/lib/diff";
+import { HtmlContent } from "@/components/html-editor";
 import { Badge, Card, Field, inputClass } from "@/components/ui";
 
 function DiffText({ tokens }: { tokens: DiffToken[] }) {
@@ -31,6 +37,22 @@ function DiffText({ tokens }: { tokens: DiffToken[] }) {
         );
       })}
     </p>
+  );
+}
+
+function FieldPreview({
+  fieldKey,
+  value,
+}: {
+  fieldKey: string;
+  value: string;
+}) {
+  if (!value) return <span className="text-slate-400">—</span>;
+  if (fieldKey === "body") {
+    return <HtmlContent html={value} />;
+  }
+  return (
+    <div className="whitespace-pre-wrap text-sm text-slate-700">{value}</div>
   );
 }
 
@@ -233,10 +255,12 @@ export function ArticleVersionComparer({
 
       <div className="space-y-4">
         {ARTICLE_FIELDS.map(([key, label]) => {
-          const tokens = diffWords(
-            left?.fields[key] ?? "",
-            right?.fields[key] ?? ""
-          );
+          const leftValue = left?.fields[key] ?? "";
+          const rightValue = right?.fields[key] ?? "";
+          const tokens =
+            key === "body"
+              ? diffHtml(leftValue, rightValue)
+              : diffWords(leftValue, rightValue);
           const summary = summarizeDiff(tokens);
           return (
             <Card key={key} className="overflow-hidden">
@@ -249,24 +273,30 @@ export function ArticleVersionComparer({
                 </Badge>
               </div>
               <div className="grid gap-0 lg:grid-cols-2">
-                <div className="border-b border-[var(--hub-border)] p-3 text-sm whitespace-pre-wrap text-slate-700 lg:border-r lg:border-b-0">
+                <div className="border-b border-[var(--hub-border)] p-3 lg:border-r lg:border-b-0">
                   <div className="mb-1 text-[10px] font-semibold uppercase text-slate-400">
                     From
                   </div>
-                  {left?.fields[key] || "—"}
+                  <FieldPreview fieldKey={key} value={leftValue} />
                 </div>
-                <div className="p-3 text-sm whitespace-pre-wrap text-slate-700">
+                <div className="p-3">
                   <div className="mb-1 text-[10px] font-semibold uppercase text-slate-400">
                     To
                   </div>
-                  {right?.fields[key] || "—"}
+                  <FieldPreview fieldKey={key} value={rightValue} />
                 </div>
               </div>
               <div className="border-t border-[var(--hub-border)] bg-[var(--diy-yellow-soft)]/40 p-3">
                 <div className="mb-1 text-[10px] font-semibold uppercase text-slate-500">
-                  Diff
+                  Diff{key === "body" ? " · plain text" : ""}
                 </div>
-                <DiffText tokens={tokens} />
+                {summary.changed ? (
+                  <DiffText tokens={tokens} />
+                ) : (
+                  <p className="text-sm text-slate-500">
+                    No meaningful differences.
+                  </p>
+                )}
               </div>
             </Card>
           );

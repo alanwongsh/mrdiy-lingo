@@ -14,12 +14,14 @@ import Placeholder from "@tiptap/extension-placeholder";
 
 function ToolbarButton({
   label,
+  title,
   active,
   disabled,
   onClick,
   className = "",
 }: {
   label: string;
+  title: string;
   active?: boolean;
   disabled?: boolean;
   onClick: () => void;
@@ -28,7 +30,10 @@ function ToolbarButton({
   return (
     <button
       type="button"
-      title={label}
+      title={title}
+      aria-label={title}
+      aria-pressed={active ?? false}
+      tabIndex={-1}
       disabled={disabled}
       className={`rounded px-2 py-1 text-xs font-semibold disabled:opacity-40 ${
         active
@@ -36,6 +41,7 @@ function ToolbarButton({
           : "text-slate-700 hover:bg-white"
       } ${className}`}
       onMouseDown={(e) => {
+        // Keep caret in the editor; don't let the button steal focus.
         e.preventDefault();
         onClick();
       }}
@@ -62,6 +68,8 @@ export const HtmlEditor = forwardRef<
   {
     value: string;
     onChange: (html: string) => void;
+    /** When this changes, reload `value` into the editor (language switch, translate, etc.). */
+    revision?: string | number;
     disabled?: boolean;
     placeholder?: string;
     minHeightClass?: string;
@@ -70,6 +78,7 @@ export const HtmlEditor = forwardRef<
   {
     value,
     onChange,
+    revision = 0,
     disabled,
     placeholder,
     minHeightClass = "min-h-[12rem]",
@@ -80,7 +89,8 @@ export const HtmlEditor = forwardRef<
   onChangeRef.current = onChange;
 
   const lastEmittedRef = useRef(normalizeEditorHtml(value || ""));
-  const suppressEmptyUntilRef = useRef(0);
+  // Seed as already-applied so the first effect does not setContent and steal focus.
+  const appliedRevisionRef = useRef<string | number | null>(revision);
   const applyingExternalRef = useRef(false);
 
   const editor = useEditor({
@@ -100,27 +110,21 @@ export const HtmlEditor = forwardRef<
         placeholder: placeholder ?? "Write…",
       }),
     ],
+    // Seed once — after that only `revision` pushes external content in.
     content: value || "",
     editable: !disabled,
     editorProps: {
       attributes: {
         class: `${minHeightClass} html-editor-surface tiptap px-3 py-2 text-sm leading-relaxed text-slate-900 outline-none`,
+        spellcheck: "false",
+        autocapitalize: "off",
+        autocorrect: "off",
+        autocomplete: "off",
       },
-    },
-    onCreate: () => {
-      suppressEmptyUntilRef.current = Date.now() + 800;
     },
     onUpdate: ({ editor: current }) => {
       if (applyingExternalRef.current) return;
       const html = normalizeEditorHtml(current.getHTML());
-      const text = current.getText().trim();
-
-      // TipTap can emit empty docs during setContent / remount; ignore those.
-      if (!html) {
-        if (text) return;
-        if (Date.now() < suppressEmptyUntilRef.current) return;
-      }
-
       if (html === lastEmittedRef.current) return;
       lastEmittedRef.current = html;
       onChangeRef.current(html);
@@ -144,25 +148,14 @@ export const HtmlEditor = forwardRef<
     editor.setEditable(!disabled);
   }, [editor, disabled]);
 
+  // Apply external content only when revision changes — never while syncing
+  // every keystroke via `value` (that steals the caret).
   useEffect(() => {
     if (!editor) return;
+    if (appliedRevisionRef.current === revision) return;
+    appliedRevisionRef.current = revision;
+
     const next = normalizeEditorHtml(value || "");
-
-    // Keep lastEmitted aligned when parent is the source of truth.
-    if (next === lastEmittedRef.current) {
-      // Still ensure TipTap isn't sitting on an empty doc while props have content.
-      const current = normalizeEditorHtml(editor.getHTML());
-      if (next && !current) {
-        applyingExternalRef.current = true;
-        suppressEmptyUntilRef.current = Date.now() + 500;
-        editor.commands.setContent(next, { emitUpdate: false });
-        queueMicrotask(() => {
-          applyingExternalRef.current = false;
-        });
-      }
-      return;
-    }
-
     const current = normalizeEditorHtml(editor.getHTML());
     if (next === current) {
       lastEmittedRef.current = next;
@@ -170,13 +163,12 @@ export const HtmlEditor = forwardRef<
     }
 
     applyingExternalRef.current = true;
-    suppressEmptyUntilRef.current = Date.now() + 500;
     editor.commands.setContent(next || "", { emitUpdate: false });
     lastEmittedRef.current = next;
     queueMicrotask(() => {
       applyingExternalRef.current = false;
     });
-  }, [editor, value]);
+  }, [editor, revision, value]);
 
   if (!editor) {
     return (
@@ -199,6 +191,7 @@ export const HtmlEditor = forwardRef<
       >
         <ToolbarButton
           label="B"
+          title="Bold"
           className="font-bold"
           active={editor.isActive("bold")}
           disabled={disabled}
@@ -206,6 +199,7 @@ export const HtmlEditor = forwardRef<
         />
         <ToolbarButton
           label="I"
+          title="Italic"
           className="italic"
           active={editor.isActive("italic")}
           disabled={disabled}
@@ -213,6 +207,7 @@ export const HtmlEditor = forwardRef<
         />
         <ToolbarButton
           label="U"
+          title="Underline"
           className="underline"
           active={editor.isActive("underline")}
           disabled={disabled}
@@ -220,6 +215,7 @@ export const HtmlEditor = forwardRef<
         />
         <ToolbarButton
           label="H2"
+          title="Heading"
           active={editor.isActive("heading", { level: 2 })}
           disabled={disabled}
           onClick={() =>
@@ -228,18 +224,21 @@ export const HtmlEditor = forwardRef<
         />
         <ToolbarButton
           label="• List"
+          title="Bullet list"
           active={editor.isActive("bulletList")}
           disabled={disabled}
           onClick={() => editor.chain().focus().toggleBulletList().run()}
         />
         <ToolbarButton
           label="1. List"
+          title="Numbered list"
           active={editor.isActive("orderedList")}
           disabled={disabled}
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
         />
         <ToolbarButton
           label="Link"
+          title="Link"
           active={editor.isActive("link")}
           disabled={disabled}
           onClick={() => {
@@ -262,10 +261,10 @@ export const HtmlEditor = forwardRef<
         />
         <ToolbarButton
           label="Clear"
+          title="Clear formatting"
           disabled={disabled}
           onClick={() => {
             lastEmittedRef.current = "";
-            suppressEmptyUntilRef.current = 0;
             editor.chain().focus().clearContent().run();
           }}
         />
