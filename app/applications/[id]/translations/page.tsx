@@ -7,6 +7,7 @@ import {
   listTranslationKeys,
 } from "@/lib/actions/product";
 import { AppSubnav } from "@/components/app-subnav";
+import { TranslationListFilters } from "@/components/translation-list-filters";
 import {
   Badge,
   Card,
@@ -66,57 +67,12 @@ export default async function TranslationsPage({
       />
       <AppSubnav application={app} />
 
-      <Card className="mb-4 p-4">
-        <form className="grid gap-3 md:grid-cols-5">
-          <input
-            name="q"
-            defaultValue={q}
-            placeholder="Search keys…"
-            className="h-9 rounded-md border border-[var(--hub-border)] px-3 text-sm md:col-span-2"
-          />
-          <select
-            name="namespaceId"
-            defaultValue={namespaceId}
-            className="h-9 rounded-md border border-[var(--hub-border)] px-3 text-sm"
-          >
-            <option value="">All namespaces</option>
-            {namespaces.map((ns) => (
-              <option key={ns.id} value={ns.id}>
-                {ns.name}
-              </option>
-            ))}
-          </select>
-          <select
-            name="language"
-            defaultValue={language}
-            className="h-9 rounded-md border border-[var(--hub-border)] px-3 text-sm"
-          >
-            <option value="">All languages</option>
-            {languages.map((l) => (
-              <option key={l.id} value={l.code}>
-                {l.name}
-              </option>
-            ))}
-          </select>
-          <select
-            name="status"
-            defaultValue={status}
-            className="h-9 rounded-md border border-[var(--hub-border)] px-3 text-sm"
-          >
-            <option value="">All statuses</option>
-            <option value="MISSING">MISSING</option>
-            <option value="SYSTEM_GENERATED">SYSTEM_GENERATED</option>
-            <option value="MANUALLY_MODIFIED">MANUALLY_MODIFIED</option>
-            <option value="APPROVED">APPROVED</option>
-          </select>
-          <button
-            type="submit"
-            className="h-9 rounded-md bg-[var(--hub-accent)] px-3 text-sm font-medium text-white md:col-span-5 md:w-fit"
-          >
-            Apply filters
-          </button>
-        </form>
-      </Card>
+      <TranslationListFilters
+        applicationId={app.id}
+        namespaces={namespaces}
+        languages={languages}
+        initial={{ q, namespaceId, language, status }}
+      />
 
       <Card className="overflow-hidden">
         <table className="hub-table">
