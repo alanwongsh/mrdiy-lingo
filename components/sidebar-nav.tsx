@@ -1,0 +1,51 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+export function SidebarNav({
+  items,
+}: {
+  items: { href: string; label: string; hint?: string }[];
+}) {
+  const pathname = usePathname();
+
+  return (
+    <div className="space-y-1">
+      {items.map((item) => {
+        const active =
+          item.href === "/"
+            ? pathname === "/"
+            : item.href === "/applications"
+              ? pathname === "/applications" ||
+                pathname === "/applications/new" ||
+                /^\/applications\/[^/]+\/edit$/.test(pathname)
+              : pathname === item.href ||
+                pathname.startsWith(`${item.href}/`);
+
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`block rounded-lg px-3 py-2.5 text-sm transition ${
+              active
+                ? "bg-[var(--diy-red)] font-semibold text-white shadow-sm ring-1 ring-[var(--diy-yellow)]/70"
+                : "text-slate-300 hover:bg-[var(--hub-sidebar-hover)] hover:text-white"
+            }`}
+          >
+            <span className="block">{item.label}</span>
+            {item.hint ? (
+              <span
+                className={`mt-0.5 block text-[11px] ${
+                  active ? "text-white/85" : "text-slate-500"
+                }`}
+              >
+                {item.hint}
+              </span>
+            ) : null}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}

@@ -1,0 +1,102 @@
+import { readFile } from "fs/promises";
+import path from "path";
+import { getDb } from "@/lib/db/client";
+import { Card, PageHeader, Badge } from "@/components/ui";
+
+async function readMigration(name: string) {
+  try {
+    return await readFile(
+      path.join(process.cwd(), "supabase/migrations", name),
+      "utf8"
+    );
+  } catch {
+    return `-- Could not load ${name}`;
+  }
+}
+
+export default async function SetupPage() {
+  let ready = false;
+  let message = "";
+  let needsMigration = "";
+  try {
+    const db = await getDb();
+    const { error } = await db.from("applications").select("id").limit(1);
+    if (error) throw new Error(error.message);
+    ready = true;
+    message = "Tables are reachable.";
+
+    const probePublish = await db
+      .from("content")
+      .select("slug, published_at")
+      .limit(1);
+    if (probePublish.error) {
+      needsMigration = "003_content_publishing.sql";
+      message = "Core schema OK, but run migration 003 for publish fields.";
+    } else {
+      const probeTargets = await db
+        .from("content")
+        .select("target_languages")
+        .limit(1);
+      if (probeTargets.error) {
+        needsMigration = "004_content_target_languages.sql";
+        message =
+          "Publish fields OK, but run migration 004 for target languages.";
+      }
+    }
+  } catch (e) {
+    message = e instanceof Error ? e.message : "Schema missing";
+  }
+
+  const sql1 = await readMigration("001_translation_hub.sql");
+  const sql2 = await readMigration("002_version_approval.sql");
+  const sql3 = await readMigration("003_content_publishing.sql");
+  const sql4 = await readMigration("004_content_target_languages.sql");
+
+  return (
+    <div>
+      <PageHeader
+        title="Setup"
+        description="Apply the Mr DIY Lingo schema to your Supabase project."
+      />
+      <Card className="mb-6 p-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <Badge tone={ready ? "good" : "warn"}>
+            {ready ? "Connected" : "Needs migration"}
+          </Badge>
+          {needsMigration ? (
+            <Badge tone="warn">Run {needsMigration}</Badge>
+          ) : null}
+          <span className="text-sm text-[var(--hub-muted)]">{message}</span>
+        </div>
+        <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-[var(--hub-muted)]">
+          <li>Open your Supabase project SQL Editor.</li>
+          <li>Run migration 001 if tables are missing.</li>
+          <li>Run migration 002 only if you previously added version approval columns.</li>
+          <li>Run migration 003 for slug / schedule / published dates.</li>
+          <li>Run migration 004 for per-article target languages.</li>
+          <li>Refresh this page.</li>
+        </ol>
+      </Card>
+
+      <div className="space-y-4">
+        {(
+          [
+            ["1", "001_translation_hub.sql", sql1],
+            ["2", "002_version_approval.sql (cleanup only)", sql2],
+            ["3", "003_content_publishing.sql", sql3],
+            ["4", "004_content_target_languages.sql", sql4],
+          ] as const
+        ).map(([n, name, sql]) => (
+          <Card key={name} className="overflow-hidden">
+            <div className="border-b border-[var(--hub-border)] px-4 py-3 text-sm font-medium">
+              {n}) supabase/migrations/{name}
+            </div>
+            <pre className="max-h-[40vh] overflow-auto bg-zinc-950 p-4 text-xs leading-5 text-zinc-100">
+              {sql}
+            </pre>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}

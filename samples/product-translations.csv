@@ -1,0 +1,10 @@
+namespace,key,en,ms,th,id
+Checkout,checkout.title,Checkout,Pembayaran,ชำระเงิน,Pembayaran
+Checkout,checkout.pay_now,Pay Now,Bayar Sekarang,ชำระเงินตอนนี้,Bayar Sekarang
+Checkout,checkout.payment_failed,Payment Failed,Pembayaran Gagal,การชำระเงินล้มเหลว,Pembayaran Gagal
+Cart,cart.title,Cart,Troli,ตะกร้า,Keranjang
+Cart,cart.empty,Your cart is empty,Troli anda kosong,ตะกร้าว่าง,Keranjang Anda kosong
+Cart,cart.checkout,Checkout,Bayar,ชำระเงิน,Checkout
+Product Details,product.title,Product,Produk,สินค้า,Produk
+Product Details,product.description,Description,Penerangan,รายละเอียด,Deskripsi
+Product Details,product.price,Price,Harga,ราคา,Harga

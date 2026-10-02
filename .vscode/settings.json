@@ -1,0 +1,5 @@
+{
+  "terminal.integrated.env.windows": {
+    "Path": "C:\\Users\\shouhong.wong\\AppData\\Local\\nodejs\\node-v24.19.0-win-x64;${env:Path}"
+  }
+}

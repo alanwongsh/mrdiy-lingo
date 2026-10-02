@@ -1,26 +1,162 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* MR.DIY brand */
+  --diy-red: #e30613;
+  --diy-red-dark: #b80510;
+  --diy-red-soft: #fde8ea;
+  --diy-yellow: #ffc20e;
+  --diy-yellow-soft: #fff4cc;
+  --diy-yellow-dark: #c99200;
+
+  --background: #f6f7f9;
+  --foreground: #111827;
+  --hub-bg: #f6f7f9;
+  --hub-fg: #111827;
+  --hub-panel: #ffffff;
+  --hub-panel-soft: #fafafa;
+  --hub-border: #e5e7eb;
+  --hub-border-strong: #d1d5db;
+  --hub-muted: #6b7280;
+  --hub-muted-strong: #4b5563;
+  --hub-hover: #f3f4f6;
+  --hub-accent: var(--diy-red);
+  --hub-accent-hover: var(--diy-red-dark);
+  --hub-accent-soft: var(--diy-red-soft);
+  --hub-accent-ring: rgba(227, 6, 19, 0.28);
+  --hub-yellow: var(--diy-yellow);
+  --hub-yellow-soft: var(--diy-yellow-soft);
+  --hub-sidebar: #1a0a0c;
+  --hub-sidebar-fg: #f3f4f6;
+  --hub-sidebar-muted: #a8a29e;
+  --hub-sidebar-hover: #2a1216;
+  --hub-sidebar-active: var(--diy-red);
+  --hub-shadow: 0 1px 2px rgba(17, 24, 39, 0.05),
+    0 8px 24px rgba(17, 24, 39, 0.04);
+  --hub-shadow-hover: 0 2px 4px rgba(17, 24, 39, 0.06),
+    0 12px 28px rgba(17, 24, 39, 0.08);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: var(--font-hub-sans);
+  --font-mono: var(--font-hub-mono);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background:
+    radial-gradient(1100px 480px at 0% -5%, #ffe0e3 0%, transparent 55%),
+    radial-gradient(900px 420px at 100% 0%, #fff3c4 0%, transparent 50%),
+    var(--hub-bg);
+  color: var(--hub-fg);
+  font-family: var(--font-hub-sans), "Segoe UI", sans-serif;
 }
+
+::selection {
+  background: var(--diy-yellow-soft);
+  color: var(--hub-fg);
+}
+
+.hub-main {
+  color: var(--hub-fg);
+}
+
+.hub-main a.hub-accent-link {
+  color: var(--hub-accent);
+}
+
+.hub-main a.hub-accent-link:hover {
+  color: var(--hub-accent-hover);
+}
+
+a,
+button,
+input,
+select,
+textarea {
+  transition: color 140ms ease, background-color 140ms ease,
+    border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.hub-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: left;
+  font-size: 0.875rem;
+  color: var(--hub-fg);
+}
+
+.hub-table thead th {
+  background: linear-gradient(180deg, #fffdf5 0%, var(--hub-panel-soft) 100%);
+  border-bottom: 2px solid var(--diy-yellow);
+  color: var(--hub-muted-strong);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 0.75rem 1rem;
+  text-transform: uppercase;
+}
+
+.hub-table tbody td {
+  border-bottom: 1px solid var(--hub-border);
+  color: var(--hub-fg);
+  padding: 0.85rem 1rem;
+  vertical-align: top;
+}
+
+.hub-table tbody tr {
+  transition: background-color 140ms ease;
+}
+
+.hub-table tbody tr:hover {
+  background: #fff8e8;
+}
+
+.hub-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.html-editor-surface h1,
+.html-editor-surface h2,
+.html-editor-surface h3 {
+  font-weight: 700;
+  margin: 0.75em 0 0.35em;
+  line-height: 1.25;
+}
+
+.html-editor-surface h2 {
+  font-size: 1.15rem;
+}
+
+.html-editor-surface p {
+  margin: 0.4em 0;
+}
+
+.html-editor-surface ul,
+.html-editor-surface ol {
+  margin: 0.4em 0;
+  padding-left: 1.25rem;
+}
+
+.html-editor-surface a {
+  color: var(--diy-red);
+  text-decoration: underline;
+}
+
+.html-editor-surface .tiptap,
+.html-editor-surface.tiptap,
+.tiptap.html-editor-surface {
+  outline: none;
+}
+
+.tiptap p.is-editor-empty:first-child::before {
+  color: #94a3b8;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+
