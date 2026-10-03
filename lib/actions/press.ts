@@ -111,7 +111,7 @@ export async function listArticles(input: {
   }
   if (input.search?.trim()) {
     const term = escapeIlike(input.search.trim());
-    query = query.or(`title.ilike.%${term}%,slug.ilike.%${term}%`);
+    query = query.ilike("title", `%${term}%`);
   }
 
   if (input.due === "published") {
@@ -178,7 +178,8 @@ export async function createArticle(input: {
   application_id: string;
   content_type?: ContentType;
   title: string;
-  slug?: string;
+  /** `null` stores no slug. Omitted values are generated from the title. */
+  slug?: string | null;
   source_language: string;
   source_content: SourceContentFields;
   status?: ContentLifecycleStatus;
@@ -202,7 +203,8 @@ export async function createArticle(input: {
       application_id: input.application_id,
       content_type: input.content_type ?? "ARTICLE",
       title: input.title.trim(),
-      slug: normalizeSlug(input.slug, input.title),
+      slug:
+        input.slug === null ? null : normalizeSlug(input.slug, input.title),
       source_language: input.source_language,
       source_content,
       status,
@@ -231,7 +233,7 @@ export async function updateArticle(
   applicationId: string,
   input: {
     title: string;
-    slug?: string;
+    slug?: string | null;
     content_type: ContentType;
     source_language: string;
     source_content: SourceContentFields;
@@ -250,7 +252,9 @@ export async function updateArticle(
 
   const patch: Record<string, unknown> = {
     title: input.title.trim(),
-    slug: normalizeSlug(input.slug, input.title),
+    slug: (input.slug ?? "").trim()
+      ? normalizeSlug(input.slug, input.title)
+      : null,
     content_type: input.content_type,
     source_language: input.source_language,
     source_content: input.source_content,
@@ -546,7 +550,7 @@ export async function autoTranslateArticle(input: {
   if (liveHasContent || languageChanged) {
     await updateArticle(input.contentId, input.applicationId, {
       title: sourceFields.title || article.title,
-      slug: article.slug ?? undefined,
+      slug: null,
       content_type: article.content_type,
       source_language: sourceLanguage,
       source_content: sourceFields,

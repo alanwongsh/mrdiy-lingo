@@ -4,7 +4,6 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { listLanguages } from "@/lib/actions/languages";
 import { createArticle } from "@/lib/actions/press";
-import { slugifyTitle } from "@/lib/slug";
 import type { ContentType, Language } from "@/lib/types";
 import {
   Button,
@@ -24,8 +23,6 @@ export default function NewArticlePage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [body, setBody] = useState("");
-  const [slug, setSlug] = useState("");
-  const [slugTouched, setSlugTouched] = useState(false);
   const [sourceLanguage, setSourceLanguage] = useState("en");
   const [targetLanguages, setTargetLanguages] = useState<string[]>([]);
   const [pending, startTransition] = useTransition();
@@ -72,7 +69,7 @@ export default function NewArticlePage() {
                 const article = await createArticle({
                   application_id: applicationId,
                   title,
-                  slug,
+                  slug: null,
                   source_language: sourceLanguage,
                   content_type: (String(fd.get("content_type") ?? "ARTICLE") ||
                     "ARTICLE") as ContentType,
@@ -103,23 +100,7 @@ export default function NewArticlePage() {
               className={inputClass}
               required
               value={title}
-              onChange={(e) => {
-                const next = e.target.value;
-                setTitle(next);
-                if (!slugTouched) setSlug(slugifyTitle(next));
-              }}
-            />
-          </Field>
-          <Field label="Slug">
-            <input
-              name="slug"
-              className={inputClass}
-              value={slug}
-              onChange={(e) => {
-                setSlugTouched(true);
-                setSlug(e.target.value);
-              }}
-              placeholder="auto-from-title"
+              onChange={(e) => setTitle(e.target.value)}
             />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">

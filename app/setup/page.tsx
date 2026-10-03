@@ -62,6 +62,8 @@ export default async function SetupPage() {
   const sql3 = await readMigration("003_content_publishing.sql");
   const sql4 = await readMigration("004_content_target_languages.sql");
   const sql5 = await readMigration("005_article_comments.sql");
+  const sql6 = await readMigration("006_uuidv7.sql");
+  const sql7 = await readMigration("007_rewrite_uuidv7.sql");
 
   return (
     <div>
@@ -86,6 +88,11 @@ export default async function SetupPage() {
           <li>Run migration 003 for slug / schedule / published dates.</li>
           <li>Run migration 004 for per-article target languages.</li>
           <li>Run migration 005 for article comments and approver names.</li>
+          <li>Run migration 006 so new ids are time-ordered UUID v7.</li>
+          <li>
+            Run migration 007 only to rewrite existing v4 ids. Saved article and
+            application links change.
+          </li>
           <li>Refresh this page.</li>
         </ol>
       </Card>
@@ -98,6 +105,8 @@ export default async function SetupPage() {
             ["3", "003_content_publishing.sql", sql3],
             ["4", "004_content_target_languages.sql", sql4],
             ["5", "005_article_comments.sql", sql5],
+            ["6", "006_uuidv7.sql", sql6],
+            ["7", "007_rewrite_uuidv7.sql", sql7],
           ] as const
         ).map(([n, name, sql]) => (
           <Card key={name} className="overflow-hidden">

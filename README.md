@@ -21,7 +21,7 @@ No authentication in V1.
 | **Applications** | `STRING` (product keys) or `CONTENT` (press articles) |
 | **Languages** | CRUD + activate/deactivate |
 | **Product** | Namespaces, keys, per-language translations, versions, auto-translate, approve |
-| **Press** | Articles with title/description/HTML body, slug, schedule/publish dates, per-article `source_language` + `target_languages`, TipTap editor, language chips, auto-translate, approve, history, article comments, copy title/description/body, Excel export of selected rows, bulk delete |
+| **Press** | Articles with title/description/HTML body, schedule/publish dates, per-article `source_language` + `target_languages`, TipTap editor, language chips, auto-translate, approve, history, article comments, copy title/description/body, Excel export of selected rows, bulk delete |
 | **Import** | Excel/CSV validate → preview (New/Updated/Unchanged) → confirm; optional auto-translate targets |
 | **Dashboard** | Coverage / lifecycle stats |
 | **Setup** | In-app migration checklist (`/setup`) |
@@ -59,6 +59,8 @@ Apply SQL in order (Supabase SQL Editor or `/setup`):
 3. `supabase/migrations/003_content_publishing.sql` — `slug`, `scheduled_publish_at`, `published_at`
 4. `supabase/migrations/004_content_target_languages.sql` — `content.target_languages text[]`
 5. `supabase/migrations/005_article_comments.sql` — article comments, approver name, version username
+6. `supabase/migrations/006_uuidv7.sql` — time-ordered UUID v7 defaults for new rows
+7. `supabase/migrations/007_rewrite_uuidv7.sql` — rewrite existing v4 primary keys (and foreign keys) to v7. Old URLs stop working.
 
 ```bash
 npm run dev
@@ -227,7 +229,7 @@ Namespaces + keys + `autoTranslateKey(Languages)` + versions + stats (parallel t
 **Press CSV columns (required):** `title`, `source_language`  
 **Optional:** `content_type`, `status`, `summary`, `body`, `seo_title`, `seo_description`, plus `{lang}_{field}` e.g. `ms_title`, `en_body`.
 
-**Preview actions:** `NEW` | `UPDATED` | `UNCHANGED` | `ERROR` — match existing by title; compare source fields + language.
+**Preview actions:** `NEW` | `ERROR` for articles. Each row is inserted as a new article (`content.id` is the only identifier; the file is not matched on title or slug). Product keys still match on `key` and can be `UPDATED` or `UNCHANGED`.
 
 ### Translation — `lib/translation/service.ts`
 

@@ -227,11 +227,6 @@ export function ArticleListTable({
                     >
                       {article.title}
                     </Link>
-                    {article.slug ? (
-                      <div className="mt-0.5 font-mono text-xs text-[var(--hub-muted)]">
-                        /{article.slug}
-                      </div>
-                    ) : null}
                   </td>
                   <td className="px-4 py-3">
                     <Badge tone="info">

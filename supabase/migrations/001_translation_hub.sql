@@ -4,12 +4,38 @@
 create extension if not exists "pgcrypto";
 create extension if not exists "pg_trgm";
 
+-- Time-ordered UUID v7. New primary keys append in the B-tree instead of
+-- scattering like gen_random_uuid() (v4).
+create or replace function uuidv7()
+returns uuid
+language plpgsql
+volatile
+as $$
+declare
+  unix_ts_ms bytea;
+  uuid_bytes bytea;
+begin
+  unix_ts_ms := substring(
+    int8send((extract(epoch from clock_timestamp()) * 1000)::bigint)
+    from 3
+  );
+  uuid_bytes := overlay(
+    uuid_send(gen_random_uuid())
+    placing unix_ts_ms
+    from 1 for 6
+  );
+  uuid_bytes := set_byte(uuid_bytes, 6, (get_byte(uuid_bytes, 6) & 15) | 112);
+  uuid_bytes := set_byte(uuid_bytes, 8, (get_byte(uuid_bytes, 8) & 63) | 128);
+  return encode(uuid_bytes, 'hex')::uuid;
+end
+$$;
+
 -- Enums (as text + check for flexibility)
 -- applications.model_type: STRING | CONTENT
 -- status fields use text with checks
 
 create table if not exists languages (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key default uuidv7(),
   code text not null unique,
   name text not null,
   status text not null default 'ACTIVE' check (status in ('ACTIVE', 'INACTIVE')),
@@ -18,7 +44,7 @@ create table if not exists languages (
 );
 
 create table if not exists applications (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key default uuidv7(),
   name text not null unique,
   description text not null default '',
   status text not null default 'ACTIVE' check (status in ('ACTIVE', 'INACTIVE')),
@@ -28,7 +54,7 @@ create table if not exists applications (
 );
 
 create table if not exists namespaces (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key default uuidv7(),
   application_id uuid not null references applications(id) on delete cascade,
   name text not null,
   description text not null default '',
@@ -39,7 +65,7 @@ create table if not exists namespaces (
 );
 
 create table if not exists translation_keys (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key default uuidv7(),
   application_id uuid not null references applications(id) on delete cascade,
   namespace_id uuid not null references namespaces(id) on delete cascade,
   key text not null,
@@ -51,7 +77,7 @@ create table if not exists translation_keys (
 );
 
 create table if not exists translations (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key default uuidv7(),
   translation_key_id uuid not null references translation_keys(id) on delete cascade,
   language_code text not null references languages(code),
   current_text text not null default '',
@@ -63,7 +89,7 @@ create table if not exists translations (
 );
 
 create table if not exists translation_versions (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key default uuidv7(),
   translation_id uuid not null references translations(id) on delete cascade,
   version_number integer not null,
   translated_content text not null default '',
@@ -77,7 +103,7 @@ create table if not exists translation_versions (
 );
 
 create table if not exists content (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key default uuidv7(),
   application_id uuid not null references applications(id) on delete cascade,
   content_type text not null default 'ARTICLE'
     check (content_type in ('ARTICLE', 'NEWS', 'ANNOUNCEMENT')),
@@ -91,7 +117,7 @@ create table if not exists content (
 );
 
 create table if not exists content_translations (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key default uuidv7(),
   content_id uuid not null references content(id) on delete cascade,
   language_code text not null references languages(code),
   title text not null default '',
@@ -107,7 +133,7 @@ create table if not exists content_translations (
 );
 
 create table if not exists content_translation_versions (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key default uuidv7(),
   content_translation_id uuid not null references content_translations(id) on delete cascade,
   version_number integer not null,
   translated_content jsonb not null default '{}'::jsonb,

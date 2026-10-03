@@ -73,7 +73,7 @@ export function ArticleListFilters({
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search title or slug…"
+          placeholder="Search title…"
           className={`${inputClass} h-9 min-w-64 flex-1`}
         />
         <FilterMultiSelect

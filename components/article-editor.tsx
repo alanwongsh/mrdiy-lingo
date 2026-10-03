@@ -150,7 +150,6 @@ export function ArticleEditor({
   const [editingOpen, setEditingOpen] = useState(true);
   const [status, setStatus] = useState(article.status);
   const [contentType, setContentType] = useState(article.content_type);
-  const [slug, setSlug] = useState(article.slug ?? "");
   const [scheduledPublishAt, setScheduledPublishAt] = useState(
     toLocalInput(article.scheduled_publish_at)
   );
@@ -255,7 +254,6 @@ export function ArticleEditor({
   useEffect(() => {
     setStatus(article.status);
     setContentType(article.content_type);
-    setSlug(article.slug ?? "");
     setScheduledPublishAt(toLocalInput(article.scheduled_publish_at));
     setSource(article.source_content);
     setSourceLanguage(article.source_language);
@@ -394,7 +392,7 @@ export function ArticleEditor({
       try {
         await updateArticle(article.id, applicationId, {
           title: source.title || article.title,
-          slug,
+          slug: null,
           content_type: contentType,
           source_language: sourceLanguage,
           source_content: {
@@ -416,7 +414,7 @@ export function ArticleEditor({
   return (
     <div className="space-y-4">
       <Card className="space-y-4 p-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Content type">
             <select
               className={inputClass}
@@ -465,14 +463,6 @@ export function ArticleEditor({
                 </option>
               ))}
             </select>
-          </Field>
-          <Field label="Slug">
-            <input
-              className={inputClass}
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              placeholder="auto-from-title"
-            />
           </Field>
           <Field label="Estimated publish">
             <input

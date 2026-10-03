@@ -2,7 +2,7 @@
 -- Run after 004.
 
 create table if not exists article_comments (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key default uuidv7(),
   content_id uuid not null references content(id) on delete cascade,
   language_code text,
   body text not null,
