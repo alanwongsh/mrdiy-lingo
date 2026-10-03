@@ -44,6 +44,99 @@ function publishTimestampPatch(
   return { published_at: null };
 }
 
+function sameCodeSet(a: string[], b: string[]) {
+  if (a.length !== b.length) return false;
+  const left = new Set(a.map((code) => code.toLowerCase()));
+  return b.every((code) => left.has(code.toLowerCase()));
+}
+
+function sourceContentChanged(
+  current: SourceContentFields,
+  next: SourceContentFields
+) {
+  return (
+    ["title", "summary", "body", "seo_title", "seo_description"] as const
+  ).some((field) => (current[field] ?? "") !== (next[field] ?? ""));
+}
+
+async function clearTargetApprovals(contentId: string, sourceLanguage: string) {
+  const db = await getDb();
+  const { data, error } = await db
+    .from("content_translations")
+    .select("id, language_code")
+    .eq("content_id", contentId)
+    .eq("status", "APPROVED");
+  if (error) throw new Error(error.message);
+  const source = sourceLanguage.trim().toLowerCase();
+  const ids = (data ?? [])
+    .filter(
+      (row) => String(row.language_code).trim().toLowerCase() !== source
+    )
+    .map((row) => row.id as string);
+  if (ids.length === 0) return;
+  const { error: updateError } = await db
+    .from("content_translations")
+    .update({
+      status: "MANUALLY_MODIFIED",
+      approved_by_username: null,
+      approved_by_name: null,
+      approved_at: null,
+    })
+    .in("id", ids);
+  if (updateError) throw new Error(updateError.message);
+}
+
+async function targetsAllApproved(
+  contentId: string,
+  sourceLanguage: string,
+  targetLanguages: string[]
+) {
+  const targets = normalizeTargetLanguages(targetLanguages, sourceLanguage);
+  if (targets.length === 0) return false;
+  const db = await getDb();
+  const { data, error } = await db
+    .from("content_translations")
+    .select("language_code, status")
+    .eq("content_id", contentId);
+  if (error) throw new Error(error.message);
+  const approved = new Set(
+    (data ?? [])
+      .filter((row) => row.status === "APPROVED")
+      .map((row) => String(row.language_code).trim().toLowerCase())
+  );
+  return targets.every((code) => approved.has(code.toLowerCase()));
+}
+
+async function syncArticleStatusFromApprovals(
+  contentId: string,
+  applicationId: string
+) {
+  const db = await getDb();
+  const { data, error } = await db
+    .from("content")
+    .select("status, source_language, target_languages")
+    .eq("id", contentId)
+    .single();
+  if (error) throw new Error(error.message);
+  const allApproved = await targetsAllApproved(
+    contentId,
+    data.source_language,
+    data.target_languages ?? []
+  );
+  if (
+    allApproved &&
+    data.status !== "APPROVED" &&
+    data.status !== "PUBLISHED"
+  ) {
+    await setArticleStatus(contentId, applicationId, "APPROVED");
+  } else if (
+    !allApproved &&
+    (data.status === "APPROVED" || data.status === "PUBLISHED")
+  ) {
+    await setArticleStatus(contentId, applicationId, "REVIEW");
+  }
+}
+
 function mapContentRow(data: Content): Content {
   return {
     ...data,
@@ -245,10 +338,51 @@ export async function updateArticle(
   const db = await getDb();
   const { data: current, error: currentError } = await db
     .from("content")
-    .select("published_at")
+    .select(
+      "published_at, status, source_language, source_content, target_languages"
+    )
     .eq("id", id)
     .single();
   if (currentError) throw new Error(currentError.message);
+
+  const sourceChanged =
+    String(current.source_language).trim().toLowerCase() !==
+      input.source_language.trim().toLowerCase() ||
+    sourceContentChanged(
+      asSourceContent(current.source_content),
+      input.source_content
+    );
+  const currentTargets = normalizeTargetLanguages(
+    current.target_languages,
+    current.source_language
+  );
+  const nextTargets =
+    input.target_languages !== undefined
+      ? normalizeTargetLanguages(input.target_languages, input.source_language)
+      : currentTargets;
+  const targetsChanged =
+    input.target_languages !== undefined &&
+    !sameCodeSet(currentTargets, nextTargets);
+
+  if (sourceChanged) {
+    await clearTargetApprovals(id, input.source_language);
+  }
+
+  const released =
+    current.status === "APPROVED" || current.status === "PUBLISHED";
+  const markingReleased =
+    input.status === "APPROVED" || input.status === "PUBLISHED";
+  let nextStatus = input.status;
+  if (sourceChanged && (released || markingReleased)) {
+    nextStatus = "REVIEW";
+  } else if (targetsChanged && (released || markingReleased)) {
+    const allApproved = await targetsAllApproved(
+      id,
+      input.source_language,
+      nextTargets
+    );
+    if (!allApproved) nextStatus = "REVIEW";
+  }
 
   const patch: Record<string, unknown> = {
     title: input.title.trim(),
@@ -258,17 +392,14 @@ export async function updateArticle(
     content_type: input.content_type,
     source_language: input.source_language,
     source_content: input.source_content,
-    status: input.status,
-    ...publishTimestampPatch(input.status, current.published_at),
+    status: nextStatus,
+    ...publishTimestampPatch(nextStatus, current.published_at),
   };
   if (input.scheduled_publish_at !== undefined) {
     patch.scheduled_publish_at = input.scheduled_publish_at || null;
   }
   if (input.target_languages !== undefined) {
-    patch.target_languages = normalizeTargetLanguages(
-      input.target_languages,
-      input.source_language
-    );
+    patch.target_languages = nextTargets;
   }
 
   const { data, error } = await db
@@ -278,6 +409,9 @@ export async function updateArticle(
     .select("*")
     .single();
   if (error) throw new Error(error.message);
+  if (targetsChanged) {
+    await syncArticleStatusFromApprovals(id, applicationId);
+  }
   revalidatePath(`/applications/${applicationId}`);
   revalidatePath(`/applications/${applicationId}/articles/${id}`);
   return mapContentRow(data as Content);
@@ -484,6 +618,7 @@ export async function setContentTranslationStatus(input: {
     .update({ status: input.status, ...approval })
     .eq("id", input.contentTranslationId);
   if (error) throw new Error(error.message);
+  await syncArticleStatusFromApprovals(input.contentId, input.applicationId);
   revalidatePath(`/applications/${input.applicationId}`);
   revalidatePath(
     `/applications/${input.applicationId}/articles/${input.contentId}`
@@ -620,6 +755,21 @@ export async function saveManualContentTranslation(input: {
   fields: SourceContentFields;
   applicationId: string;
 }): Promise<ContentTranslation> {
+  const db = await getDb();
+  const { data: article, error: articleError } = await db
+    .from("content")
+    .select("status")
+    .eq("id", input.contentId)
+    .single();
+  if (articleError) throw new Error(articleError.message);
+  const { data: existing, error: existingError } = await db
+    .from("content_translations")
+    .select("updated_at")
+    .eq("content_id", input.contentId)
+    .eq("language_code", input.languageCode)
+    .maybeSingle();
+  if (existingError) throw new Error(existingError.message);
+
   const result = await upsertContentTranslation({
     content_id: input.contentId,
     language_code: input.languageCode,
@@ -627,16 +777,48 @@ export async function saveManualContentTranslation(input: {
     source_type: "MANUAL",
     status: "MANUALLY_MODIFIED",
   });
+  const changed = !existing || existing.updated_at !== result.updated_at;
+  if (
+    changed &&
+    (article.status === "APPROVED" || article.status === "PUBLISHED")
+  ) {
+    await setArticleStatus(input.contentId, input.applicationId, "REVIEW");
+  }
   revalidatePath(
     `/applications/${input.applicationId}/articles/${input.contentId}`
   );
   return result;
 }
 
+function emptyTranslationFields(): SourceContentFields {
+  return {
+    title: "",
+    summary: "",
+    body: "",
+    seo_title: "",
+    seo_description: "",
+  };
+}
+
+function describeExportGaps(skipped: string[], blankCounts: Map<string, number>) {
+  const parts: string[] = [];
+  if (skipped.length > 0) {
+    const label = skipped.length === 1 ? "article" : "articles";
+    parts.push(
+      `${skipped.length} ${label} skipped, no approved language: ${skipped.join(", ")}.`
+    );
+  }
+  for (const [code, count] of blankCounts) {
+    const label = count === 1 ? "article" : "articles";
+    parts.push(`${code} left blank on ${count} ${label}, not approved.`);
+  }
+  return parts.join(" ");
+}
+
 export async function exportArticlesFile(input: {
   applicationId: string;
   contentIds: string[];
-}): Promise<{ filename: string; base64: string }> {
+}): Promise<{ filename: string; base64: string; notice: string }> {
   const ids = [...new Set(input.contentIds.map((id) => id.trim()).filter(Boolean))];
   if (ids.length === 0) throw new Error("Select at least one article.");
   if (ids.length > 200) throw new Error("Export up to 200 articles at a time.");
@@ -654,33 +836,83 @@ export async function exportArticlesFile(input: {
       Content & { translations: ContentTranslation[] | null }
     >).map((row) => [row.id, row])
   );
-  const ordered = ids
-    .map((id) => byId.get(id))
-    .filter((row): row is NonNullable<typeof row> => Boolean(row))
-    .map((row) => {
-      const article = mapContentRow(row);
-      return {
+  const skipped: string[] = [];
+  const blankCounts = new Map<string, number>();
+  const ordered = ids.flatMap((id) => {
+    const row = byId.get(id);
+    if (!row) return [];
+    const article = mapContentRow(row);
+    const source = article.source_language.trim().toLowerCase();
+    const translations = row.translations ?? [];
+    const approvedCodes = new Set(
+      translations
+        .filter(
+          (translation) =>
+            translation.status === "APPROVED" &&
+            translation.language_code.trim().toLowerCase() !== source
+        )
+        .map((translation) => translation.language_code.trim().toLowerCase())
+    );
+    if (approvedCodes.size === 0) {
+      skipped.push(article.title);
+      return [];
+    }
+
+    const columnCodes = new Map<string, string>();
+    for (const code of article.target_languages) {
+      const key = code.trim().toLowerCase();
+      if (!key || key === source || columnCodes.has(key)) continue;
+      columnCodes.set(key, code);
+    }
+    for (const translation of translations) {
+      const key = translation.language_code.trim().toLowerCase();
+      if (!key || key === source || columnCodes.has(key)) continue;
+      columnCodes.set(key, translation.language_code);
+    }
+    for (const [key, code] of columnCodes) {
+      if (approvedCodes.has(key)) continue;
+      blankCounts.set(code, (blankCounts.get(code) ?? 0) + 1);
+    }
+
+    const byLang = new Map(
+      translations.map((translation) => [
+        translation.language_code.trim().toLowerCase(),
+        translation,
+      ])
+    );
+    return [
+      {
         title: article.title,
         source_language: article.source_language,
         content_type: article.content_type,
         status: article.status,
         source_content: article.source_content,
-        target_languages: article.target_languages,
-        translations: (row.translations ?? []).map((translation) => ({
-          language_code: translation.language_code,
-          title: translation.title,
-          summary: translation.summary,
-          body: translation.body,
-          seo_title: translation.seo_title,
-          seo_description: translation.seo_description,
-        })),
-      };
-    });
-  if (ordered.length === 0) throw new Error("No matching articles to export.");
+        target_languages: [...columnCodes.values()],
+        translations: [...columnCodes.entries()].map(([key, code]) => {
+          const translation = byLang.get(key);
+          if (!translation || translation.status !== "APPROVED") {
+            return { language_code: code, ...emptyTranslationFields() };
+          }
+          return {
+            language_code: code,
+            title: translation.title,
+            summary: translation.summary,
+            body: translation.body,
+            seo_title: translation.seo_title,
+            seo_description: translation.seo_description,
+          };
+        }),
+      },
+    ];
+  });
+  const notice = describeExportGaps(skipped, blankCounts);
+  if (ordered.length === 0) {
+    throw new Error(notice || "No matching articles to export.");
+  }
 
   const { base64 } = buildArticleWorkbook(ordered);
   const day = new Date().toISOString().slice(0, 10);
-  return { filename: `press-articles-${day}.xlsx`, base64 };
+  return { filename: `press-articles-${day}.xlsx`, base64, notice };
 }
 
 export async function getPressStats(applicationId: string) {

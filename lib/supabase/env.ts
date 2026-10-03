@@ -10,10 +10,10 @@ if (
 }
 
 export function assertSupabaseEnv() {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL in .env.local");
+  if (!process.env.NEXT_PRIVATE_SUPABASE_URL) {
+    throw new Error("Missing NEXT_PRIVATE_SUPABASE_URL in .env.local");
   }
-  if (!process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env.local");
+  if (!process.env.NEXT_PRIVATE_SUPABASE_PUBLISHABLE_KEY) {
+    throw new Error("Missing NEXT_PRIVATE_SUPABASE_PUBLISHABLE_KEY in .env.local");
   }
 }

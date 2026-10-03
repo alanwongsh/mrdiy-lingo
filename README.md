@@ -40,8 +40,8 @@ npm install
 `.env.local`:
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=...
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...
+NEXT_PRIVATE_SUPABASE_URL=...
+NEXT_PRIVATE_SUPABASE_PUBLISHABLE_KEY=...
 TRANSLATION_PROVIDER=mymemory   # or mock
 JOGET_EMBED_SECRET=...          # shared with Joget; signs the iframe user
 # Optional: origins allowed to iframe this app (space-separated). Default *
@@ -138,11 +138,11 @@ TranslationService → MyMemory | mock
 - **Source language** (`content.source_language`): language of the authoring pane. Editable on create, edit, and CSV import. Auto-translate uses `source → target`.
 - **Target languages** (`content.target_languages`): intended locales for that article (excludes source). Listing/editor chips and import wizard write this array.
 - **Source content** lives in `content.source_content` JSON (`title`, `summary`, `body`, `seo_*`). Body is HTML.
-- **Per-language status** on `content_translations.status` (`MISSING` | `SYSTEM_GENERATED` | `MANUALLY_MODIFIED` | `APPROVED`). There is no separate version-level approval. Approving stores `approved_by_name` / `approved_by_username` from the signed-in Joget user. A later edit clears that stamp.
+- **Per-language status** on `content_translations.status` (`MISSING` | `SYSTEM_GENERATED` | `MANUALLY_MODIFIED` | `APPROVED`). There is no separate version-level approval. Approving stores `approved_by_name` / `approved_by_username` from the signed-in Joget user. Saving that language clears the stamp. Editing the source clears approval on every target language.
 - **Comments** stay on the article (`article_comments.content_id`) but each row is for one `language_code`. The editor opens them from a floating button in a right-hand panel, defaulting to the language in the Editing pane. Each row stores `author_username` and `author_name`.
 - **Copy** is the icon beside each Title, Description, and Body label, on both the source pane and the editing pane. Title and description copy as plain text. Body copies the HTML currently in the editor.
-- **Export** on the article list writes the selected rows to `.xlsx` using the import columns (`title`, `source_language`, `content_type`, `status`, `summary`, `body`, `seo_*`, then `{lang}_title` / `{lang}_body` / …). Language codes keep their stored case (`zh-Hans`).
-- **Lifecycle** on `content.status` (`DRAFT` → `TRANSLATING` → `REVIEW` → `APPROVED` → `PUBLISHED`). Setting `PUBLISHED` stamps `published_at`.
+- **Export** on the article list writes selected rows to `.xlsx` using the import columns (`title`, `source_language`, `content_type`, `status`, `summary`, `body`, `seo_*`, then `{lang}_title` / `{lang}_body` / …). Source columns are always included. A language column is filled only when that translation is `APPROVED`; other languages stay blank. Articles with no approved target language are skipped. The list reports both. Language codes keep their stored case (`zh-Hans`).
+- **Lifecycle** on `content.status` (`DRAFT` → `TRANSLATING` → `REVIEW` → `APPROVED` → `PUBLISHED`). Setting `PUBLISHED` stamps `published_at`. Saving an approved translation, or editing the source of an approved or published article, sets the article back to `REVIEW` and clears `published_at`. Approving the last target language sets the article to `APPROVED`.
 - **Due UX**: list sorted by nearest `scheduled_publish_at`; filters for overdue / due soon (24h) / scheduled / none / published.
 
 ### Auto-translate cost

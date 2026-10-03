@@ -34,6 +34,7 @@ export function ArticleListTable({
   const [pending, startTransition] = useTransition();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [task, setTask] = useState<"" | "export" | "delete">("");
 
   const pageIds = useMemo(() => articles.map((a) => a.id), [articles]);
@@ -81,6 +82,7 @@ export function ArticleListTable({
   function runExport() {
     if (selectedOnPage.length === 0) return;
     setError("");
+    setNotice("");
     setTask("export");
     startTransition(async () => {
       try {
@@ -89,6 +91,7 @@ export function ArticleListTable({
           contentIds: selectedOnPage,
         });
         downloadWorkbook(file.filename, file.base64);
+        setNotice(file.notice);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Export failed");
       } finally {
@@ -172,6 +175,11 @@ export function ArticleListTable({
           </span>
         ) : null}
       </div>
+      {notice ? (
+        <p className="text-sm text-amber-800" role="status">
+          {notice}
+        </p>
+      ) : null}
 
       <Card className="overflow-hidden">
         <table className="hub-table">
