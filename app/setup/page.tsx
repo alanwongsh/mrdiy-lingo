@@ -41,6 +41,16 @@ export default async function SetupPage() {
         needsMigration = "004_content_target_languages.sql";
         message =
           "Publish fields OK, but run migration 004 for target languages.";
+      } else {
+        const probeComments = await db
+          .from("article_comments")
+          .select("id")
+          .limit(1);
+        if (probeComments.error) {
+          needsMigration = "005_article_comments.sql";
+          message =
+            "Target languages OK, but run migration 005 for comments and approver names.";
+        }
       }
     }
   } catch (e) {
@@ -51,6 +61,7 @@ export default async function SetupPage() {
   const sql2 = await readMigration("002_version_approval.sql");
   const sql3 = await readMigration("003_content_publishing.sql");
   const sql4 = await readMigration("004_content_target_languages.sql");
+  const sql5 = await readMigration("005_article_comments.sql");
 
   return (
     <div>
@@ -74,6 +85,7 @@ export default async function SetupPage() {
           <li>Run migration 002 only if you previously added version approval columns.</li>
           <li>Run migration 003 for slug / schedule / published dates.</li>
           <li>Run migration 004 for per-article target languages.</li>
+          <li>Run migration 005 for article comments and approver names.</li>
           <li>Refresh this page.</li>
         </ol>
       </Card>
@@ -85,6 +97,7 @@ export default async function SetupPage() {
             ["2", "002_version_approval.sql (cleanup only)", sql2],
             ["3", "003_content_publishing.sql", sql3],
             ["4", "004_content_target_languages.sql", sql4],
+            ["5", "005_article_comments.sql", sql5],
           ] as const
         ).map(([n, name, sql]) => (
           <Card key={name} className="overflow-hidden">

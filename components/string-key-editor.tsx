@@ -28,10 +28,12 @@ export function StringKeyEditor({
   applicationId,
   translationKey,
   languages,
+  actor,
 }: {
   applicationId: string;
   translationKey: TranslationKeyListItem;
   languages: Language[];
+  actor: { username: string; name: string } | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -250,7 +252,8 @@ export function StringKeyEditor({
                   pending ||
                   isTranslating ||
                   status === "APPROVED" ||
-                  !draft.trim()
+                  !draft.trim() ||
+                  !actor
                 }
                 onClick={() =>
                   startTransition(async () => {
@@ -286,6 +289,16 @@ export function StringKeyEditor({
               >
                 {status === "APPROVED" ? "Approved" : "Approve"}
               </Button>
+              {status === "APPROVED" && targetTranslation?.approved_by_name ? (
+                <span className="text-xs text-slate-500">
+                  by {targetTranslation.approved_by_name}
+                </span>
+              ) : null}
+              {!actor ? (
+                <span className="text-xs text-slate-500">
+                  Joget sign-in required to approve
+                </span>
+              ) : null}
               <Button
                 type="button"
                 variant="ghost"

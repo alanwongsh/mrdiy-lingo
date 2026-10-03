@@ -17,6 +17,7 @@ import type {
   ContentTranslationVersion,
   ContentType,
   Language,
+  ArticleComment,
   SourceContentFields,
   TranslationStatus,
 } from "@/lib/types";
@@ -36,6 +37,7 @@ import {
 } from "@/components/language-multi-select";
 import { ArticleVersionPanel } from "@/components/version-panel";
 import { DeleteArticleButton } from "@/components/delete-article-button";
+import { ArticleComments } from "@/components/article-comments";
 import { HtmlEditor, type HtmlEditorHandle } from "@/components/html-editor";
 
 type ArticleWithTranslations = Content & {
@@ -63,6 +65,59 @@ function toLocalInput(iso: string | null | undefined) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function CopyFieldButton({
+  text,
+  copied,
+  label,
+  onCopy,
+}: {
+  text: string;
+  copied: boolean;
+  label: string;
+  onCopy: () => void;
+}) {
+  const name = copied ? "Copied" : `Copy ${label.toLowerCase()}`;
+  return (
+    <button
+      type="button"
+      className="inline-flex h-6 w-6 items-center justify-center rounded text-slate-500 hover:bg-white hover:text-slate-900 disabled:opacity-40"
+      aria-label={name}
+      title={name}
+      disabled={!text.trim()}
+      onClick={onCopy}
+    >
+      {copied ? (
+        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <rect x="9" y="9" width="11" height="11" rx="2" />
+          <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+function writeClipboard(text: string): Promise<void> {
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.style.position = "fixed";
+  area.style.top = "0";
+  area.style.left = "0";
+  area.style.opacity = "0";
+  document.body.appendChild(area);
+  area.focus();
+  area.select();
+  const copied = document.execCommand("copy");
+  area.remove();
+  if (copied) return Promise.resolve();
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
+  return Promise.reject(new Error("Could not copy."));
+}
+
 function fromLocalInput(value: string): string | null {
   if (!value.trim()) return null;
   const d = new Date(value);
@@ -74,10 +129,16 @@ export function ArticleEditor({
   applicationId,
   article,
   languages,
+  actor,
+  comments,
+  commentsError,
 }: {
   applicationId: string;
   article: ArticleWithTranslations;
   languages: Language[];
+  actor: { username: string; name: string } | null;
+  comments: ArticleComment[];
+  commentsError?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -85,6 +146,8 @@ export function ArticleEditor({
   const [translatingLabel, setTranslatingLabel] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [sourceOpen, setSourceOpen] = useState(true);
+  const [editingOpen, setEditingOpen] = useState(true);
   const [status, setStatus] = useState(article.status);
   const [contentType, setContentType] = useState(article.content_type);
   const [slug, setSlug] = useState(article.slug ?? "");
@@ -111,6 +174,11 @@ export function ArticleEditor({
       languages.find((l) => l.code !== article.source_language)?.code ??
       "ms"
   );
+  const commentLanguages = useMemo(() => {
+    const codes = new Set([sourceLanguage, targetLang, ...targetLanguages]);
+    const scoped = languages.filter((language) => codes.has(language.code));
+    return scoped.length > 0 ? scoped : languages;
+  }, [languages, sourceLanguage, targetLang, targetLanguages]);
   const [selected, setSelected] = useState<string[]>(() =>
     (article.target_languages?.length
       ? article.target_languages
@@ -129,8 +197,32 @@ export function ArticleEditor({
   const [bodyEpoch, setBodyEpoch] = useState(0);
   const [versions, setVersions] = useState<ContentTranslationVersion[]>([]);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState("");
   const [historyError, setHistoryError] = useState("");
   const sourceBodyRef = useRef<HtmlEditorHandle>(null);
+  const historyRef = useRef<HTMLDivElement>(null);
+
+  function copyField(key: string, text: string, label: string) {
+    return (
+      <CopyFieldButton
+        text={text}
+        copied={copied === key}
+        label={label}
+        onCopy={() => {
+          void writeClipboard(text)
+            .then(() => {
+              setError("");
+              setCopied(key);
+              window.setTimeout(
+                () => setCopied((current) => (current === key ? "" : current)),
+                2000
+              );
+            })
+            .catch(() => setError(`Could not copy the ${label.toLowerCase()}.`));
+        }}
+      />
+    );
+  }
 
   const sourceLang = languages.find((l) => l.code === sourceLanguage);
   const targetMeta = languages.find((l) => l.code === targetLang);
@@ -210,6 +302,11 @@ export function ArticleEditor({
     setVersions([]);
     setHistoryError("");
   }, [translationToken, targetTranslation]);
+
+  useEffect(() => {
+    if (!showHistory) return;
+    historyRef.current?.scrollIntoView({ block: "nearest" });
+  }, [showHistory]);
 
   function loadHistory() {
     setShowHistory(true);
@@ -456,6 +553,22 @@ export function ArticleEditor({
                   onClick={runBatchTranslate}
                 />
               }
+              editingAction={
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={pending || historyLoading || isTranslating}
+                  onClick={() =>
+                    showHistory ? setShowHistory(false) : loadHistory()
+                  }
+                >
+                  {showHistory
+                    ? "Close history"
+                    : historyLoading
+                      ? "Loading…"
+                      : "History"}
+                </Button>
+              }
             />
           </div>
         </div>
@@ -470,20 +583,71 @@ export function ArticleEditor({
         ) : null}
       </Card>
 
+      {showHistory ? (
+        <div ref={historyRef}>
+          <ArticleVersionPanel
+            versions={versions}
+            draft={draft}
+            loading={historyLoading}
+            error={historyError}
+            pending={pending}
+            onRestore={setDraft}
+            onDelete={(versionId, versionNumber) => {
+              if (
+                !confirm(
+                  `Delete version v${versionNumber}? This cannot be undone.`
+                )
+              ) {
+                return;
+              }
+              startTransition(async () => {
+                setHistoryError("");
+                try {
+                  await deleteContentTranslationVersion({
+                    versionId,
+                    applicationId,
+                    contentId: article.id,
+                  });
+                  setVersions((prev) =>
+                    prev.filter((item) => item.id !== versionId)
+                  );
+                } catch (err) {
+                  setHistoryError(
+                    err instanceof Error
+                      ? err.message
+                      : "Failed to delete version"
+                  );
+                }
+              });
+            }}
+          />
+        </div>
+      ) : null}
+
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="overflow-hidden">
           <div className="border-b border-[var(--hub-border)] bg-slate-50 px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
-                  Source
-                </div>
-                <div className="mt-0.5 font-semibold text-slate-900">
-                  {sourceLang?.name ?? sourceLanguage}
-                </div>
-              </div>
+              <button
+                type="button"
+                className="flex min-w-0 items-center gap-2 text-left"
+                aria-expanded={sourceOpen}
+                onClick={() => setSourceOpen((open) => !open)}
+              >
+                <span className="text-[var(--diy-red)]" aria-hidden>
+                  {sourceOpen ? "▾" : "▸"}
+                </span>
+                <span>
+                  <span className="block text-xs font-semibold tracking-wide text-[var(--diy-red)] uppercase">
+                    Source
+                  </span>
+                  <span className="mt-0.5 block font-semibold text-slate-900">
+                    {sourceLang?.name ?? sourceLanguage}
+                  </span>
+                </span>
+              </button>
               <Button
                 type="button"
                 variant="secondary"
@@ -494,8 +658,8 @@ export function ArticleEditor({
               </Button>
             </div>
           </div>
-          <div className="space-y-3 p-4">
-            <Field label="Title">
+          <div className="space-y-3 p-4" hidden={!sourceOpen}>
+            <Field label="Title" action={copyField("source-title", source.title, "Title")}>
               <input
                 className={inputClass}
                 value={source.title}
@@ -504,7 +668,10 @@ export function ArticleEditor({
                 }
               />
             </Field>
-            <Field label="Description">
+            <Field
+              label="Description"
+              action={copyField("source-description", source.summary, "Description")}
+            >
               <textarea
                 className={textareaClass}
                 rows={3}
@@ -514,7 +681,7 @@ export function ArticleEditor({
                 }
               />
             </Field>
-            <Field label="Body">
+            <Field label="Body" action={copyField("source-body", source.body, "Body")}>
               <HtmlEditor
                 ref={sourceBodyRef}
                 revision={`source-${article.id}`}
@@ -531,19 +698,29 @@ export function ArticleEditor({
         <Card className="overflow-hidden border-[var(--diy-red)]/20">
           <div className="border-b border-[var(--hub-border)] bg-[var(--diy-red-soft)] px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
-              <div>
-                <div className="text-xs font-semibold tracking-wide text-[var(--diy-red)] uppercase">
-                  Editing
-                </div>
-                <div className="mt-0.5 font-semibold text-slate-900">
-                  {targetMeta?.name ?? targetLang}
-                </div>
-              </div>
+              <button
+                type="button"
+                className="flex min-w-0 items-center gap-2 text-left"
+                aria-expanded={editingOpen}
+                onClick={() => setEditingOpen((open) => !open)}
+              >
+                <span className="text-[var(--diy-red)]" aria-hidden>
+                  {editingOpen ? "▾" : "▸"}
+                </span>
+                <span>
+                  <span className="block text-xs font-semibold tracking-wide text-[var(--diy-red)] uppercase">
+                    Editing
+                  </span>
+                  <span className="mt-0.5 block font-semibold text-slate-900">
+                    {targetMeta?.name ?? targetLang}
+                  </span>
+                </span>
+              </button>
               <Badge tone={statusTone(langStatus)}>{langStatus}</Badge>
             </div>
           </div>
-          <div className="space-y-3 p-4">
-            <Field label="Title">
+          <div className="space-y-3 p-4" hidden={!editingOpen}>
+            <Field label="Title" action={copyField("target-title", draft.title, "Title")}>
               <input
                 className={inputClass}
                 value={draft.title}
@@ -551,10 +728,14 @@ export function ArticleEditor({
                 onChange={(e) =>
                   setDraft((d) => ({ ...d, title: e.target.value }))
                 }
+                spellCheck={false}
                 placeholder={`Title in ${targetMeta?.name ?? targetLang}`}
               />
             </Field>
-            <Field label="Description">
+            <Field
+              label="Description"
+              action={copyField("target-description", draft.summary, "Description")}
+            >
               <textarea
                 className={textareaClass}
                 rows={3}
@@ -563,10 +744,11 @@ export function ArticleEditor({
                 onChange={(e) =>
                   setDraft((d) => ({ ...d, summary: e.target.value }))
                 }
+                spellCheck={false}
                 placeholder={`Description in ${targetMeta?.name ?? targetLang}`}
               />
             </Field>
-            <Field label="Body">
+            <Field label="Body" action={copyField("target-body", draft.body, "Body")}>
               <HtmlEditor
                 revision={`target-${article.id}-${targetLang}-${bodyEpoch}`}
                 value={draft.body}
@@ -620,7 +802,8 @@ export function ArticleEditor({
                   pending ||
                   isTranslating ||
                   langStatus === "APPROVED" ||
-                  !draft.title.trim()
+                  !draft.title.trim() ||
+                  !actor
                 }
                 onClick={() =>
                   startTransition(async () => {
@@ -663,63 +846,30 @@ export function ArticleEditor({
               >
                 {langStatus === "APPROVED" ? "Approved" : "Approve"}
               </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={pending || historyLoading || isTranslating}
-                onClick={() =>
-                  showHistory ? setShowHistory(false) : loadHistory()
-                }
-              >
-                {showHistory
-                  ? "Close history"
-                  : historyLoading
-                    ? "Loading…"
-                    : "History"}
-              </Button>
+              {langStatus === "APPROVED" && targetTranslation?.approved_by_name ? (
+                <span className="text-xs text-slate-500">
+                  by {targetTranslation.approved_by_name}
+                </span>
+              ) : null}
+              {!actor ? (
+                <span className="text-xs text-slate-500">
+                  Joget sign-in required to approve
+                </span>
+              ) : null}
             </div>
           </div>
         </Card>
       </div>
 
-      {showHistory ? (
-        <ArticleVersionPanel
-          versions={versions}
-          draft={draft}
-          loading={historyLoading}
-          error={historyError}
-          pending={pending}
-          onRestore={setDraft}
-          onDelete={(versionId, versionNumber) => {
-            if (
-              !confirm(
-                `Delete version v${versionNumber}? This cannot be undone.`
-              )
-            ) {
-              return;
-            }
-            startTransition(async () => {
-              setHistoryError("");
-              try {
-                await deleteContentTranslationVersion({
-                  versionId,
-                  applicationId,
-                  contentId: article.id,
-                });
-                setVersions((prev) =>
-                  prev.filter((item) => item.id !== versionId)
-                );
-              } catch (err) {
-                setHistoryError(
-                  err instanceof Error
-                    ? err.message
-                    : "Failed to delete version"
-                );
-              }
-            });
-          }}
-        />
-      ) : null}
+      <ArticleComments
+        applicationId={applicationId}
+        contentId={article.id}
+        comments={comments}
+        languages={commentLanguages}
+        activeLanguage={targetLang}
+        actor={actor}
+        loadError={commentsError}
+      />
     </div>
   );
 }

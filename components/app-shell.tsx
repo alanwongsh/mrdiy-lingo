@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { listApplications } from "@/lib/actions/applications";
+import { getActor } from "@/lib/auth/actor";
 import { SidebarNav } from "@/components/sidebar-nav";
 
 const nav = [
@@ -18,6 +19,8 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   } catch {
     apps = [];
   }
+  const actor = await getActor();
+  const allowDevSignIn = process.env.EMBED_ALLOW_DEV === "true";
 
   const appLinks = apps.map((app) => ({
     href: `/applications/${app.id}`,
@@ -68,7 +71,41 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           ) : null}
         </nav>
-        <div className="border-t border-white/10 px-5 py-4 text-[11px] text-[var(--hub-sidebar-muted)]">
+        <div className="border-t border-white/10 px-4 py-4 text-[11px] text-[var(--hub-sidebar-muted)]">
+          {actor ? (
+            <div className="mb-2">
+              <div className="text-sm font-semibold text-white">{actor.name}</div>
+              <div className="mt-0.5">{actor.username}</div>
+              <Link href="/embed/sign-out" className="mt-1 inline-block text-[var(--diy-yellow)]">
+                Sign out
+              </Link>
+            </div>
+          ) : allowDevSignIn ? (
+            <form action="/embed/dev" method="post" className="mb-3 space-y-1.5">
+              <div className="text-[10px] font-semibold tracking-[0.16em] uppercase">
+                Dev sign-in
+              </div>
+              <input
+                name="username"
+                required
+                placeholder="username"
+                className="h-8 w-full rounded-md border border-white/15 bg-white/10 px-2 text-xs text-white placeholder:text-slate-400"
+              />
+              <input
+                name="name"
+                placeholder="Display name"
+                className="h-8 w-full rounded-md border border-white/15 bg-white/10 px-2 text-xs text-white placeholder:text-slate-400"
+              />
+              <button
+                type="submit"
+                className="h-8 w-full rounded-md bg-[var(--diy-yellow)] text-xs font-semibold text-slate-900"
+              >
+                Sign in
+              </button>
+            </form>
+          ) : (
+            <div className="mb-2 text-slate-300">Not signed in</div>
+          )}
           Mr DIY Lingo · V1
         </div>
       </aside>

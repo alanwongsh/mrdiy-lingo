@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { deleteArticles } from "@/lib/actions/press";
+import { deleteArticles, exportArticlesFile } from "@/lib/actions/press";
 import type { ArticleListItem } from "@/lib/actions/press";
 import type { Language } from "@/lib/types";
 import { DeleteArticleButton } from "@/components/delete-article-button";
@@ -34,6 +34,7 @@ export function ArticleListTable({
   const [pending, startTransition] = useTransition();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState("");
+  const [task, setTask] = useState<"" | "export" | "delete">("");
 
   const pageIds = useMemo(() => articles.map((a) => a.id), [articles]);
   const selectedOnPage = pageIds.filter((id) => selected.has(id));
@@ -62,6 +63,40 @@ export function ArticleListTable({
     });
   }
 
+  function downloadWorkbook(filename: string, base64: string) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function runExport() {
+    if (selectedOnPage.length === 0) return;
+    setError("");
+    setTask("export");
+    startTransition(async () => {
+      try {
+        const file = await exportArticlesFile({
+          applicationId,
+          contentIds: selectedOnPage,
+        });
+        downloadWorkbook(file.filename, file.base64);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Export failed");
+      } finally {
+        setTask("");
+      }
+    });
+  }
+
   function runBulkDelete() {
     if (selectedOnPage.length === 0) return;
     const count = selectedOnPage.length;
@@ -73,6 +108,7 @@ export function ArticleListTable({
       return;
     }
     setError("");
+    setTask("delete");
     startTransition(async () => {
       try {
         await deleteArticles({
@@ -83,6 +119,8 @@ export function ArticleListTable({
         router.refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Bulk delete failed");
+      } finally {
+        setTask("");
       }
     });
   }
@@ -92,11 +130,23 @@ export function ArticleListTable({
       <div className="flex flex-wrap items-center gap-3">
         <Button
           type="button"
+          variant="secondary"
+          disabled={pending || selectedOnPage.length === 0}
+          onClick={runExport}
+        >
+          {task === "export"
+            ? "Exporting…"
+            : selectedOnPage.length > 0
+              ? `Export selected (${selectedOnPage.length})`
+              : "Export selected"}
+        </Button>
+        <Button
+          type="button"
           variant="danger"
           disabled={pending || selectedOnPage.length === 0}
           onClick={runBulkDelete}
         >
-          {pending
+          {task === "delete"
             ? "Deleting…"
             : selectedOnPage.length > 0
               ? `Delete selected (${selectedOnPage.length})`
@@ -113,7 +163,7 @@ export function ArticleListTable({
           </button>
         ) : (
           <span className="text-sm text-[var(--hub-muted)]">
-            Select articles to delete in bulk
+            Select articles to export or delete
           </span>
         )}
         {error ? (

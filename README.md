@@ -21,7 +21,7 @@ No authentication in V1.
 | **Applications** | `STRING` (product keys) or `CONTENT` (press articles) |
 | **Languages** | CRUD + activate/deactivate |
 | **Product** | Namespaces, keys, per-language translations, versions, auto-translate, approve |
-| **Press** | Articles with title/description/HTML body, slug, schedule/publish dates, per-article `source_language` + `target_languages`, TipTap editor, language chips, auto-translate, approve, history, bulk delete |
+| **Press** | Articles with title/description/HTML body, slug, schedule/publish dates, per-article `source_language` + `target_languages`, TipTap editor, language chips, auto-translate, approve, history, article comments, copy title/description/body, Excel export of selected rows, bulk delete |
 | **Import** | Excel/CSV validate → preview (New/Updated/Unchanged) → confirm; optional auto-translate targets |
 | **Dashboard** | Coverage / lifecycle stats |
 | **Setup** | In-app migration checklist (`/setup`) |
@@ -43,6 +43,11 @@ npm install
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...
 TRANSLATION_PROVIDER=mymemory   # or mock
+JOGET_EMBED_SECRET=...          # shared with Joget; signs the iframe user
+# Optional: origins allowed to iframe this app (space-separated). Default *
+# JOGET_FRAME_ANCESTORS=https://joget.example.com
+# Local stand-in for Joget. Never enable in production.
+# EMBED_ALLOW_DEV=true
 # Optional behind corporate SSL:
 # SUPABASE_INSECURE_SSL=true
 ```
@@ -53,9 +58,62 @@ Apply SQL in order (Supabase SQL Editor or `/setup`):
 2. `supabase/migrations/002_version_approval.sql` — only if upgrading older DBs with version approval columns
 3. `supabase/migrations/003_content_publishing.sql` — `slug`, `scheduled_publish_at`, `published_at`
 4. `supabase/migrations/004_content_target_languages.sql` — `content.target_languages text[]`
+5. `supabase/migrations/005_article_comments.sql` — article comments, approver name, version username
 
 ```bash
 npm run dev
+```
+
+## Joget iframe
+
+Joget's session cookie does not reach Lingo. Joget mints a short-lived HMAC token with the same `JOGET_EMBED_SECRET`, and the iframe opens:
+
+`https://<lingo-host>/embed?token=<token>&next=/applications/<id>`
+
+Lingo checks the signature, stores an httpOnly cookie, and redirects to `next`. Comments, history, and Approve use that name. Both refuse to run when nobody is signed in.
+
+The signed string is compact JSON with no extra spaces, UTF-8, then base64url. The signature is HMAC-SHA256 of that base64url text. The token is `payload.signature`, both base64url and unpadded. `exp` is a unix timestamp at most 12 hours ahead (use 5 minutes from Joget).
+
+```json
+{"u":"ahmad","n":"Ahmad Lee","e":"ahmad@example.com","exp":1710000000}
+```
+
+Paste this into a Joget Bean Shell userview menu. Joget replaces `#appVariable.lingoEmbedSecret#` before the script runs. Set that app variable to the same secret, and set `JOGET_FRAME_ANCESTORS` to the Joget origin. The iframe host must be HTTPS so the cookie is accepted inside a cross-site frame.
+
+```java
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import org.joget.workflow.util.WorkflowUtil;
+import org.joget.directory.model.User;
+
+String secret = "#appVariable.lingoEmbedSecret#";
+User user = WorkflowUtil.getCurrentUser();
+String username = user.getUsername();
+String first = user.getFirstName() == null ? "" : user.getFirstName();
+String last = user.getLastName() == null ? "" : user.getLastName();
+String name = (first + " " + last).trim();
+if (name.isEmpty()) name = username;
+String email = user.getEmail() == null ? "" : user.getEmail();
+long exp = System.currentTimeMillis() / 1000L + 300L;
+String json = "{\"u\":\"" + username.replace("\\", "\\\\").replace("\"", "\\\"")
+  + "\",\"n\":\"" + name.replace("\\", "\\\\").replace("\"", "\\\"")
+  + "\",\"e\":\"" + email.replace("\\", "\\\\").replace("\"", "\\\"")
+  + "\",\"exp\":" + exp + "}";
+String payload = Base64.getUrlEncoder().withoutPadding().encodeToString(json.getBytes(StandardCharsets.UTF_8));
+Mac mac = Mac.getInstance("HmacSHA256");
+mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+String sig = Base64.getUrlEncoder().withoutPadding().encodeToString(mac.doFinal(payload.getBytes(StandardCharsets.UTF_8)));
+String token = java.net.URLEncoder.encode(payload + "." + sig, "UTF-8");
+String next = java.net.URLEncoder.encode("/", "UTF-8");
+return "<iframe src=\"https://lingo.example.com/embed?token=" + token + "&next=" + next + "\" style=\"width:100%;height:calc(100vh - 120px);border:0\"></iframe>";
+```
+
+Without Joget, set `EMBED_ALLOW_DEV=true` and use the sidebar form, or mint a 5-minute token:
+
+```bash
+node scripts/mint-embed-token.mjs ahmad "Ahmad Lee"
 ```
 
 ## Sample imports
@@ -78,7 +136,10 @@ TranslationService → MyMemory | mock
 - **Source language** (`content.source_language`): language of the authoring pane. Editable on create, edit, and CSV import. Auto-translate uses `source → target`.
 - **Target languages** (`content.target_languages`): intended locales for that article (excludes source). Listing/editor chips and import wizard write this array.
 - **Source content** lives in `content.source_content` JSON (`title`, `summary`, `body`, `seo_*`). Body is HTML.
-- **Per-language status** on `content_translations.status` (`MISSING` | `SYSTEM_GENERATED` | `MANUALLY_MODIFIED` | `APPROVED`). There is no separate version-level approval.
+- **Per-language status** on `content_translations.status` (`MISSING` | `SYSTEM_GENERATED` | `MANUALLY_MODIFIED` | `APPROVED`). There is no separate version-level approval. Approving stores `approved_by_name` / `approved_by_username` from the signed-in Joget user. A later edit clears that stamp.
+- **Comments** stay on the article (`article_comments.content_id`) but each row is for one `language_code`. The editor opens them from a floating button in a right-hand panel, defaulting to the language in the Editing pane. Each row stores `author_username` and `author_name`.
+- **Copy** is the icon beside each Title, Description, and Body label, on both the source pane and the editing pane. Title and description copy as plain text. Body copies the HTML currently in the editor.
+- **Export** on the article list writes the selected rows to `.xlsx` using the import columns (`title`, `source_language`, `content_type`, `status`, `summary`, `body`, `seo_*`, then `{lang}_title` / `{lang}_body` / …). Language codes keep their stored case (`zh-Hans`).
 - **Lifecycle** on `content.status` (`DRAFT` → `TRANSLATING` → `REVIEW` → `APPROVED` → `PUBLISHED`). Setting `PUBLISHED` stamps `published_at`.
 - **Due UX**: list sorted by nearest `scheduled_publish_at`; filters for overdue / due soon (24h) / scheduled / none / published.
 
@@ -147,7 +208,8 @@ samples/                      # Example import files
 | `deleteArticle` / `deleteArticles` | Single / bulk delete (cascades via FK) |
 | `upsertContentTranslation` | Save translation + append version when changed |
 | `autoTranslateArticle` / `autoTranslateArticleLanguages` | Translate; optional live `sourceFields` + `sourceLanguage`; never overwrite stored body with empty editor state |
-| `saveManualContentTranslation` / `setContentTranslationStatus` | Manual edit / approve |
+| `saveManualContentTranslation` / `setContentTranslationStatus` | Manual edit / approve (approve requires a signed-in user) |
+| `listArticleComments` / `addArticleComment` | Article thread; author comes from the session |
 | `listContentTranslationVersions` / `deleteContentTranslationVersion` | History |
 | `getPressStats` | Dashboard counts |
 

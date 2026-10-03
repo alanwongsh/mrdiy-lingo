@@ -194,21 +194,27 @@ export function Field({
   label,
   children,
   htmlFor,
+  action,
 }: {
   label: string;
   children: React.ReactNode;
   htmlFor?: string;
+  action?: React.ReactNode;
 }) {
   // Do NOT wrap controls in <label> — nested TipTap/toolbars steal focus
   // (caret flashes then jumps to the first button, e.g. Bold).
+  // Keep `action` outside the label so the button click does not focus the field.
   return (
     <div className="block space-y-1.5">
-      <label
-        htmlFor={htmlFor}
-        className="block text-xs font-semibold tracking-wide text-[var(--hub-muted-strong)]"
-      >
-        {label}
-      </label>
+      <div className="flex items-center gap-1">
+        <label
+          htmlFor={htmlFor}
+          className="text-xs font-semibold tracking-wide text-[var(--hub-muted-strong)]"
+        >
+          {label}
+        </label>
+        {action}
+      </div>
       {children}
     </div>
   );

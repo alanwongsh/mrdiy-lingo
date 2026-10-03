@@ -112,7 +112,8 @@ export function parseArticleTranslationFile(
   const rows = parseSpreadsheet(buffer, filename);
   if (rows.length < 2) throw new Error("File must include a header and at least one row");
 
-  const header = rows[0].map((h) => h.trim().toLowerCase());
+  const headerRaw = rows[0].map((h) => h.trim());
+  const header = headerRaw.map((h) => h.toLowerCase());
   const required = ["title", "source_language"];
   for (const col of required) {
     if (!header.includes(col)) {
@@ -126,15 +127,15 @@ export function parseArticleTranslationFile(
   const typeIdx = idx("content_type");
   const statusIdx = idx("status");
 
-  const translationCols = header
+  const translationCols = headerRaw
     .map((name, index) => {
       const match = name.match(
-        /^([a-z]{2}(?:-[a-z]+)?)_(title|summary|body|seo_title|seo_description)$/i
+        /^([A-Za-z]{2}(?:-[A-Za-z]+)?)_(title|summary|body|seo_title|seo_description)$/i
       );
       if (!match) return null;
       return {
         index,
-        lang: match[1].toLowerCase(),
+        lang: match[1],
         field: match[2].toLowerCase() as keyof SourceContentFields,
       };
     })

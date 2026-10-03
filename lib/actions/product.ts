@@ -12,7 +12,7 @@ import type {
   TranslationStatus,
   TranslationVersion,
 } from "@/lib/types";
-import { sourceTypeAuthor } from "@/lib/types";
+import { approvalStamp, versionAuthorFields } from "@/lib/auth/actor";
 import { getTranslationService } from "@/lib/translation/service";
 
 export async function listNamespaces(
@@ -77,10 +77,12 @@ export async function updateNamespace(
 
 export type TranslationKeyListItem = TranslationKey & {
   namespace: Pick<Namespace, "id" | "name"> | null;
-  translations: Pick<
+  translations: (Pick<
     Translation,
     "id" | "language_code" | "current_text" | "status"
-  >[];
+  > & {
+    approved_by_name?: string | null;
+  })[];
 };
 
 export async function listTranslationKeys(input: {
@@ -174,7 +176,7 @@ export async function getTranslationKey(
       `
       *,
       namespace:namespaces(id, name),
-      translations(id, language_code, current_text, status, created_at, updated_at)
+      translations(id, language_code, current_text, status, approved_by_name, created_at, updated_at)
     `
     )
     .eq("id", id)
@@ -295,7 +297,13 @@ export async function upsertStringTranslation(input: {
     }
     const { data, error } = await db
       .from("translations")
-      .update({ current_text: input.text, status })
+      .update({
+        current_text: input.text,
+        status,
+        approved_by_username: null,
+        approved_by_name: null,
+        approved_at: null,
+      })
       .eq("id", existing.id)
       .select("*")
       .single();
@@ -317,14 +325,13 @@ export async function upsertStringTranslation(input: {
   }
 
   const versionNumber = await nextTranslationVersionNumber(translation.id);
-  const author = sourceTypeAuthor(input.source_type);
+  const actorFields = await versionAuthorFields(input.source_type);
   const { error: versionError } = await db.from("translation_versions").insert({
     translation_id: translation.id,
     version_number: versionNumber,
     translated_content: input.text,
     source_type: input.source_type,
-    author,
-    modifier: author,
+    ...actorFields,
   });
   if (versionError) throw new Error(versionError.message);
 
@@ -368,9 +375,10 @@ export async function setStringTranslationStatus(input: {
   translationKeyId: string;
 }): Promise<void> {
   const db = await getDb();
+  const approval = await approvalStamp(input.status);
   const { error } = await db
     .from("translations")
-    .update({ status: input.status })
+    .update({ status: input.status, ...approval })
     .eq("id", input.translationId);
   if (error) throw new Error(error.message);
   revalidatePath(`/applications/${input.applicationId}`);

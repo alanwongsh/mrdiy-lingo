@@ -213,6 +213,11 @@ export function ArticleVersionComparer({
 
   const left = options.find((o) => o.id === leftId) ?? options[0];
   const right = options.find((o) => o.id === rightId) ?? options[0];
+  const [openFields, setOpenFields] = useState<Record<string, boolean>>({
+    title: true,
+    summary: true,
+    body: false,
+  });
 
   if (options.length < 2) {
     return (
@@ -262,42 +267,57 @@ export function ArticleVersionComparer({
               ? diffHtml(leftValue, rightValue)
               : diffWords(leftValue, rightValue);
           const summary = summarizeDiff(tokens);
+          const open = openFields[key] ?? false;
           return (
             <Card key={key} className="overflow-hidden">
-              <div className="flex flex-wrap items-center gap-2 border-b border-[var(--hub-border)] bg-slate-50 px-3 py-2">
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              <button
+                type="button"
+                className="flex w-full flex-wrap items-center gap-2 bg-slate-50 px-3 py-2 text-left"
+                aria-expanded={open}
+                onClick={() =>
+                  setOpenFields((current) => ({ ...current, [key]: !open }))
+                }
+              >
+                <span className="text-[var(--diy-red)]" aria-hidden>
+                  {open ? "▾" : "▸"}
+                </span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--diy-red)]">
                   {label}
-                </div>
+                </span>
                 <Badge tone={summary.changed ? "warn" : "good"}>
                   {summary.changed ? "Changed" : "Same"}
                 </Badge>
-              </div>
-              <div className="grid gap-0 lg:grid-cols-2">
-                <div className="border-b border-[var(--hub-border)] p-3 lg:border-r lg:border-b-0">
-                  <div className="mb-1 text-[10px] font-semibold uppercase text-slate-400">
-                    From
+              </button>
+              {open ? (
+                <>
+                  <div className="grid gap-0 border-t border-[var(--hub-border)] lg:grid-cols-2">
+                    <div className="border-b border-[var(--hub-border)] p-3 lg:border-r lg:border-b-0">
+                      <div className="mb-1 text-[10px] font-semibold uppercase text-slate-400">
+                        From
+                      </div>
+                      <FieldPreview fieldKey={key} value={leftValue} />
+                    </div>
+                    <div className="p-3">
+                      <div className="mb-1 text-[10px] font-semibold uppercase text-slate-400">
+                        To
+                      </div>
+                      <FieldPreview fieldKey={key} value={rightValue} />
+                    </div>
                   </div>
-                  <FieldPreview fieldKey={key} value={leftValue} />
-                </div>
-                <div className="p-3">
-                  <div className="mb-1 text-[10px] font-semibold uppercase text-slate-400">
-                    To
+                  <div className="border-t border-[var(--hub-border)] bg-[var(--diy-yellow-soft)]/40 p-3">
+                    <div className="mb-1 text-[10px] font-semibold uppercase text-slate-500">
+                      Diff{key === "body" ? " · plain text" : ""}
+                    </div>
+                    {summary.changed ? (
+                      <DiffText tokens={tokens} />
+                    ) : (
+                      <p className="text-sm text-slate-500">
+                        No meaningful differences.
+                      </p>
+                    )}
                   </div>
-                  <FieldPreview fieldKey={key} value={rightValue} />
-                </div>
-              </div>
-              <div className="border-t border-[var(--hub-border)] bg-[var(--diy-yellow-soft)]/40 p-3">
-                <div className="mb-1 text-[10px] font-semibold uppercase text-slate-500">
-                  Diff{key === "body" ? " · plain text" : ""}
-                </div>
-                {summary.changed ? (
-                  <DiffText tokens={tokens} />
-                ) : (
-                  <p className="text-sm text-slate-500">
-                    No meaningful differences.
-                  </p>
-                )}
-              </div>
+                </>
+              ) : null}
             </Card>
           );
         })}

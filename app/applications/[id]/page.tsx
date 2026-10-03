@@ -78,43 +78,6 @@ export default async function ApplicationOverviewPage({
           <StatCard label="Approved" value={pressStats.approved} tone="good" />
         </div>
       ) : null}
-
-      <Card className="mt-8 p-5">
-        <h2 className="font-semibold text-slate-900">How this app works</h2>
-        {isString ? (
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
-            Product uses <strong>key/value string translations</strong>. Use{" "}
-            <Link
-              href={`${base}/translations`}
-              className="hub-accent-link font-semibold"
-            >
-              Translations
-            </Link>{" "}
-            to search and edit keys.{" "}
-            <Link
-              href={`${base}/namespaces`}
-              className="hub-accent-link font-semibold"
-            >
-              Namespaces
-            </Link>{" "}
-            are only for organizing keys (Checkout, Cart, etc.) — they do not
-            change uniqueness. Create new keys from the Translations page or via
-            Import.
-          </p>
-        ) : (
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
-            Press uses <strong>article/content translations</strong>. Manage
-            long-form pieces under{" "}
-            <Link
-              href={`${base}/articles`}
-              className="hub-accent-link font-semibold"
-            >
-              Articles
-            </Link>
-            , then translate title, description, and HTML body per language.
-          </p>
-        )}
-      </Card>
     </div>
   );
 }

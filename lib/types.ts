@@ -65,6 +65,9 @@ export type Translation = {
   language_code: string;
   current_text: string;
   status: TranslationStatus;
+  approved_by_username: string | null;
+  approved_by_name: string | null;
+  approved_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -76,6 +79,7 @@ export type TranslationVersion = {
   translated_content: string;
   source_type: SourceType;
   author: string | null;
+  author_username: string | null;
   modifier: string | null;
   created_by: string | null;
   modified_by: string | null;
@@ -116,8 +120,21 @@ export type ContentTranslation = {
   seo_title: string;
   seo_description: string;
   status: TranslationStatus;
+  approved_by_username: string | null;
+  approved_by_name: string | null;
+  approved_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type ArticleComment = {
+  id: string;
+  content_id: string;
+  language_code: string | null;
+  body: string;
+  author_username: string;
+  author_name: string;
+  created_at: string;
 };
 
 export type ContentTranslationVersion = {
@@ -127,6 +144,7 @@ export type ContentTranslationVersion = {
   translated_content: SourceContentFields;
   source_type: SourceType;
   author: string | null;
+  author_username: string | null;
   modifier: string | null;
   created_by: string | null;
   modified_by: string | null;

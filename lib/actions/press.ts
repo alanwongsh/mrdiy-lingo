@@ -13,11 +13,13 @@ import type {
   SourceType,
   TranslationStatus,
 } from "@/lib/types";
-import { emptySourceContent, sourceTypeAuthor } from "@/lib/types";
+import { approvalStamp, versionAuthorFields } from "@/lib/auth/actor";
+import { emptySourceContent } from "@/lib/types";
 import { getTranslationService } from "@/lib/translation/service";
 import { normalizeSlug } from "@/lib/slug";
 import { DUE_SOON_MS, type PublishDueKind } from "@/lib/publish-due";
 import { normalizeTargetLanguages } from "@/lib/target-languages";
+import { buildArticleWorkbook } from "@/lib/export/articles";
 
 function asSourceContent(value: unknown): SourceContentFields {
   const v = (value ?? {}) as Partial<SourceContentFields>;
@@ -378,6 +380,9 @@ export async function upsertContentTranslation(input: {
     seo_title: input.fields.seo_title,
     seo_description: input.fields.seo_description,
     status,
+    approved_by_username: null,
+    approved_by_name: null,
+    approved_at: null,
   };
 
   let translation: ContentTranslation;
@@ -414,7 +419,7 @@ export async function upsertContentTranslation(input: {
   }
 
   const versionNumber = await nextContentVersionNumber(translation.id);
-  const author = sourceTypeAuthor(input.source_type);
+  const actorFields = await versionAuthorFields(input.source_type);
   const { error: versionError } = await db
     .from("content_translation_versions")
     .insert({
@@ -422,8 +427,7 @@ export async function upsertContentTranslation(input: {
       version_number: versionNumber,
       translated_content: input.fields,
       source_type: input.source_type,
-      author,
-      modifier: author,
+      ...actorFields,
     });
   if (versionError) throw new Error(versionError.message);
 
@@ -470,9 +474,10 @@ export async function setContentTranslationStatus(input: {
   contentId: string;
 }): Promise<void> {
   const db = await getDb();
+  const approval = await approvalStamp(input.status);
   const { error } = await db
     .from("content_translations")
-    .update({ status: input.status })
+    .update({ status: input.status, ...approval })
     .eq("id", input.contentTranslationId);
   if (error) throw new Error(error.message);
   revalidatePath(`/applications/${input.applicationId}`);
@@ -622,6 +627,56 @@ export async function saveManualContentTranslation(input: {
     `/applications/${input.applicationId}/articles/${input.contentId}`
   );
   return result;
+}
+
+export async function exportArticlesFile(input: {
+  applicationId: string;
+  contentIds: string[];
+}): Promise<{ filename: string; base64: string }> {
+  const ids = [...new Set(input.contentIds.map((id) => id.trim()).filter(Boolean))];
+  if (ids.length === 0) throw new Error("Select at least one article.");
+  if (ids.length > 200) throw new Error("Export up to 200 articles at a time.");
+
+  const db = await getDb();
+  const { data, error } = await db
+    .from("content")
+    .select("*, translations:content_translations(*)")
+    .eq("application_id", input.applicationId)
+    .in("id", ids);
+  if (error) throw new Error(error.message);
+
+  const byId = new Map(
+    ((data ?? []) as Array<
+      Content & { translations: ContentTranslation[] | null }
+    >).map((row) => [row.id, row])
+  );
+  const ordered = ids
+    .map((id) => byId.get(id))
+    .filter((row): row is NonNullable<typeof row> => Boolean(row))
+    .map((row) => {
+      const article = mapContentRow(row);
+      return {
+        title: article.title,
+        source_language: article.source_language,
+        content_type: article.content_type,
+        status: article.status,
+        source_content: article.source_content,
+        target_languages: article.target_languages,
+        translations: (row.translations ?? []).map((translation) => ({
+          language_code: translation.language_code,
+          title: translation.title,
+          summary: translation.summary,
+          body: translation.body,
+          seo_title: translation.seo_title,
+          seo_description: translation.seo_description,
+        })),
+      };
+    });
+  if (ordered.length === 0) throw new Error("No matching articles to export.");
+
+  const { base64 } = buildArticleWorkbook(ordered);
+  const day = new Date().toISOString().slice(0, 10);
+  return { filename: `press-articles-${day}.xlsx`, base64 };
 }
 
 export async function getPressStats(applicationId: string) {

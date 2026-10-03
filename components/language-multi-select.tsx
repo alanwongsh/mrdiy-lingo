@@ -18,6 +18,7 @@ export function LanguageMultiSelect({
   onSelectedChange,
   onActiveChange,
   translateAction,
+  editingAction,
   showEditingSwitcher = true,
   label = "Translate to",
 }: {
@@ -29,12 +30,14 @@ export function LanguageMultiSelect({
   onSelectedChange: (codes: string[]) => void;
   onActiveChange?: (code: string) => void;
   translateAction?: React.ReactNode;
+  editingAction?: React.ReactNode;
   showEditingSwitcher?: boolean;
   label?: string;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const listId = useId();
+  const editingId = useId();
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -195,28 +198,31 @@ export function LanguageMultiSelect({
       )}
 
       {showEditingSwitcher && activeCode && onActiveChange ? (
-        <div className="flex flex-wrap items-end gap-3 border-t border-slate-100 pt-3">
-          <label className="space-y-1.5">
-            <span className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
-              Editing language
-            </span>
-            <div className="flex items-center gap-2">
-              <select
-                className={`${inputClass} min-w-[14rem]`}
-                value={activeCode}
-                onChange={(e) => onActiveChange(e.target.value)}
-              >
-                {options.map((l) => (
-                  <option key={l.id} value={l.code}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
-              {activeStatus ? (
-                <Badge tone={statusTone(activeStatus)}>{activeStatus}</Badge>
-              ) : null}
-            </div>
+        <div className="space-y-1.5 border-t border-slate-100 pt-3">
+          <label
+            htmlFor={editingId}
+            className="text-xs font-semibold tracking-wide text-slate-500 uppercase"
+          >
+            Editing language
           </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              id={editingId}
+              className={`${inputClass} w-auto! min-w-48 shrink`}
+              value={activeCode}
+              onChange={(e) => onActiveChange(e.target.value)}
+            >
+              {options.map((l) => (
+                <option key={l.id} value={l.code}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+            {activeStatus ? (
+              <Badge tone={statusTone(activeStatus)}>{activeStatus}</Badge>
+            ) : null}
+            {editingAction}
+          </div>
         </div>
       ) : null}
     </div>

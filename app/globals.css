@@ -44,11 +44,18 @@
   --font-mono: var(--font-hub-mono);
 }
 
+html {
+  background-color: var(--hub-bg);
+}
+
 body {
-  background:
-    radial-gradient(1100px 480px at 0% -5%, #ffe0e3 0%, transparent 55%),
-    radial-gradient(900px 420px at 100% 0%, #fff3c4 0%, transparent 50%),
-    var(--hub-bg);
+  min-height: 100%;
+  background-color: var(--hub-bg);
+  background-image:
+    radial-gradient(1100px 520px at 0% 0%, #ffe0e3 0%, transparent 58%),
+    radial-gradient(900px 460px at 100% 0%, #fff3c4 0%, transparent 52%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   color: var(--hub-fg);
   font-family: var(--font-hub-sans), "Segoe UI", sans-serif;
 }

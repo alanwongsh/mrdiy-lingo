@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { getActor } from "@/lib/auth/actor";
 import { getApplication } from "@/lib/actions/applications";
 import { listLanguages } from "@/lib/actions/languages";
 import { getTranslationKey } from "@/lib/actions/product";
@@ -17,6 +18,7 @@ export default async function TranslationKeyDetailPage({
   const key = await getTranslationKey(keyId);
   if (!key || key.application_id !== app.id) notFound();
   const languages = await listLanguages();
+  const actor = await getActor();
 
   return (
     <div>
@@ -33,6 +35,7 @@ export default async function TranslationKeyDetailPage({
         applicationId={app.id}
         translationKey={key}
         languages={languages}
+        actor={actor}
       />
     </div>
   );

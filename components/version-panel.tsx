@@ -13,6 +13,7 @@ type BaseVersion = {
   version_number: number;
   source_type: SourceType;
   author: string | null;
+  author_username?: string | null;
   created_at: string;
 };
 
@@ -26,6 +27,36 @@ type ArticleVersion = BaseVersion & {
     seo_description: string;
   };
 };
+
+function CollapseSection({
+  label,
+  defaultOpen = false,
+  children,
+}: {
+  label: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-md border border-slate-200 bg-white/80">
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs font-semibold tracking-wide text-[var(--diy-red)] uppercase"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span aria-hidden>{open ? "▾" : "▸"}</span>
+        {label}
+      </button>
+      {open ? (
+        <div className="border-t border-slate-100 px-2 py-2 text-sm text-slate-800">
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function formatWhen(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, {
@@ -131,7 +162,13 @@ export function StringVersionPanel({
                       <span className="ml-auto text-xs text-slate-500">
                         {formatWhen(v.created_at)}
                       </span>
-                      <span className="text-xs font-semibold text-slate-500">
+                      <span
+                        className={`text-xs font-semibold ${
+                          open
+                            ? "text-[color:var(--diy-yellow-dark)]"
+                            : "text-[var(--diy-red)]"
+                        }`}
+                      >
                         {open ? "Hide" : "Show"}
                       </span>
                     </button>
@@ -140,6 +177,7 @@ export function StringVersionPanel({
                         <p className="text-xs text-slate-500">
                           {v.source_type}
                           {v.author ? ` · ${v.author}` : ""}
+                          {v.author_username ? ` (${v.author_username})` : ""}
                         </p>
                         <p className="whitespace-pre-wrap rounded-md bg-white/80 p-2 text-sm text-slate-900">
                           {v.translated_content}
@@ -283,7 +321,13 @@ export function ArticleVersionPanel({
                       <span className="shrink-0 text-xs text-slate-500">
                         {formatWhen(v.created_at)}
                       </span>
-                      <span className="shrink-0 text-xs font-semibold text-slate-500">
+                      <span
+                        className={`shrink-0 text-xs font-semibold ${
+                          open
+                            ? "text-[color:var(--diy-yellow-dark)]"
+                            : "text-[var(--diy-red)]"
+                        }`}
+                      >
                         {open ? "Hide" : "Show"}
                       </span>
                     </button>
@@ -292,22 +336,31 @@ export function ArticleVersionPanel({
                         <p className="text-xs text-slate-500">
                           {v.source_type}
                           {v.author ? ` · ${v.author}` : ""}
+                          {v.author_username ? ` (${v.author_username})` : ""}
                         </p>
-                        <div className="rounded-md bg-white/80 p-2 text-sm">
-                          <p className="font-medium text-slate-900">
-                            {v.translated_content.title || "—"}
-                          </p>
-                          <p className="mt-1 text-slate-600">
-                            {v.translated_content.summary || "—"}
-                          </p>
-                          {v.translated_content.body ? (
-                            <div
-                              className="html-editor-surface mt-2 border-t border-slate-100 pt-2 text-slate-700"
-                              dangerouslySetInnerHTML={{
-                                __html: v.translated_content.body,
-                              }}
-                            />
-                          ) : null}
+                        <div className="space-y-2">
+                          <CollapseSection label="Title" defaultOpen>
+                            <p className="font-medium text-slate-900">
+                              {v.translated_content.title || "—"}
+                            </p>
+                          </CollapseSection>
+                          <CollapseSection label="Description" defaultOpen>
+                            <p className="text-slate-600">
+                              {v.translated_content.summary || "—"}
+                            </p>
+                          </CollapseSection>
+                          <CollapseSection label="Body">
+                            {v.translated_content.body ? (
+                              <div
+                                className="html-editor-surface text-slate-700"
+                                dangerouslySetInnerHTML={{
+                                  __html: v.translated_content.body,
+                                }}
+                              />
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </CollapseSection>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <Button

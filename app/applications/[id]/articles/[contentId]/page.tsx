@@ -1,10 +1,13 @@
 import { notFound } from "next/navigation";
+import { getActor } from "@/lib/auth/actor";
 import { getApplication } from "@/lib/actions/applications";
+import { listArticleComments } from "@/lib/actions/comments";
 import { listLanguages } from "@/lib/actions/languages";
 import { getArticle } from "@/lib/actions/press";
 import { AppSubnav } from "@/components/app-subnav";
 import { ArticleEditor } from "@/components/article-editor";
 import { PageHeader } from "@/components/ui";
+import type { ArticleComment } from "@/lib/types";
 
 export default async function ArticleDetailPage({
   params,
@@ -17,6 +20,14 @@ export default async function ArticleDetailPage({
   const article = await getArticle(contentId);
   if (!article || article.application_id !== app.id) notFound();
   const languages = await listLanguages();
+  const actor = await getActor();
+  let comments: ArticleComment[] = [];
+  let commentsError = "";
+  try {
+    comments = await listArticleComments(contentId);
+  } catch (error) {
+    commentsError = error instanceof Error ? error.message : "Comments unavailable";
+  }
 
   return (
     <div>
@@ -33,6 +44,9 @@ export default async function ArticleDetailPage({
         applicationId={app.id}
         article={article}
         languages={languages}
+        actor={actor}
+        comments={comments}
+        commentsError={commentsError}
       />
     </div>
   );
