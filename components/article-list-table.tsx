@@ -8,6 +8,7 @@ import type { ArticleListItem } from "@/lib/actions/press";
 import { getPublishDueState } from "@/lib/publish-due";
 import type { ContentLifecycleStatus, ContentType, Language } from "@/lib/types";
 import { Badge, Button, Card, statusTone } from "@/components/ui";
+import { marketName } from "@/lib/markets";
 
 const STATUS_LABEL: Record<ContentLifecycleStatus, string> = {
   DRAFT: "Draft",
@@ -313,8 +314,11 @@ export function ArticleListTable({
                 />
               </th>
               <th>Article</th>
-              <th className="hidden md:table-cell">Status</th>
-              <th className="hidden lg:table-cell">Translations</th>
+              <th>Market</th>
+              <th className="hidden md:table-cell">Type</th>
+              <th className="hidden sm:table-cell">State</th>
+              <th className="hidden lg:table-cell">Submitted by</th>
+              <th className="hidden xl:table-cell">Translations</th>
               <th className="hidden sm:table-cell text-right">When</th>
               <th className="w-20 text-right"> </th>
             </tr>
@@ -323,8 +327,10 @@ export function ArticleListTable({
             {articles.map((article) => {
               const summary = excerpt(article);
               const sourceName =
-                languages.find((language) => language.code === article.source_language)
-                  ?.name ?? article.source_language;
+                languages.find(
+                  (language) =>
+                    language.code.toLowerCase() === article.source_language.toLowerCase()
+                )?.name ?? article.source_language;
               const due = getPublishDueState(
                 article.scheduled_publish_at,
                 article.status,
@@ -347,24 +353,39 @@ export function ArticleListTable({
                       {article.title}
                     </Link>
                     <p className="mt-0.5 line-clamp-1 max-w-md text-xs text-[var(--hub-muted)]">
-                      {TYPE_LABEL[article.content_type]} · {sourceName}
+                      {sourceName}
                       {summary ? ` · ${summary}` : ""}
                     </p>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-2 md:hidden">
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2 sm:hidden">
                       <Badge tone={statusTone(article.status)}>
                         {STATUS_LABEL[article.status]}
                       </Badge>
                       <span className="text-xs text-[var(--hub-muted)]">
+                        {article.market ? `${article.market} · ` : ""}
                         {formatWhen(article.updated_at)}
                       </span>
                     </div>
                   </td>
-                  <td className="hidden md:table-cell">
+                  <td>
+                    <div className="text-sm font-bold tracking-wide text-[var(--hub-fg)]">
+                      {article.market || "—"}
+                    </div>
+                    <div className="text-[11px] font-semibold tracking-wide text-[var(--hub-muted)] uppercase">
+                      {article.market ? marketName(article.market) : sourceName}
+                    </div>
+                  </td>
+                  <td className="hidden text-sm text-[var(--hub-muted-strong)] md:table-cell">
+                    {TYPE_LABEL[article.content_type]}
+                  </td>
+                  <td className="hidden sm:table-cell">
                     <Badge tone={statusTone(article.status)}>
                       {STATUS_LABEL[article.status]}
                     </Badge>
                   </td>
                   <td className="hidden text-sm text-[var(--hub-muted-strong)] lg:table-cell">
+                    {article.submitted_by_name || "—"}
+                  </td>
+                  <td className="hidden text-sm text-[var(--hub-muted-strong)] xl:table-cell">
                     {translationLine(article)}
                   </td>
                   <td className="hidden text-right sm:table-cell">
@@ -405,7 +426,7 @@ export function ArticleListTable({
             })}
             {articles.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-12 text-center text-sm text-[var(--hub-muted)]">
+                <td colSpan={9} className="py-12 text-center text-sm text-[var(--hub-muted)]">
                   No articles found.
                 </td>
               </tr>

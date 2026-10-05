@@ -137,6 +137,9 @@ export type Content = {
   slug: string | null;
   source_language: string;
   source_content: SourceContentFields;
+  market: string | null;
+  submitted_by_name: string | null;
+  submitted_by_username: string | null;
   status: ContentLifecycleStatus;
   target_languages: string[];
   scheduled_publish_at: string | null;

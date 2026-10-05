@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { listApplications } from "@/lib/actions/applications";
+import { countArticlesNeedingReview } from "@/lib/actions/press";
 import { canOpenSetup, getCurrentUser } from "@/lib/auth/access";
 import { getActor } from "@/lib/auth/actor";
 import { AppFrame } from "@/components/app-frame";
@@ -42,15 +43,39 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     nav.push({ href: "/setup", label: "Setup" });
   }
 
-  const appLinks = apps.map((app) => ({
-    href:
-      app.model_type === "CONTENT"
-        ? `/applications/${app.id}/articles`
-        : `/applications/${app.id}`,
-    match: `/applications/${app.id}`,
-    label: app.name,
-    hint: app.model_type === "STRING" ? "Strings" : "Content",
-  }));
+  let reviewCounts: Record<string, number> = {};
+  const contentAppIds = apps
+    .filter((app) => app.model_type === "CONTENT")
+    .map((app) => app.id);
+  if (contentAppIds.length > 0) {
+    try {
+      reviewCounts = await countArticlesNeedingReview(contentAppIds);
+    } catch {
+      reviewCounts = {};
+    }
+  }
+
+  const appLinks = apps.map((app) => {
+    const reviewCount =
+      app.model_type === "CONTENT" ? reviewCounts[app.id] ?? 0 : 0;
+    return {
+      href:
+        app.model_type === "CONTENT"
+          ? `/applications/${app.id}/articles`
+          : `/applications/${app.id}`,
+      match: `/applications/${app.id}`,
+      label: app.name,
+      hint:
+        reviewCount > 0
+          ? reviewCount === 1
+            ? "1 needs review"
+            : `${reviewCount} need review`
+          : app.model_type === "STRING"
+            ? "Strings"
+            : "Content",
+      badge: reviewCount > 0 ? reviewCount : undefined,
+    };
+  });
 
   if (!actor) {
     redirect("/sign-in");

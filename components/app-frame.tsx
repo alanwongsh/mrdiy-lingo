@@ -4,7 +4,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { SidebarNav } from "@/components/sidebar-nav";
 
-type NavItem = { href: string; label: string; hint?: string; match?: string };
+type NavItem = {
+  href: string;
+  label: string;
+  hint?: string;
+  match?: string;
+  badge?: number;
+};
 
 function MenuIcon() {
   return (

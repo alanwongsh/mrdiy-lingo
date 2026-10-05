@@ -430,6 +430,12 @@ export function ArticleView({
     <div className="space-y-4">
       <Card className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm text-[var(--hub-muted-strong)]">
         <span>{TYPE_LABEL[article.content_type]}</span>
+        {article.market ? (
+          <>
+            <span aria-hidden>·</span>
+            <span>{article.market}</span>
+          </>
+        ) : null}
         <span aria-hidden>·</span>
         <span>Source {languageName(languages, article.source_language)}</span>
         <Badge tone={statusTone(article.status)}>{STATUS_LABEL[article.status]}</Badge>

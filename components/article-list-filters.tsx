@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { Language } from "@/lib/types";
+import { MARKETS } from "@/lib/markets";
 import { FilterMultiSelect, FilterSelect } from "@/components/filter-select";
 import { Button, Card, inputClass } from "@/components/ui";
 
@@ -40,6 +41,7 @@ export function ArticleListFilters({
     source: string[];
     status: string;
     type: string;
+    market: string;
     due: string;
   };
 }) {
@@ -49,6 +51,7 @@ export function ArticleListFilters({
   const [source, setSource] = useState<string[]>(initial.source);
   const [status, setStatus] = useState(initial.status);
   const [type, setType] = useState(initial.type);
+  const [market, setMarket] = useState(initial.market);
   const [due, setDue] = useState(initial.due);
 
   function applyFilters(e: React.FormEvent) {
@@ -58,6 +61,7 @@ export function ArticleListFilters({
     if (source.length > 0) params.set("source", source.join(","));
     if (status) params.set("status", status);
     if (type) params.set("type", type);
+    if (market) params.set("market", market);
     if (due) params.set("due", due);
     const qs = params.toString();
     startTransition(() => {
@@ -96,6 +100,15 @@ export function ArticleListFilters({
           onChange={setType}
           placeholder="All types"
           options={TYPE_OPTIONS}
+        />
+        <FilterSelect
+          value={market}
+          onChange={setMarket}
+          placeholder="All markets"
+          options={MARKETS.map((item) => ({
+            value: item.code,
+            label: `${item.code} · ${item.name}`,
+          }))}
         />
         <FilterSelect
           value={due}

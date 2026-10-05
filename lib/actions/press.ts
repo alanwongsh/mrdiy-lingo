@@ -13,7 +13,7 @@ import type {
   SourceType,
   TranslationStatus,
 } from "@/lib/types";
-import { approvalStamp, versionAuthorFields } from "@/lib/auth/actor";
+import { approvalStamp, getActor, versionAuthorFields } from "@/lib/auth/actor";
 import {
   allowAppCapability,
   capabilityForReleaseStatus,
@@ -21,12 +21,14 @@ import {
   requireContentAccess,
   requireContentTranslationAccess,
   requireContentVersionAccess,
+  requireUser,
 } from "@/lib/auth/access";
 import { emptySourceContent } from "@/lib/types";
 import { getTranslationService } from "@/lib/translation/service";
 import { normalizeSlug } from "@/lib/slug";
 import { DUE_SOON_MS, type PublishDueKind } from "@/lib/publish-due";
 import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
+import { normalizeMarket } from "@/lib/markets";
 import { buildArticleWorkbook } from "@/lib/export/articles";
 
 function asSourceContent(value: unknown): SourceContentFields {
@@ -156,6 +158,9 @@ function mapContentRow(data: Content): Content {
       data.target_languages,
       data.source_language
     ),
+    market: data.market ?? null,
+    submitted_by_name: data.submitted_by_name ?? null,
+    submitted_by_username: data.submitted_by_username ?? null,
     source_content: asSourceContent(data.source_content),
   };
 }
@@ -175,6 +180,7 @@ export async function listArticles(input: {
   status?: ContentLifecycleStatus;
   contentType?: ContentType;
   sourceLanguages?: string[];
+  market?: string;
   due?: PublishDueKind;
 }): Promise<Paginated<ArticleListItem>> {
   await requireAppCapability(input.applicationId, "view");
@@ -212,6 +218,8 @@ export async function listArticles(input: {
   } else if (sourceLanguages.length > 1) {
     query = query.in("source_language", sourceLanguages);
   }
+  const market = normalizeMarket(input.market);
+  if (market) query = query.eq("market", market);
   if (input.search?.trim()) {
     const term = escapeIlike(input.search.trim());
     query = query.ilike("title", `%${term}%`);
@@ -257,6 +265,28 @@ export async function listArticles(input: {
   };
 }
 
+export async function countArticlesNeedingReview(
+  applicationIds: string[]
+): Promise<Record<string, number>> {
+  const ids = [...new Set(applicationIds.map((id) => id.trim()).filter(Boolean))];
+  if (ids.length === 0) return {};
+  await requireUser();
+  const db = await getDb();
+  const { data, error } = await db
+    .from("content")
+    .select("application_id")
+    .eq("status", "REVIEW")
+    .in("application_id", ids);
+  if (error) throw new Error(error.message);
+  const counts: Record<string, number> = {};
+  for (const row of data ?? []) {
+    const id = String(row.application_id ?? "");
+    if (!id) continue;
+    counts[id] = (counts[id] ?? 0) + 1;
+  }
+  return counts;
+}
+
 export async function getArticle(id: string): Promise<
   | (Content & {
       translations: ContentTranslation[];
@@ -293,6 +323,7 @@ export async function createArticle(input: {
   status?: ContentLifecycleStatus;
   scheduled_publish_at?: string | null;
   target_languages?: string[];
+  market?: string | null;
 }): Promise<Content> {
   const status = input.status ?? "DRAFT";
   await requireAppCapability(
@@ -309,6 +340,7 @@ export async function createArticle(input: {
     input.target_languages,
     input.source_language
   );
+  const actor = await getActor();
   const { data, error } = await db
     .from("content")
     .insert({
@@ -321,6 +353,9 @@ export async function createArticle(input: {
       source_content,
       status,
       target_languages,
+      market: normalizeMarket(input.market),
+      submitted_by_name: actor?.name ?? null,
+      submitted_by_username: actor?.username ?? null,
       scheduled_publish_at: input.scheduled_publish_at || null,
       ...publishTimestampPatch(status, null),
     })
@@ -352,6 +387,7 @@ export async function updateArticle(
     status: ContentLifecycleStatus;
     scheduled_publish_at?: string | null;
     target_languages?: string[];
+    market?: string | null;
   }
 ): Promise<Content> {
   await requireContentAccess(id, capabilityForReleaseStatus(input.status));
@@ -359,7 +395,7 @@ export async function updateArticle(
   const { data: current, error: currentError } = await db
     .from("content")
     .select(
-      "published_at, status, source_language, source_content, target_languages"
+      "published_at, status, source_language, source_content, target_languages, submitted_by_name"
     )
     .eq("id", id)
     .single();
@@ -420,6 +456,16 @@ export async function updateArticle(
   }
   if (input.target_languages !== undefined) {
     patch.target_languages = nextTargets;
+  }
+  if (input.market !== undefined) {
+    patch.market = normalizeMarket(input.market);
+  }
+  if (!current.submitted_by_name) {
+    const actor = await getActor();
+    if (actor) {
+      patch.submitted_by_name = actor.name;
+      patch.submitted_by_username = actor.username;
+    }
   }
 
   const { data, error } = await db

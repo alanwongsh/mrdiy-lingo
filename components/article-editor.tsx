@@ -39,6 +39,7 @@ import { ArticleVersionPanel } from "@/components/version-panel";
 import { DeleteArticleButton } from "@/components/delete-article-button";
 import { ArticleComments } from "@/components/article-comments";
 import { HtmlEditor, type HtmlEditorHandle } from "@/components/html-editor";
+import { MARKETS } from "@/lib/markets";
 import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
 
 type ArticleWithTranslations = Content & {
@@ -181,6 +182,7 @@ export function ArticleEditor({
   );
   const [source, setSource] = useState(article.source_content);
   const [sourceLanguage, setSourceLanguage] = useState(article.source_language);
+  const [market, setMarket] = useState(article.market ?? "");
   const initialTargets = resolveTargets(
     article.target_languages ?? [],
     languages,
@@ -282,6 +284,7 @@ export function ArticleEditor({
     setScheduledPublishAt(toLocalInput(article.scheduled_publish_at));
     setSource(article.source_content);
     setSourceLanguage(article.source_language);
+    setMarket(article.market ?? "");
     const resolved = resolveTargets(
       article.target_languages ?? [],
       languages,
@@ -428,6 +431,7 @@ export function ArticleEditor({
           status,
           scheduled_publish_at: fromLocalInput(scheduledPublishAt),
           target_languages: targetLanguages,
+          market: market || null,
         });
         router.refresh();
       } catch (err) {
@@ -464,6 +468,23 @@ export function ArticleEditor({
                   {l.name}
                 </option>
               ))}
+            </select>
+          </Field>
+          <Field label="Market">
+            <select
+              className={inputClass}
+              value={market}
+              onChange={(e) => setMarket(e.target.value)}
+            >
+              <option value="">No market</option>
+              {MARKETS.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.code} · {item.name}
+                </option>
+              ))}
+              {market && !MARKETS.some((item) => item.code === market) ? (
+                <option value={market}>{market}</option>
+              ) : null}
             </select>
           </Field>
           <Field label="Lifecycle status">

@@ -78,6 +78,16 @@ export default async function SetupPage() {
               needsMigration = "009_password_sign_in.sql";
               message =
                 "Access control OK, but run migration 009 for email and password sign-in.";
+            } else {
+              const probeList = await db
+                .from("content")
+                .select("market, submitted_by_name")
+                .limit(1);
+              if (probeList.error) {
+                needsMigration = "010_content_list_meta.sql";
+                message =
+                  "Sign-in OK, but run migration 010 for market and submitted by.";
+              }
             }
           }
         }
@@ -96,6 +106,7 @@ export default async function SetupPage() {
   const sql7 = await readMigration("007_rewrite_uuidv7.sql");
   const sql8 = await readMigration("008_access_control.sql");
   const sql9 = await readMigration("009_password_sign_in.sql");
+  const sql10 = await readMigration("010_content_list_meta.sql");
 
   return (
     <div>
@@ -127,6 +138,7 @@ export default async function SetupPage() {
           </li>
           <li>Run migration 008 for users, owners, and invited access.</li>
           <li>Run migration 009 for email and password sign-in.</li>
+          <li>Run migration 010 for article market and submitted by.</li>
           <li>Refresh this page.</li>
         </ol>
       </Card>
@@ -143,6 +155,7 @@ export default async function SetupPage() {
             ["7", "007_rewrite_uuidv7.sql", sql7],
             ["8", "008_access_control.sql", sql8],
             ["9", "009_password_sign_in.sql", sql9],
+            ["10", "010_content_list_meta.sql", sql10],
           ] as const
         ).map(([n, name, sql]) => (
           <Card key={name} className="overflow-hidden">

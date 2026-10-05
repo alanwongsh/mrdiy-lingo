@@ -38,6 +38,7 @@ export default async function ArticlesPage({
   const contentType = sp.type ?? "";
   const sourceLocales = parseSourceLocales(sp.source);
   const due = sp.due ?? "";
+  const market = sp.market ?? "";
 
   const [result, languages] = await Promise.all([
     listArticles({
@@ -48,6 +49,7 @@ export default async function ArticlesPage({
       status: (status as never) || undefined,
       contentType: (contentType as ContentType) || undefined,
       sourceLanguages: sourceLocales,
+      market: market || undefined,
       due: (due as never) || undefined,
     }),
     listLanguages(),
@@ -76,6 +78,7 @@ export default async function ArticlesPage({
           source: sourceLocales,
           status,
           type: contentType,
+          market,
           due,
         }}
       />
@@ -96,6 +99,7 @@ export default async function ArticlesPage({
           source: sourceParam || undefined,
           status,
           type: contentType,
+          market,
           due,
         }}
       />

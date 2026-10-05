@@ -15,6 +15,7 @@ import {
 } from "@/components/ui";
 import { LanguageMultiSelect } from "@/components/language-multi-select";
 import { HtmlEditor } from "@/components/html-editor";
+import { MARKETS } from "@/lib/markets";
 
 export default function NewArticlePage() {
   const { id: applicationId } = useParams<{ id: string }>();
@@ -24,6 +25,7 @@ export default function NewArticlePage() {
   const [description, setDescription] = useState("");
   const [body, setBody] = useState("");
   const [sourceLanguage, setSourceLanguage] = useState("en");
+  const [market, setMarket] = useState("");
   const [targetLanguages, setTargetLanguages] = useState<string[]>([]);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
@@ -74,6 +76,7 @@ export default function NewArticlePage() {
                   content_type: (String(fd.get("content_type") ?? "ARTICLE") ||
                     "ARTICLE") as ContentType,
                   status: "DRAFT",
+                  market: market || null,
                   target_languages: targetLanguages,
                   scheduled_publish_at: scheduled
                     ? new Date(scheduled).toISOString()
@@ -124,6 +127,20 @@ export default function NewArticlePage() {
                 {languages.map((l) => (
                   <option key={l.id} value={l.code}>
                     {l.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Market">
+              <select
+                className={inputClass}
+                value={market}
+                onChange={(e) => setMarket(e.target.value)}
+              >
+                <option value="">No market</option>
+                {MARKETS.map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.code} · {item.name}
                   </option>
                 ))}
               </select>
