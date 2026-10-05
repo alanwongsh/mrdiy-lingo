@@ -14,14 +14,8 @@ export async function POST(request: Request) {
   const email = String(form.get("email") ?? "").trim() || null;
   const employeeId = String(form.get("employeeId") ?? "").trim() || null;
   const nextPath = safeNextPath(String(form.get("next") ?? "/"));
-  if (!username || username.length > 80 || name.length > 120) {
+  if (!username) {
     return new Response("Enter a username.", {
-      status: 400,
-      headers: { "content-type": "text/plain; charset=utf-8" },
-    });
-  }
-  if (employeeId && employeeId.length > 80) {
-    return new Response("Employee ID is too long.", {
       status: 400,
       headers: { "content-type": "text/plain; charset=utf-8" },
     });

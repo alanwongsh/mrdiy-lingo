@@ -1,0 +1,200 @@
+# Lark diagrams
+
+In the Lark doc, on a blank line type `/Mermaid`, then paste **one** block below. Paste the code only. Leave out the ` ```mermaid ` lines.
+
+---
+
+## 1. System architecture
+
+```mermaid
+flowchart LR
+  subgraph clients [Clients]
+    Browser[Browser]
+    Joget[Joget iframe]
+  end
+  subgraph vercel [Vercel]
+    Proxy[Session proxy]
+    Next[Next.js app]
+    Actions[Server actions]
+  end
+  subgraph data [Supabase]
+    PG[(PostgreSQL)]
+  end
+  subgraph translate [Translation]
+    MM[MyMemory]
+    Mock[Mock provider]
+    LLM[OpenAI planned]
+  end
+  Browser --> Proxy
+  Joget -->|HMAC token| Proxy
+  Proxy --> Next
+  Next --> Actions
+  Actions --> PG
+  Actions --> MM
+  Actions --> Mock
+  LLM -.-> Actions
+```
+
+## 2. Two application models
+
+```mermaid
+flowchart TB
+  App[Application]
+  App --> String[STRING product copy]
+  App --> Content[CONTENT press articles]
+  String --> NS[Namespaces]
+  NS --> Keys[Translation keys]
+  Keys --> Tr[Translation per language]
+  Tr --> TV[Version history]
+  Content --> Article[Articles]
+  Article --> CT[Translation per language]
+  CT --> CV[Version history]
+  Article --> Comments[Comments per language]
+```
+
+## 3. Sign in
+
+```mermaid
+flowchart TD
+  Start([Open Lingo]) --> FromJoget{From Joget?}
+  FromJoget -->|Yes| Token[Open embed link with token]
+  Token --> Verify{HMAC valid?}
+  Verify -->|No| Fail[Ask to reload Joget]
+  Verify -->|Yes| Cookie[Set session 12 hours]
+  FromJoget -->|No| Form[Email and password]
+  Form --> Hash{Password matches?}
+  Hash -->|No| Form
+  Hash -->|Yes| Cookie
+  Cookie --> Upsert[Save user profile]
+  Upsert --> App([Dashboard])
+```
+
+## 4. Create an application and invite
+
+```mermaid
+flowchart TD
+  A([Dashboard]) --> B[New application]
+  B --> C{Model}
+  C -->|Strings| D[Namespaces and keys]
+  C -->|Content| E[Articles]
+  B --> F[Creator becomes owner]
+  F --> G[Invite by email or employee ID]
+  G --> H[Grant edit or approve]
+  H --> I([Invitee sees the app after sign-in])
+```
+
+## 5. Press article workflow
+
+```mermaid
+flowchart TD
+  Create[Create or import] --> Draft[DRAFT]
+  Draft --> Edit[Edit source]
+  Edit --> Targets[Choose target languages]
+  Targets --> Auto[Auto-translate]
+  Auto --> Translating[TRANSLATING]
+  Translating --> Review[REVIEW]
+  Review --> Manual[Edit a language]
+  Manual --> Review
+  Review --> ApproveLang[Approve each language]
+  ApproveLang --> All{All targets approved?}
+  All -->|No| Review
+  All -->|Yes| Approved[APPROVED]
+  Approved --> Publish[PUBLISHED]
+  Approved --> Change[Edit source or a translation]
+  Publish --> Change
+  Change --> Review
+```
+
+## 6. Translation status
+
+```mermaid
+flowchart TD
+  Missing[MISSING] -->|Auto-translate| System[SYSTEM_GENERATED]
+  Missing -->|Type or import| Manual[MANUALLY_MODIFIED]
+  System -->|Edit| Manual
+  System -->|Approve| Approved[APPROVED]
+  Manual -->|Approve| Approved
+  Approved -->|Edit or source change| Manual
+```
+
+## 7. Product string workflow
+
+```mermaid
+flowchart LR
+  NS[Create namespace] --> Key[Create key and source text]
+  File[CSV or Excel import] --> Key
+  Key --> Gen[Auto-translate languages]
+  Gen --> Row[SYSTEM_GENERATED plus version]
+  Row --> Edit[Manual edit]
+  Edit --> Appr[Approve language]
+```
+
+## 8. Import
+
+```mermaid
+flowchart TD
+  Pick[Choose application] --> File[Upload CSV or Excel]
+  File --> Preview[Validate and preview]
+  Preview --> Confirm[Confirm]
+  Confirm --> Opt{Translate missing languages?}
+  Opt -->|Yes| Run[Provider fills missing languages]
+  Opt -->|No| Done([Stored as IMPORT])
+  Run --> Done
+```
+
+## 9. Data model
+
+```mermaid
+flowchart TB
+  subgraph people [People and languages]
+    Users[hub_users]
+    Lang[languages]
+  end
+  Apps[applications]
+  Members[application_members]
+  Users -->|owns| Apps
+  Users --> Members
+  Apps --> Members
+
+  subgraph strings [STRING]
+    NS[namespaces]
+    Keys[translation_keys]
+    Tr[translations]
+    TV[translation_versions]
+  end
+  Apps --> NS
+  Apps --> Keys
+  NS --> Keys
+  Keys --> Tr
+  Lang --> Tr
+  Tr --> TV
+
+  subgraph press [CONTENT]
+    Content[content]
+    CT[content_translations]
+    CV[content_translation_versions]
+    Comments[article_comments]
+  end
+  Apps --> Content
+  Content --> CT
+  Lang --> CT
+  CT --> CV
+  Content --> Comments
+```
+
+## 10. Export articles
+
+```mermaid
+flowchart TD
+  Select[Select articles on the list] --> Check{Any approved target language?}
+  Check -->|No| Skip[Skip that article]
+  Check -->|Yes| Row[Write one Excel row]
+  Row --> Source[Fill source columns]
+  Source --> Cells{Target language approved?}
+  Cells -->|Yes| Fill[Fill that language]
+  Cells -->|No| Blank[Leave that language blank]
+  Fill --> File[Download xlsx]
+  Blank --> File
+  Skip --> Notice[Report skipped and blank languages]
+  File --> Notice
+```
