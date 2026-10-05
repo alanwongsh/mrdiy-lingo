@@ -2,6 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   ACTOR_COOKIE,
+  EMBED_COOKIE,
+  actorCookieOptions,
   isAnonymousPath,
   safeNextPath,
   verifyActorToken,
@@ -12,9 +14,17 @@ function continueRequest(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-lingo-path", request.nextUrl.pathname);
   requestHeaders.set("x-lingo-search", request.nextUrl.search);
-  return NextResponse.next({
+  const embedded =
+    request.nextUrl.searchParams.get("embed") === "true" ||
+    request.cookies.get(EMBED_COOKIE)?.value === "1";
+  if (embedded) requestHeaders.set("x-lingo-embed", "1");
+  const response = NextResponse.next({
     request: { headers: requestHeaders },
   });
+  if (request.nextUrl.searchParams.get("embed") === "true") {
+    response.cookies.set(EMBED_COOKIE, "1", actorCookieOptions(request.url, true));
+  }
+  return response;
 }
 
 function redirectToSignIn(request: NextRequest) {

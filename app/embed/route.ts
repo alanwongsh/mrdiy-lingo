@@ -1,5 +1,6 @@
 import {
   applyActorCookie,
+  applyEmbedCookie,
   redirectToPath,
   signActorToken,
   verifyActorToken,
@@ -28,5 +29,6 @@ export async function GET(request: Request) {
 
   const response = redirectToPath(url.searchParams.get("next") ?? "/", request.url, 307);
   applyActorCookie(response, session, request.url, true);
+  applyEmbedCookie(response, request.url);
   return response;
 }

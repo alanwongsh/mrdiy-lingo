@@ -1,6 +1,7 @@
 import { getDb } from "@/lib/db/client";
 import {
   applyActorCookie,
+  clearEmbedCookie,
   redirectToPath,
   safeNextPath,
   signActorToken,
@@ -67,5 +68,6 @@ export async function POST(request: Request) {
 
   const response = redirectToPath(nextPath, request.url);
   applyActorCookie(response, session, request.url);
+  clearEmbedCookie(response, request.url);
   return response;
 }

@@ -5,6 +5,7 @@ import type { SourceType } from "@/lib/types";
 import { sourceTypeAuthor } from "@/lib/types";
 
 export const ACTOR_COOKIE = "lingo_actor";
+export const EMBED_COOKIE = "lingo_embed";
 const SESSION_SECONDS = 60 * 60 * 12;
 
 export type HubActor = {
@@ -120,10 +121,14 @@ export function applyActorCookie(
   response.cookies.set(ACTOR_COOKIE, token, actorCookieOptions(requestUrl, embedded));
 }
 
-function expiredCookieHeader(requestUrl: string, embedded: boolean) {
+export function applyEmbedCookie(response: NextResponse, requestUrl: string) {
+  response.cookies.set(EMBED_COOKIE, "1", actorCookieOptions(requestUrl, true));
+}
+
+function expiredCookieHeader(name: string, requestUrl: string, embedded: boolean) {
   const options = { ...actorCookieOptions(requestUrl, embedded), maxAge: 0 };
   const parts = [
-    `${ACTOR_COOKIE}=`,
+    `${name}=`,
     "Path=/",
     "HttpOnly",
     "Max-Age=0",
@@ -135,9 +140,28 @@ function expiredCookieHeader(requestUrl: string, embedded: boolean) {
 }
 
 export function clearActorCookie(response: NextResponse, requestUrl: string) {
-  response.headers.append("Set-Cookie", expiredCookieHeader(requestUrl, false));
+  response.headers.append(
+    "Set-Cookie",
+    expiredCookieHeader(ACTOR_COOKIE, requestUrl, false)
+  );
   if (new URL(requestUrl).protocol === "https:") {
-    response.headers.append("Set-Cookie", expiredCookieHeader(requestUrl, true));
+    response.headers.append(
+      "Set-Cookie",
+      expiredCookieHeader(ACTOR_COOKIE, requestUrl, true)
+    );
+  }
+}
+
+export function clearEmbedCookie(response: NextResponse, requestUrl: string) {
+  response.headers.append(
+    "Set-Cookie",
+    expiredCookieHeader(EMBED_COOKIE, requestUrl, false)
+  );
+  if (new URL(requestUrl).protocol === "https:") {
+    response.headers.append(
+      "Set-Cookie",
+      expiredCookieHeader(EMBED_COOKIE, requestUrl, true)
+    );
   }
 }
 

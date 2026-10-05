@@ -33,12 +33,14 @@ function SidebarBody({
   appLinks,
   actor,
   isSuperadmin,
+  embedded,
   onNavigate,
 }: {
   nav: NavItem[];
   appLinks: NavItem[];
   actor: { name: string; username: string };
   isSuperadmin: boolean;
+  embedded?: boolean;
   onNavigate?: () => void;
 }) {
   return (
@@ -92,13 +94,15 @@ function SidebarBody({
           {isSuperadmin ? (
             <div className="mt-0.5 font-semibold text-[var(--diy-red)]">Superadmin</div>
           ) : null}
-          <Link
-            href="/embed/sign-out"
-            className="hub-text-button mt-1 inline-block text-xs"
-            onClick={onNavigate}
-          >
-            Sign out
-          </Link>
+          {embedded ? null : (
+            <Link
+              href="/embed/sign-out"
+              className="hub-text-button mt-1 inline-block text-xs"
+              onClick={onNavigate}
+            >
+              Sign out
+            </Link>
+          )}
         </div>
         Mr DIY Lingo · V1
       </div>
@@ -116,12 +120,14 @@ export function AppFrame({
   appLinks,
   actor,
   isSuperadmin,
+  embedded,
   children,
 }: {
   nav: NavItem[];
   appLinks: NavItem[];
   actor: { name: string; username: string };
   isSuperadmin: boolean;
+  embedded?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -132,6 +138,7 @@ export function AppFrame({
           appLinks={appLinks}
           actor={actor}
           isSuperadmin={isSuperadmin}
+          embedded={embedded}
         />
       </aside>
 
@@ -161,6 +168,7 @@ export function AppFrame({
                     appLinks={appLinks}
                     actor={actor}
                     isSuperadmin={isSuperadmin}
+                    embedded={embedded}
                     onNavigate={closeMobileNav}
                   />
                 </aside>

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { listApplications } from "@/lib/actions/applications";
 import { countArticlesNeedingReview } from "@/lib/actions/press";
 import { canOpenSetup, getCurrentUser } from "@/lib/auth/access";
@@ -7,6 +8,11 @@ import { AppFrame } from "@/components/app-frame";
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
   const actor = await getActor();
+  const headerStore = await headers();
+  const embedded =
+    headerStore.get("x-lingo-embed") === "1" ||
+    new URLSearchParams(headerStore.get("x-lingo-search") ?? "").get("embed") ===
+      "true";
   let user: Awaited<ReturnType<typeof getCurrentUser>> = null;
   let setupOpen = true;
   try {
@@ -87,6 +93,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       appLinks={appLinks}
       actor={{ name: actor.name, username: actor.username }}
       isSuperadmin={!!user?.is_superadmin}
+      embedded={embedded}
     >
       {children}
     </AppFrame>
