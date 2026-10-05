@@ -26,7 +26,7 @@
   --hub-accent-ring: rgba(227, 6, 19, 0.28);
   --hub-yellow: var(--diy-yellow);
   --hub-yellow-soft: var(--diy-yellow-soft);
-  --hub-sidebar: var(--diy-yellow);
+  --hub-sidebar: var(--diy-yellow-soft);
   --hub-sidebar-fg: #1c1408;
   --hub-sidebar-muted: #6b5420;
   --hub-sidebar-hover: rgba(28, 20, 8, 0.08);
@@ -50,6 +50,7 @@ html {
 
 body {
   min-height: 100%;
+  overflow-x: clip;
   background-color: var(--hub-bg);
   background-image:
     radial-gradient(1100px 520px at 0% 0%, #ffe0e3 0%, transparent 58%),
@@ -137,6 +138,14 @@ textarea {
 
 .hub-table tbody tr:last-child td {
   border-bottom: 0;
+}
+
+.hub-table-wide {
+  min-width: 64rem;
+}
+
+.html-editor-surface {
+  overflow-wrap: anywhere;
 }
 
 .html-editor-surface h1,

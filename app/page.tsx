@@ -186,7 +186,7 @@ export default async function DashboardPage() {
             >
               <Card
                 interactive
-                className="mb-2 flex items-center justify-between px-4 py-3.5"
+                className="mb-2 flex flex-col items-start gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div>
                   <div className="font-semibold text-slate-900">{app.name}</div>

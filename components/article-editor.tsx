@@ -505,7 +505,7 @@ export function ArticleEditor({
             Set status to PUBLISHED to stamp publish time; other statuses clear
             it.
           </span> */}
-          <div className="ml-auto flex flex-wrap gap-2">
+          <div className="flex w-full flex-wrap gap-2 sm:ml-auto sm:w-auto">
             <Button
               type="button"
               variant="secondary"

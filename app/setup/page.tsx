@@ -146,7 +146,7 @@ export default async function SetupPage() {
           ] as const
         ).map(([n, name, sql]) => (
           <Card key={name} className="overflow-hidden">
-            <div className="border-b border-[var(--hub-border)] px-4 py-3 text-sm font-medium">
+            <div className="border-b border-[var(--hub-border)] px-4 py-3 text-sm font-medium break-all">
               {n}) supabase/migrations/{name}
             </div>
             <pre className="max-h-[40vh] overflow-auto bg-zinc-950 p-4 text-xs leading-5 text-zinc-100">

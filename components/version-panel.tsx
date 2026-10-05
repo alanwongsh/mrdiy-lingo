@@ -101,7 +101,7 @@ export function StringVersionPanel({
 
   return (
     <Card className="overflow-hidden border-[var(--diy-yellow)]">
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--hub-border)] px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--hub-border)] px-4 py-3">
         <h2 className="font-semibold text-slate-900">History</h2>
         <div className="flex rounded-lg bg-slate-100 p-1">
           <button
@@ -152,7 +152,7 @@ export function StringVersionPanel({
                   >
                     <button
                       type="button"
-                      className="flex w-full items-center gap-3 text-left"
+                      className="flex w-full flex-wrap items-center gap-2 text-left"
                       onClick={() => setExpandedId(open ? null : v.id)}
                     >
                       <span className="text-sm font-semibold text-slate-900">
@@ -257,7 +257,7 @@ export function ArticleVersionPanel({
 
   return (
     <Card className="overflow-hidden border-[var(--diy-yellow)]">
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--hub-border)] px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--hub-border)] px-4 py-3">
         <h2 className="font-semibold text-slate-900">History</h2>
         <div className="flex rounded-lg bg-slate-100 p-1">
           <button
@@ -308,7 +308,7 @@ export function ArticleVersionPanel({
                   >
                     <button
                       type="button"
-                      className="flex w-full items-center gap-3 text-left"
+                      className="flex w-full flex-wrap items-center gap-2 text-left"
                       onClick={() => setExpandedId(open ? null : v.id)}
                     >
                       <span className="text-sm font-semibold text-slate-900">

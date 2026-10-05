@@ -181,8 +181,111 @@ export function ArticleListTable({
         </p>
       ) : null}
 
-      <Card className="overflow-hidden">
-        <table className="hub-table">
+      <div className="space-y-3 lg:hidden">
+        {articles.map((article) => {
+          const byLang = new Map(
+            article.translations.map((t) => [t.language_code, t])
+          );
+          const isChecked = selected.has(article.id);
+          return (
+            <Card key={article.id} className="p-4">
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  aria-label={`Select ${article.title}`}
+                  checked={isChecked}
+                  disabled={pending}
+                  onChange={() => toggleOne(article.id)}
+                />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Link
+                    href={`/applications/${applicationId}/articles/${article.id}`}
+                    className="block font-medium break-words text-[var(--hub-accent)] hover:underline"
+                  >
+                    {article.title}
+                  </Link>
+                  <div className="flex flex-wrap gap-1">
+                    <Badge tone="info">
+                      {(
+                        languages.find((l) => l.code === article.source_language)
+                          ?.code ?? article.source_language
+                      ).toUpperCase()}
+                    </Badge>
+                    <Badge tone="neutral">{article.content_type}</Badge>
+                    <Badge tone={statusTone(article.status)}>{article.status}</Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {(article.target_languages?.length
+                      ? article.target_languages
+                      : []
+                    ).map((code) => {
+                      const lang = languages.find((l) => l.code === code);
+                      const row = byLang.get(code);
+                      const label = row
+                        ? row.status === "SYSTEM_GENERATED"
+                          ? "Auto"
+                          : row.status === "MANUALLY_MODIFIED"
+                            ? "Edited"
+                            : row.status === "APPROVED"
+                              ? "Approved"
+                              : "Missing"
+                        : "Missing";
+                      const tone = row ? statusTone(row.status) : ("neutral" as const);
+                      return (
+                        <Badge key={code} tone={tone}>
+                          {(lang?.code ?? code).toUpperCase()} · {label}
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                  <dl className="grid grid-cols-1 gap-1 text-xs text-[var(--hub-muted)] sm:grid-cols-3">
+                    <div>
+                      <dt className="font-semibold text-[var(--hub-muted-strong)]">Due</dt>
+                      <dd>
+                        <PublishDueCell
+                          scheduledPublishAt={article.scheduled_publish_at}
+                          publishedAt={article.published_at}
+                          status={article.status}
+                        />
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="font-semibold text-[var(--hub-muted-strong)]">Published</dt>
+                      <dd>{formatDate(article.published_at)}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-semibold text-[var(--hub-muted-strong)]">Updated</dt>
+                      <dd>{formatDate(article.updated_at)}</dd>
+                    </div>
+                  </dl>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <LinkButton
+                      href={`/applications/${applicationId}/articles/${article.id}`}
+                      variant="secondary"
+                    >
+                      Open
+                    </LinkButton>
+                    <DeleteArticleButton
+                      applicationId={applicationId}
+                      contentId={article.id}
+                      title={article.title}
+                    />
+                  </div>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+        {articles.length === 0 ? (
+          <Card className="px-4 py-8 text-center text-[var(--hub-muted)]">
+            No articles yet.
+          </Card>
+        ) : null}
+      </div>
+
+      <Card className="hidden overflow-x-auto lg:block">
+        <table className="hub-table hub-table-wide">
           <thead>
             <tr>
               <th className="w-10">

@@ -3,10 +3,10 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 const triggerClass =
-  "inline-flex h-9 min-w-[11rem] max-w-[16rem] items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm hover:border-slate-400";
+  "inline-flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm hover:border-slate-400 sm:w-auto sm:min-w-[11rem] sm:max-w-[16rem]";
 
 const menuClass =
-  "absolute left-0 z-20 mt-1 w-[min(18rem,90vw)] rounded-lg border border-slate-200 bg-white p-2 shadow-lg";
+  "absolute left-0 z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 shadow-lg sm:w-[min(18rem,90vw)]";
 
 export type FilterOption = {
   value: string;
@@ -53,7 +53,7 @@ export function FilterSelect({
   const summary = selected?.label ?? placeholder;
 
   return (
-    <div className="relative" ref={rootRef}>
+    <div className="relative w-full sm:w-auto" ref={rootRef}>
       <button
         type="button"
         aria-expanded={open}
@@ -148,7 +148,7 @@ export function FilterMultiSelect({
         : `${value.length} selected`;
 
   return (
-    <div className="relative" ref={rootRef}>
+    <div className="relative w-full sm:w-auto" ref={rootRef}>
       <button
         type="button"
         aria-expanded={open}

@@ -88,13 +88,24 @@ export function verifyActorToken(token: string): HubActor | null {
   };
 }
 
-export function actorCookieOptions(requestUrl: string) {
+export function actorCookieOptions(requestUrl: string, embedded = false) {
   const secure = new URL(requestUrl).protocol === "https:";
+  // Partitioned + SameSite=None is only for the Joget iframe. On a normal
+  // Vercel visit that cookie is not sent again on refresh, so the session dies.
+  if (embedded && secure) {
+    return {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none" as const,
+      partitioned: true,
+      path: "/",
+      maxAge: SESSION_SECONDS,
+    };
+  }
   return {
     httpOnly: true,
     secure,
-    sameSite: secure ? ("none" as const) : ("lax" as const),
-    partitioned: secure,
+    sameSite: "lax" as const,
     path: "/",
     maxAge: SESSION_SECONDS,
   };
@@ -103,16 +114,31 @@ export function actorCookieOptions(requestUrl: string) {
 export function applyActorCookie(
   response: NextResponse,
   token: string,
-  requestUrl: string
+  requestUrl: string,
+  embedded = false
 ) {
-  response.cookies.set(ACTOR_COOKIE, token, actorCookieOptions(requestUrl));
+  response.cookies.set(ACTOR_COOKIE, token, actorCookieOptions(requestUrl, embedded));
+}
+
+function expiredCookieHeader(requestUrl: string, embedded: boolean) {
+  const options = { ...actorCookieOptions(requestUrl, embedded), maxAge: 0 };
+  const parts = [
+    `${ACTOR_COOKIE}=`,
+    "Path=/",
+    "HttpOnly",
+    "Max-Age=0",
+    `SameSite=${options.sameSite === "none" ? "None" : "Lax"}`,
+  ];
+  if (options.secure) parts.push("Secure");
+  if ("partitioned" in options && options.partitioned) parts.push("Partitioned");
+  return parts.join("; ");
 }
 
 export function clearActorCookie(response: NextResponse, requestUrl: string) {
-  response.cookies.set(ACTOR_COOKIE, "", {
-    ...actorCookieOptions(requestUrl),
-    maxAge: 0,
-  });
+  response.headers.append("Set-Cookie", expiredCookieHeader(requestUrl, false));
+  if (new URL(requestUrl).protocol === "https:") {
+    response.headers.append("Set-Cookie", expiredCookieHeader(requestUrl, true));
+  }
 }
 
 export async function getActor(): Promise<HubActor | null> {

@@ -67,8 +67,8 @@ export function ArticleComments({
     <>
       <button
         type="button"
-        className={`fixed bottom-6 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--diy-red)] text-white shadow-[0_8px_24px_rgba(227,6,19,0.35)] transition hover:bg-[var(--hub-accent-hover)] ${
-          open ? "right-[min(100%,24rem)] max-sm:hidden" : "right-6"
+        className={`fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-40 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--diy-red)] text-white shadow-[0_8px_24px_rgba(227,6,19,0.35)] transition hover:bg-[var(--hub-accent-hover)] ${
+          open ? "right-full max-sm:hidden sm:right-[24rem]" : "right-[max(1.5rem,env(safe-area-inset-right))]"
         }`}
         aria-expanded={open}
         aria-controls="article-comments"
@@ -103,7 +103,7 @@ export function ArticleComments({
           id="article-comments"
           role="dialog"
           aria-label="Comments"
-          className="fixed inset-y-0 right-0 z-40 flex w-[min(100%,24rem)] flex-col border-l border-[var(--hub-border)] bg-white shadow-[-12px_0_40px_rgba(15,23,42,0.12)]"
+          className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l border-[var(--hub-border)] bg-white pt-[env(safe-area-inset-top)] shadow-[-12px_0_40px_rgba(15,23,42,0.12)] sm:w-[24rem]"
         >
           <div className="flex items-center justify-between gap-3 border-b border-[var(--hub-border)] px-4 py-3">
             <div>
@@ -166,7 +166,7 @@ export function ArticleComments({
                         {formatWhen(comment.created_at)}
                       </span>
                     </div>
-                    <p className="mt-1.5 whitespace-pre-wrap text-sm text-slate-800">
+                    <p className="mt-1.5 whitespace-pre-wrap break-words text-sm text-slate-800">
                       {comment.body}
                     </p>
                   </li>
@@ -176,7 +176,7 @@ export function ArticleComments({
           </div>
 
           <form
-            className="space-y-2 border-t border-[var(--hub-border)] px-4 py-3"
+            className="space-y-2 border-t border-[var(--hub-border)] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
             onSubmit={(event) => {
               event.preventDefault();
               if (!actor || !languageCode) return;

@@ -220,32 +220,39 @@ export async function inviteApplicationMember(input: {
   identity: string;
   canEdit: boolean;
   canApprove: boolean;
-}): Promise<void> {
-  await requireAppCapability(input.applicationId, "manage");
-  const user = await ensureDirectoryUser(input.identity);
-  const db = await getDb();
-  const { data: app, error: appError } = await db
-    .from("applications")
-    .select("owner_user_id")
-    .eq("id", input.applicationId)
-    .maybeSingle();
-  if (appError) throw new Error(appError.message);
-  if (!app) throw new Error("Application not found.");
-  if (app.owner_user_id === user.id) {
-    throw new Error("That person already owns this application.");
-  }
+}): Promise<{ error?: string }> {
+  try {
+    await requireAppCapability(input.applicationId, "manage");
+    const user = await ensureDirectoryUser(input.identity);
+    const db = await getDb();
+    const { data: app, error: appError } = await db
+      .from("applications")
+      .select("owner_user_id")
+      .eq("id", input.applicationId)
+      .maybeSingle();
+    if (appError) return { error: appError.message };
+    if (!app) return { error: "Application not found." };
+    if (app.owner_user_id === user.id) {
+      return { error: "That person already owns this application." };
+    }
 
-  const { error } = await db.from("application_members").upsert(
-    {
-      application_id: input.applicationId,
-      user_id: user.id,
-      can_edit: input.canEdit,
-      can_approve: input.canApprove,
-    },
-    { onConflict: "application_id,user_id" }
-  );
-  if (error) throw new Error(error.message);
-  revalidateApplication(input.applicationId);
+    const { error } = await db.from("application_members").upsert(
+      {
+        application_id: input.applicationId,
+        user_id: user.id,
+        can_edit: input.canEdit,
+        can_approve: input.canApprove,
+      },
+      { onConflict: "application_id,user_id" }
+    );
+    if (error) return { error: error.message };
+    revalidateApplication(input.applicationId);
+    return {};
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Could not invite this person.",
+    };
+  }
 }
 
 export async function updateApplicationMember(input: {
@@ -286,20 +293,27 @@ export async function removeApplicationMember(input: {
 export async function setApplicationOwner(input: {
   applicationId: string;
   identity: string;
-}): Promise<void> {
-  await requireSuperadmin();
-  const user = await ensureDirectoryUser(input.identity);
-  const db = await getDb();
-  const { error: memberError } = await db
-    .from("application_members")
-    .delete()
-    .eq("application_id", input.applicationId)
-    .eq("user_id", user.id);
-  if (memberError) throw new Error(memberError.message);
-  const { error } = await db
-    .from("applications")
-    .update({ owner_user_id: user.id })
-    .eq("id", input.applicationId);
-  if (error) throw new Error(error.message);
-  revalidateApplication(input.applicationId);
+}): Promise<{ error?: string }> {
+  try {
+    await requireSuperadmin();
+    const user = await ensureDirectoryUser(input.identity);
+    const db = await getDb();
+    const { error: memberError } = await db
+      .from("application_members")
+      .delete()
+      .eq("application_id", input.applicationId)
+      .eq("user_id", user.id);
+    if (memberError) return { error: memberError.message };
+    const { error } = await db
+      .from("applications")
+      .update({ owner_user_id: user.id })
+      .eq("id", input.applicationId);
+    if (error) return { error: error.message };
+    revalidateApplication(input.applicationId);
+    return {};
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Could not set the owner.",
+    };
+  }
 }

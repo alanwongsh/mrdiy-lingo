@@ -119,12 +119,16 @@ export function ApplicationAccessPanel({
     setError("");
     startTransition(async () => {
       try {
-        await inviteApplicationMember({
+        const result = await inviteApplicationMember({
           applicationId,
           identity,
           canEdit,
           canApprove,
         });
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
         setIdentity("");
         router.refresh();
       } catch (err) {
@@ -138,7 +142,14 @@ export function ApplicationAccessPanel({
     setError("");
     startTransition(async () => {
       try {
-        await setApplicationOwner({ applicationId, identity: ownerIdentity });
+        const result = await setApplicationOwner({
+          applicationId,
+          identity: ownerIdentity,
+        });
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
         setOwnerIdentity("");
         router.refresh();
       } catch (err) {

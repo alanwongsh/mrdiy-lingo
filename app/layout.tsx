@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -21,6 +21,12 @@ const hubMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "Mr DIY Lingo",
   description: "MR.DIY translation and multilingual content hub",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default async function RootLayout({

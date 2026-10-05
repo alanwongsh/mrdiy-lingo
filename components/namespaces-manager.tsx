@@ -31,7 +31,7 @@ export function NamespacesManager({
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-      <Card className="overflow-hidden">
+      <Card className="overflow-x-auto">
         <table className="hub-table">
           <thead>
             <tr>

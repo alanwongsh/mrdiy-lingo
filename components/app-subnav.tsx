@@ -26,7 +26,7 @@ export function AppSubnav({
         ];
 
   return (
-    <div className="mb-6 flex flex-wrap gap-1 rounded-xl border border-[var(--hub-border)] bg-white p-1.5 shadow-[var(--hub-shadow)]">
+    <div className="mb-6 grid grid-cols-2 gap-1 rounded-xl border border-[var(--hub-border)] bg-white p-1.5 shadow-[var(--hub-shadow)] sm:flex sm:flex-wrap">
       {links.map((link) => {
         const active = link.exact
           ? pathname === link.href
@@ -36,7 +36,7 @@ export function AppSubnav({
           <Link
             key={link.href}
             href={link.href}
-            className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${
+            className={`rounded-lg px-3.5 py-2 text-center text-sm font-medium transition sm:text-left ${
               active
                 ? "bg-[var(--diy-red)] text-white shadow-sm"
                 : "text-slate-600 hover:bg-[var(--diy-yellow-soft)] hover:text-slate-900"

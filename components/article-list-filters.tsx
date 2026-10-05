@@ -69,12 +69,12 @@ export function ArticleListFilters({
 
   return (
     <Card className="mb-4 p-4">
-      <form className="flex flex-wrap items-center gap-3" onSubmit={applyFilters}>
+      <form className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-center" onSubmit={applyFilters}>
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search title…"
-          className={`${inputClass} h-9 min-w-64 flex-1`}
+          className={`${inputClass} h-9 w-full min-w-0 sm:min-w-64 sm:flex-1`}
         />
         <FilterMultiSelect
           value={source}
@@ -103,7 +103,7 @@ export function ArticleListFilters({
           placeholder="All due"
           options={DUE_OPTIONS}
         />
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" className="w-full sm:w-auto" disabled={pending}>
           {pending ? "Filtering…" : "Filter"}
         </Button>
       </form>

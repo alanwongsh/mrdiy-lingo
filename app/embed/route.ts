@@ -27,6 +27,6 @@ export async function GET(request: Request) {
   }
 
   const response = redirectToPath(url.searchParams.get("next") ?? "/", request.url, 307);
-  applyActorCookie(response, session, request.url);
+  applyActorCookie(response, session, request.url, true);
   return response;
 }

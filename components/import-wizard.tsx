@@ -214,7 +214,7 @@ export function ImportWizard({
           </div>
         ) : null}
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button type="button" onClick={runPreview} disabled={!file || pending}>
             {pending ? "Working…" : "Validate & preview"}
           </Button>
@@ -239,7 +239,7 @@ export function ImportWizard({
 
       {preview ? (
         <>
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {(
               [
                 ["New", preview.summary.new, "good"],
@@ -272,7 +272,7 @@ export function ImportWizard({
             ))}
           </div>
 
-          <Card className="overflow-hidden">
+          <Card className="overflow-x-auto">
             <table className="hub-table">
               <thead>
                 <tr>

@@ -5,8 +5,10 @@ import { usePathname } from "next/navigation";
 
 export function SidebarNav({
   items,
+  onNavigate,
 }: {
   items: { href: string; label: string; hint?: string }[];
+  onNavigate?: () => void;
 }) {
   const pathname = usePathname();
 
@@ -27,6 +29,7 @@ export function SidebarNav({
           <Link
             key={item.href}
             href={item.href}
+            onClick={onNavigate}
             className={`block rounded-lg px-3 py-2.5 text-sm transition ${
               active
                 ? "bg-[var(--hub-sidebar-active)] font-semibold text-white shadow-sm"

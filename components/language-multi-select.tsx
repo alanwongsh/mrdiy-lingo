@@ -99,12 +99,12 @@ export function LanguageMultiSelect({
                 <span className="text-slate-400">→</span>
               </>
             ) : null}
-            <div className="relative" ref={rootRef}>
+            <div className="relative w-full max-w-full sm:w-auto" ref={rootRef}>
               <button
                 type="button"
                 aria-expanded={open}
                 aria-controls={listId}
-                className="inline-flex h-9 min-w-[14rem] items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm hover:border-slate-400"
+                className="inline-flex h-9 w-full max-w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm hover:border-slate-400 sm:min-w-[14rem]"
                 onClick={() => setOpen((v) => !v)}
               >
                 <span className="truncate">{summary}</span>
@@ -115,7 +115,7 @@ export function LanguageMultiSelect({
               {open ? (
                 <div
                   id={listId}
-                  className="absolute left-0 z-20 mt-1 w-[min(20rem,90vw)] rounded-lg border border-slate-200 bg-white p-2 shadow-lg"
+                  className="absolute left-0 z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 shadow-lg sm:w-[min(20rem,90vw)]"
                 >
                   <div className="mb-1 flex items-center justify-between gap-2 px-1 pb-1">
                     <button
@@ -207,7 +207,7 @@ export function LanguageMultiSelect({
           <div className="flex flex-wrap items-center gap-2">
             <select
               id={editingId}
-              className={`${inputClass} w-auto! min-w-48 shrink`}
+              className={`${inputClass} w-full min-w-0 sm:w-auto sm:min-w-48`}
               value={activeCode}
               onChange={(e) => onActiveChange(e.target.value)}
             >

@@ -1,5 +1,5 @@
-import { notFound } from "next/navigation";
 import { AppSubnav } from "@/components/app-subnav";
+import { DbErrorPanel, formatDbError } from "@/lib/db/errors";
 import {
   Badge,
   PageHeader,
@@ -18,10 +18,25 @@ export default async function ApplicationOverviewPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const app = await getApplication(id);
-  if (!app) notFound();
-  const people = app.access.can_manage ? await listApplicationPeople(id) : null;
-  const user = people ? await getCurrentUser() : null;
+  let app: Awaited<ReturnType<typeof getApplication>>;
+  try {
+    app = await getApplication(id);
+  } catch (error) {
+    return <DbErrorPanel message={formatDbError(error)} />;
+  }
+  if (!app) {
+    return (
+      <DbErrorPanel message="This application does not exist, or you do not have access to it." />
+    );
+  }
+  let people: Awaited<ReturnType<typeof listApplicationPeople>> | null = null;
+  let user: Awaited<ReturnType<typeof getCurrentUser>> = null;
+  try {
+    people = app.access.can_manage ? await listApplicationPeople(id) : null;
+    user = people ? await getCurrentUser() : null;
+  } catch (error) {
+    return <DbErrorPanel message={formatDbError(error)} />;
+  }
 
   const isString = app.model_type === "STRING";
   const productStats = isString ? await getProductStats(id) : null;

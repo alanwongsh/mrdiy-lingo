@@ -38,7 +38,7 @@ export function PageHeader({
             <span className="w-2/3 bg-[var(--diy-red)]" />
             <span className="w-1/3 bg-[var(--diy-yellow)]" />
           </div>
-          <h1 className="text-[1.75rem] font-bold tracking-tight text-[var(--hub-fg)]">
+          <h1 className="text-2xl font-bold tracking-tight break-words text-[var(--hub-fg)] sm:text-[1.75rem]">
             {title}
           </h1>
           {description ? (
