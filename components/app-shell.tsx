@@ -43,7 +43,11 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const appLinks = apps.map((app) => ({
-    href: `/applications/${app.id}`,
+    href:
+      app.model_type === "CONTENT"
+        ? `/applications/${app.id}/articles`
+        : `/applications/${app.id}`,
+    match: `/applications/${app.id}`,
     label: app.name,
     hint: app.model_type === "STRING" ? "Strings" : "Content",
   }));

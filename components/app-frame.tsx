@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { SidebarNav } from "@/components/sidebar-nav";
 
-type NavItem = { href: string; label: string; hint?: string };
+type NavItem = { href: string; label: string; hint?: string; match?: string };
 
 function MenuIcon() {
   return (
@@ -62,12 +62,14 @@ function SidebarBody({
         </Link>
       </div>
       <nav className="flex flex-1 flex-col gap-7 overflow-y-auto px-3 py-4">
-        <div>
-          <div className="mb-2 px-3 text-[10px] font-semibold tracking-[0.16em] text-[var(--hub-sidebar-muted)] uppercase">
-            Navigate
+        {isSuperadmin ? (
+          <div>
+            <div className="mb-2 px-3 text-[10px] font-semibold tracking-[0.16em] text-[var(--hub-sidebar-muted)] uppercase">
+              Navigate
+            </div>
+            <SidebarNav items={nav} onNavigate={onNavigate} />
           </div>
-          <SidebarNav items={nav} onNavigate={onNavigate} />
-        </div>
+        ) : null}
         {appLinks.length > 0 ? (
           <div>
             <div className="mb-2 px-3 text-[10px] font-semibold tracking-[0.16em] text-[var(--hub-sidebar-muted)] uppercase">

@@ -7,7 +7,7 @@ export function SidebarNav({
   items,
   onNavigate,
 }: {
-  items: { href: string; label: string; hint?: string }[];
+  items: { href: string; label: string; hint?: string; match?: string }[];
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
@@ -15,15 +15,15 @@ export function SidebarNav({
   return (
     <div className="space-y-1">
       {items.map((item) => {
+        const target = item.match ?? item.href;
         const active =
-          item.href === "/"
+          target === "/"
             ? pathname === "/"
-            : item.href === "/applications"
+            : target === "/applications"
               ? pathname === "/applications" ||
                 pathname === "/applications/new" ||
                 /^\/applications\/[^/]+\/edit$/.test(pathname)
-              : pathname === item.href ||
-                pathname.startsWith(`${item.href}/`);
+              : pathname === target || pathname.startsWith(`${target}/`);
 
         return (
           <Link

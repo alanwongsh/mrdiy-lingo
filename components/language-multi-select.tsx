@@ -2,7 +2,12 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import type { Language, TranslationStatus } from "@/lib/types";
+import { languageKey } from "@/lib/target-languages";
 import { Badge, Button, inputClass, statusTone } from "@/components/ui";
+
+function sameCode(a: string, b: string) {
+  return languageKey(a) === languageKey(b);
+}
 
 export type LanguageOptionStatus = {
   code: string;
@@ -54,13 +59,17 @@ export function LanguageMultiSelect({
     };
   }, []);
 
+  function optionFor(code: string) {
+    return options.find((option) => sameCode(option.code, code));
+  }
+
   function statusFor(code: string): TranslationStatus | null {
-    return statuses?.find((s) => s.code === code)?.status ?? null;
+    return statuses?.find((status) => sameCode(status.code, code))?.status ?? null;
   }
 
   function toggle(code: string) {
-    if (selected.includes(code)) {
-      onSelectedChange(selected.filter((c) => c !== code));
+    if (selected.some((item) => sameCode(item, code))) {
+      onSelectedChange(selected.filter((item) => !sameCode(item, code)));
     } else {
       onSelectedChange([...selected, code]);
     }
@@ -78,10 +87,21 @@ export function LanguageMultiSelect({
     selected.length === 0
       ? "Select languages…"
       : selected.length === 1
-        ? options.find((o) => o.code === selected[0])?.name ?? "1 language"
+        ? optionFor(selected[0])?.name ?? selected[0]
         : `${selected.length} languages selected`;
 
-  const activeStatus = activeCode ? statusFor(activeCode) : null;
+  const editingChoices = selected.map((code) => {
+    const match = optionFor(code);
+    return {
+      id: match?.id ?? code,
+      code: match?.code ?? code,
+      name: match?.name ?? code,
+    };
+  });
+  const activeChoice =
+    editingChoices.find((choice) => activeCode && sameCode(choice.code, activeCode)) ??
+    null;
+  const activeStatus = activeChoice ? statusFor(activeChoice.code) : null;
 
   return (
     <div className="space-y-3">
@@ -135,7 +155,7 @@ export function LanguageMultiSelect({
                   </div>
                   <ul className="max-h-60 space-y-0.5 overflow-auto">
                     {options.map((l) => {
-                      const checked = selected.includes(l.code);
+                      const checked = selected.some((code) => sameCode(code, l.code));
                       const status = statusFor(l.code);
                       return (
                         <li key={l.id}>
@@ -167,7 +187,7 @@ export function LanguageMultiSelect({
       {selected.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {selected.map((code) => {
-            const lang = options.find((o) => o.code === code);
+            const lang = optionFor(code);
             const status = statusFor(code);
             return (
               <span
@@ -196,7 +216,7 @@ export function LanguageMultiSelect({
         </p>
       )}
 
-      {showEditingSwitcher && activeCode && onActiveChange ? (
+      {showEditingSwitcher && activeChoice && onActiveChange ? (
         <div className="space-y-1.5 border-t border-slate-100 pt-3">
           <label
             htmlFor={editingId}
@@ -208,12 +228,12 @@ export function LanguageMultiSelect({
             <select
               id={editingId}
               className={`${inputClass} w-full min-w-0 sm:w-auto sm:min-w-48`}
-              value={activeCode}
+              value={activeChoice.code}
               onChange={(e) => onActiveChange(e.target.value)}
             >
-              {options.map((l) => (
-                <option key={l.id} value={l.code}>
-                  {l.name}
+              {editingChoices.map((choice) => (
+                <option key={choice.id} value={choice.code}>
+                  {choice.name}
                 </option>
               ))}
             </select>

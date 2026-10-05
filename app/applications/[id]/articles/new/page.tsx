@@ -87,7 +87,7 @@ export default function NewArticlePage() {
                   },
                 });
                 router.push(
-                  `/applications/${applicationId}/articles/${article.id}`
+                  `/applications/${applicationId}/articles/${article.id}/edit`
                 );
               } catch (err) {
                 setError(err instanceof Error ? err.message : "Failed");

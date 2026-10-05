@@ -58,8 +58,8 @@ export default async function ArticlesPage({
   return (
     <div>
       <PageHeader
-        title={`${app.name} · Articles`}
-        description="Sorted by nearest estimated publish date. Filter by source locales, lifecycle, or due status."
+        title="Articles"
+        description={`${result.total} article${result.total === 1 ? "" : "s"}`}
         actions={
           <LinkButton href={`/applications/${app.id}/articles/new`}>
             New article

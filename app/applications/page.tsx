@@ -52,7 +52,11 @@ export default async function ApplicationsPage() {
             >
               <div>
                 <Link
-                  href={`/applications/${app.id}`}
+                  href={
+                    app.model_type === "CONTENT"
+                      ? `/applications/${app.id}/articles`
+                      : `/applications/${app.id}`
+                  }
                   className="font-semibold text-slate-900 no-underline hover:text-[var(--hub-accent)]"
                 >
                   {app.name}

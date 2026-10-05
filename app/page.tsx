@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { listApplications } from "@/lib/actions/applications";
 import { listLanguages } from "@/lib/actions/languages";
 import { getProductStats } from "@/lib/actions/product";
 import { getPressStats } from "@/lib/actions/press";
+import { getCurrentUser } from "@/lib/auth/access";
 import { LinkButton, PageHeader, StatCard, Card, Badge } from "@/components/ui";
 
 export default async function DashboardPage() {
@@ -11,12 +13,23 @@ export default async function DashboardPage() {
   let dbReady = true;
   let errorMessage = "";
 
+  let user: Awaited<ReturnType<typeof getCurrentUser>> = null;
   try {
+    user = await getCurrentUser();
     apps = await listApplications({ includeInactive: true });
     languages = await listLanguages({ includeInactive: true });
   } catch (e) {
     dbReady = false;
     errorMessage = e instanceof Error ? e.message : "Database not ready";
+  }
+
+  const firstApp = apps[0];
+  if (dbReady && user && !user.is_superadmin && firstApp) {
+    redirect(
+      firstApp.model_type === "CONTENT"
+        ? `/applications/${firstApp.id}/articles`
+        : `/applications/${firstApp.id}`
+    );
   }
 
   const product = apps.find((a) => a.model_type === "STRING");
@@ -137,7 +150,7 @@ export default async function DashboardPage() {
             <h2 className="font-semibold">Press</h2>
             {press ? (
               <Link
-                href={`/applications/${press.id}`}
+                href={`/applications/${press.id}/articles`}
                 className="hub-accent-link rounded-md px-2 py-1 text-sm font-semibold hover:bg-[var(--hub-accent-soft)]"
               >
                 Open →
@@ -181,7 +194,11 @@ export default async function DashboardPage() {
           {apps.map((app) => (
             <Link
               key={app.id}
-              href={`/applications/${app.id}`}
+              href={
+                app.model_type === "CONTENT"
+                  ? `/applications/${app.id}/articles`
+                  : `/applications/${app.id}`
+              }
               className="hub-accent-link block text-[var(--hub-fg)] no-underline hover:text-[var(--hub-fg)]"
             >
               <Card

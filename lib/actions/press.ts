@@ -26,7 +26,7 @@ import { emptySourceContent } from "@/lib/types";
 import { getTranslationService } from "@/lib/translation/service";
 import { normalizeSlug } from "@/lib/slug";
 import { DUE_SOON_MS, type PublishDueKind } from "@/lib/publish-due";
-import { normalizeTargetLanguages } from "@/lib/target-languages";
+import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
 import { buildArticleWorkbook } from "@/lib/export/articles";
 
 function asSourceContent(value: unknown): SourceContentFields {
@@ -679,7 +679,7 @@ export async function autoTranslateArticle(input: {
 
   const sourceLanguage =
     input.sourceLanguage?.trim() || article.source_language;
-  if (sourceLanguage === input.targetLanguage) {
+  if (languageKey(sourceLanguage) === languageKey(input.targetLanguage)) {
     throw new Error("Target language must differ from source language.");
   }
 
@@ -726,8 +726,9 @@ export async function autoTranslateArticle(input: {
       source_content: sourceFields,
       status: "TRANSLATING",
       scheduled_publish_at: article.scheduled_publish_at,
-      target_languages: (article.target_languages ?? []).filter(
-        (code) => code !== sourceLanguage
+      target_languages: normalizeTargetLanguages(
+        article.target_languages,
+        sourceLanguage
       ),
     });
   }
@@ -770,15 +771,34 @@ export async function autoTranslateArticleLanguages(input: {
   sourceLanguage?: string;
 }): Promise<ContentTranslation[]> {
   await requireContentAccess(input.contentId, "edit");
+  const article = await getArticle(input.contentId);
+  if (!article) throw new Error("Article not found");
+  const sourceLanguage = input.sourceLanguage?.trim() || article.source_language;
+  const targets = normalizeTargetLanguages(input.targetLanguages, sourceLanguage);
+  if (targets.length === 0) {
+    throw new Error("Choose a language other than the source.");
+  }
+  await updateArticle(input.contentId, input.applicationId, {
+    title: input.sourceFields?.title?.trim() || article.title,
+    slug: null,
+    content_type: article.content_type,
+    source_language: sourceLanguage,
+    source_content: input.sourceFields
+      ? { ...article.source_content, ...input.sourceFields }
+      : article.source_content,
+    status: article.status,
+    scheduled_publish_at: article.scheduled_publish_at,
+    target_languages: targets,
+  });
   const results: ContentTranslation[] = [];
-  for (const targetLanguage of input.targetLanguages) {
+  for (const targetLanguage of targets) {
     results.push(
       await autoTranslateArticle({
         contentId: input.contentId,
         targetLanguage,
         applicationId: input.applicationId,
         sourceFields: input.sourceFields,
-        sourceLanguage: input.sourceLanguage,
+        sourceLanguage,
       })
     );
   }

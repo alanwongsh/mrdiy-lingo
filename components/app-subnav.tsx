@@ -20,8 +20,8 @@ export function AppSubnav({
           { href: `${base}/import`, label: "Import" },
         ]
       : [
-          { href: base, label: "Overview", exact: true },
           { href: `${base}/articles`, label: "Articles" },
+          { href: base, label: "Overview", exact: true },
           { href: `${base}/import`, label: "Import" },
         ];
 

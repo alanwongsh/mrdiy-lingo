@@ -31,7 +31,11 @@ export default function NewApplicationPage() {
           description,
           model_type: modelType,
         });
-        router.push(`/applications/${app.id}`);
+        router.push(
+          modelType === "CONTENT"
+            ? `/applications/${app.id}/articles`
+            : `/applications/${app.id}`
+        );
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to create");
       }

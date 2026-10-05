@@ -154,15 +154,16 @@ export class MyMemoryTranslationProvider implements TranslationProvider {
 }
 
 function normalizeLang(code: string): string {
+  const key = code.trim().toLowerCase();
   const map: Record<string, string> = {
-    "zh-Hans": "zh-CN",
-    "zh-Hant": "zh-TW",
+    "zh-hans": "zh-CN",
+    "zh-hant": "zh-TW",
     en: "en",
     ms: "ms",
     th: "th",
     id: "id",
   };
-  return map[code] ?? code.split("-")[0] ?? code;
+  return map[key] ?? key.split("-")[0] ?? key;
 }
 
 export class TranslationService {

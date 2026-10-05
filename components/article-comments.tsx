@@ -53,14 +53,22 @@ export function ArticleComments({
   }, [open]);
 
   const languageName = (code: string) =>
-    languages.find((l) => l.code === code)?.name ?? code;
+    languages.find((l) => l.code.trim().toLowerCase() === code.trim().toLowerCase())
+      ?.name ?? code;
 
   const visible = useMemo(
-    () => comments.filter((comment) => comment.language_code === languageCode),
+    () =>
+      comments.filter(
+        (comment) =>
+          (comment.language_code ?? "").trim().toLowerCase() ===
+          languageCode.trim().toLowerCase()
+      ),
     [comments, languageCode]
   );
   const activeCount = comments.filter(
-    (comment) => comment.language_code === activeLanguage
+    (comment) =>
+      (comment.language_code ?? "").trim().toLowerCase() ===
+      activeLanguage.trim().toLowerCase()
   ).length;
 
   return (

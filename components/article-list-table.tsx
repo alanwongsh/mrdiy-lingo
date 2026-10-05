@@ -3,22 +3,117 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { deleteArticles, exportArticlesFile } from "@/lib/actions/press";
+import { deleteArticle, deleteArticles, exportArticlesFile } from "@/lib/actions/press";
 import type { ArticleListItem } from "@/lib/actions/press";
-import type { Language } from "@/lib/types";
-import { DeleteArticleButton } from "@/components/delete-article-button";
-import { PublishDueCell } from "@/components/publish-due-cell";
-import { Badge, Button, Card, LinkButton, statusTone } from "@/components/ui";
+import { getPublishDueState } from "@/lib/publish-due";
+import type { ContentLifecycleStatus, ContentType, Language } from "@/lib/types";
+import { Badge, Button, Card, statusTone } from "@/components/ui";
 
-function formatDate(value: string | null | undefined) {
-  if (!value) return "—";
-  return new Date(value).toLocaleString(undefined, {
+const STATUS_LABEL: Record<ContentLifecycleStatus, string> = {
+  DRAFT: "Draft",
+  TRANSLATING: "Translating",
+  REVIEW: "Review",
+  APPROVED: "Approved",
+  PUBLISHED: "Published",
+};
+
+const TYPE_LABEL: Record<ContentType, string> = {
+  ARTICLE: "Article",
+  NEWS: "News",
+  ANNOUNCEMENT: "Announcement",
+};
+
+function excerpt(article: ArticleListItem) {
+  const raw = article.source_content?.summary ?? "";
+  return raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function formatWhen(value: string) {
+  const diff = Date.now() - new Date(value).getTime();
+  const minutes = Math.round(diff / 60000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 14) return `${days}d ago`;
+  return new Date(value).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
+}
+
+function IconButton({
+  label,
+  onClick,
+  href,
+  danger,
+  disabled,
+  children,
+}: {
+  label: string;
+  onClick?: () => void;
+  href?: string;
+  danger?: boolean;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  const className = `inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--hub-muted-strong)] hover:bg-[var(--hub-accent-soft)] disabled:opacity-40 ${
+    danger
+      ? "hover:bg-red-50 hover:text-red-700"
+      : "hover:text-[var(--hub-accent)]"
+  }`;
+  if (href) {
+    return (
+      <Link href={href} aria-label={label} title={label} className={className}>
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      className={className}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z" />
+      <path strokeLinecap="round" d="M13.5 6.5l3 3" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 7V5h6v2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7 7l1 12h8l1-12" />
+    </svg>
+  );
+}
+
+function translationLine(article: ArticleListItem) {
+  const targets = article.target_languages ?? [];
+  if (targets.length === 0) return "No translations";
+  const approved = new Set(
+    article.translations
+      .filter((row) => row.status === "APPROVED")
+      .map((row) => row.language_code.toLowerCase())
+  );
+  const ready = targets.filter((code) => approved.has(code.toLowerCase())).length;
+  return `${ready} of ${targets.length} approved`;
 }
 
 export function ArticleListTable({
@@ -39,8 +134,7 @@ export function ArticleListTable({
 
   const pageIds = useMemo(() => articles.map((a) => a.id), [articles]);
   const selectedOnPage = pageIds.filter((id) => selected.has(id));
-  const allSelected =
-    pageIds.length > 0 && selectedOnPage.length === pageIds.length;
+  const allSelected = pageIds.length > 0 && selectedOnPage.length === pageIds.length;
   const someSelected = selectedOnPage.length > 0 && !allSelected;
 
   function toggleOne(id: string) {
@@ -100,6 +194,36 @@ export function ArticleListTable({
     });
   }
 
+  function runDelete(article: ArticleListItem) {
+    if (
+      !confirm(
+        `Delete “${article.title}”? Translations and version history will be removed.`
+      )
+    ) {
+      return;
+    }
+    setError("");
+    setTask("delete");
+    startTransition(async () => {
+      try {
+        await deleteArticle({
+          contentId: article.id,
+          applicationId,
+        });
+        setSelected((prev) => {
+          const next = new Set(prev);
+          next.delete(article.id);
+          return next;
+        });
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Delete failed");
+      } finally {
+        setTask("");
+      }
+    });
+  }
+
   function runBulkDelete() {
     if (selectedOnPage.length === 0) return;
     const count = selectedOnPage.length;
@@ -129,163 +253,51 @@ export function ArticleListTable({
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={pending || selectedOnPage.length === 0}
-          onClick={runExport}
-        >
-          {task === "export"
-            ? "Exporting…"
-            : selectedOnPage.length > 0
-              ? `Export selected (${selectedOnPage.length})`
-              : "Export selected"}
-        </Button>
-        <Button
-          type="button"
-          variant="danger"
-          disabled={pending || selectedOnPage.length === 0}
-          onClick={runBulkDelete}
-        >
-          {task === "delete"
-            ? "Deleting…"
-            : selectedOnPage.length > 0
-              ? `Delete selected (${selectedOnPage.length})`
-              : "Delete selected"}
-        </Button>
-        {selectedOnPage.length > 0 ? (
+    <Card className="overflow-hidden">
+      {selectedOnPage.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--hub-border)] px-4 py-3">
+          <span className="text-sm text-[var(--hub-muted-strong)]">
+            {selectedOnPage.length} selected
+          </span>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={pending}
+            onClick={runExport}
+          >
+            {task === "export" ? "Exporting…" : "Export"}
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            disabled={pending}
+            onClick={runBulkDelete}
+          >
+            {task === "delete" ? "Deleting…" : "Delete"}
+          </Button>
           <button
             type="button"
             className="text-sm text-[var(--hub-muted)] underline-offset-2 hover:underline"
             disabled={pending}
             onClick={() => setSelected(new Set())}
           >
-            Clear selection
+            Clear
           </button>
-        ) : (
-          <span className="text-sm text-[var(--hub-muted)]">
-            Select articles to export or delete
-          </span>
-        )}
-        {error ? (
-          <span className="text-sm text-red-700" role="alert">
-            {error}
-          </span>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
+      {error ? (
+        <p className="px-4 pt-3 text-sm text-red-700" role="alert">
+          {error}
+        </p>
+      ) : null}
       {notice ? (
-        <p className="text-sm text-amber-800" role="status">
+        <p className="px-4 pt-3 text-sm text-amber-800" role="status">
           {notice}
         </p>
       ) : null}
 
-      <div className="space-y-3 lg:hidden">
-        {articles.map((article) => {
-          const byLang = new Map(
-            article.translations.map((t) => [t.language_code, t])
-          );
-          const isChecked = selected.has(article.id);
-          return (
-            <Card key={article.id} className="p-4">
-              <div className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  aria-label={`Select ${article.title}`}
-                  checked={isChecked}
-                  disabled={pending}
-                  onChange={() => toggleOne(article.id)}
-                />
-                <div className="min-w-0 flex-1 space-y-2">
-                  <Link
-                    href={`/applications/${applicationId}/articles/${article.id}`}
-                    className="block font-medium break-words text-[var(--hub-accent)] hover:underline"
-                  >
-                    {article.title}
-                  </Link>
-                  <div className="flex flex-wrap gap-1">
-                    <Badge tone="info">
-                      {(
-                        languages.find((l) => l.code === article.source_language)
-                          ?.code ?? article.source_language
-                      ).toUpperCase()}
-                    </Badge>
-                    <Badge tone="neutral">{article.content_type}</Badge>
-                    <Badge tone={statusTone(article.status)}>{article.status}</Badge>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {(article.target_languages?.length
-                      ? article.target_languages
-                      : []
-                    ).map((code) => {
-                      const lang = languages.find((l) => l.code === code);
-                      const row = byLang.get(code);
-                      const label = row
-                        ? row.status === "SYSTEM_GENERATED"
-                          ? "Auto"
-                          : row.status === "MANUALLY_MODIFIED"
-                            ? "Edited"
-                            : row.status === "APPROVED"
-                              ? "Approved"
-                              : "Missing"
-                        : "Missing";
-                      const tone = row ? statusTone(row.status) : ("neutral" as const);
-                      return (
-                        <Badge key={code} tone={tone}>
-                          {(lang?.code ?? code).toUpperCase()} · {label}
-                        </Badge>
-                      );
-                    })}
-                  </div>
-                  <dl className="grid grid-cols-1 gap-1 text-xs text-[var(--hub-muted)] sm:grid-cols-3">
-                    <div>
-                      <dt className="font-semibold text-[var(--hub-muted-strong)]">Due</dt>
-                      <dd>
-                        <PublishDueCell
-                          scheduledPublishAt={article.scheduled_publish_at}
-                          publishedAt={article.published_at}
-                          status={article.status}
-                        />
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold text-[var(--hub-muted-strong)]">Published</dt>
-                      <dd>{formatDate(article.published_at)}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold text-[var(--hub-muted-strong)]">Updated</dt>
-                      <dd>{formatDate(article.updated_at)}</dd>
-                    </div>
-                  </dl>
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <LinkButton
-                      href={`/applications/${applicationId}/articles/${article.id}`}
-                      variant="secondary"
-                    >
-                      Open
-                    </LinkButton>
-                    <DeleteArticleButton
-                      applicationId={applicationId}
-                      contentId={article.id}
-                      title={article.title}
-                    />
-                  </div>
-                </div>
-              </div>
-            </Card>
-          );
-        })}
-        {articles.length === 0 ? (
-          <Card className="px-4 py-8 text-center text-[var(--hub-muted)]">
-            No articles yet.
-          </Card>
-        ) : null}
-      </div>
-
-      <Card className="hidden overflow-x-auto lg:block">
-        <table className="hub-table hub-table-wide">
+      <div className="overflow-x-auto">
+        <table className="hub-table">
           <thead>
             <tr>
               <th className="w-10">
@@ -301,124 +313,91 @@ export function ArticleListTable({
                 />
               </th>
               <th>Article</th>
-              <th>Source</th>
-              <th>Type</th>
-              <th>Status</th>
-              <th>Languages</th>
-              <th>Due</th>
-              <th>Published</th>
-              <th>Updated</th>
-              <th />
+              <th className="hidden md:table-cell">Status</th>
+              <th className="hidden lg:table-cell">Translations</th>
+              <th className="hidden sm:table-cell text-right">When</th>
+              <th className="w-20 text-right"> </th>
             </tr>
           </thead>
           <tbody>
             {articles.map((article) => {
-              const byLang = new Map(
-                article.translations.map((t) => [t.language_code, t])
+              const summary = excerpt(article);
+              const sourceName =
+                languages.find((language) => language.code === article.source_language)
+                  ?.name ?? article.source_language;
+              const due = getPublishDueState(
+                article.scheduled_publish_at,
+                article.status,
+                article.published_at
               );
-              const isChecked = selected.has(article.id);
+              const href = `/applications/${applicationId}/articles/${article.id}`;
               return (
-                <tr
-                  key={article.id}
-                  className="border-b border-[var(--hub-border)] align-top"
-                >
-                  <td className="px-4 py-3">
+                <tr key={article.id}>
+                  <td>
                     <input
                       type="checkbox"
                       aria-label={`Select ${article.title}`}
-                      checked={isChecked}
+                      checked={selected.has(article.id)}
                       disabled={pending}
                       onChange={() => toggleOne(article.id)}
                     />
                   </td>
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/applications/${applicationId}/articles/${article.id}`}
-                      className="font-medium text-[var(--hub-accent)] hover:underline"
-                    >
+                  <td>
+                    <Link href={href} className="block font-semibold text-[var(--diy-red)] hover:text-[var(--diy-red-dark)] hover:underline">
                       {article.title}
                     </Link>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge tone="info">
-                      {(
-                        languages.find(
-                          (l) => l.code === article.source_language
-                        )?.code ?? article.source_language
-                      ).toUpperCase()}
-                    </Badge>
-                    <div className="mt-1 text-xs text-[var(--hub-muted)]">
-                      {languages.find((l) => l.code === article.source_language)
-                        ?.name ?? article.source_language}
+                    <p className="mt-0.5 line-clamp-1 max-w-md text-xs text-[var(--hub-muted)]">
+                      {TYPE_LABEL[article.content_type]} · {sourceName}
+                      {summary ? ` · ${summary}` : ""}
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2 md:hidden">
+                      <Badge tone={statusTone(article.status)}>
+                        {STATUS_LABEL[article.status]}
+                      </Badge>
+                      <span className="text-xs text-[var(--hub-muted)]">
+                        {formatWhen(article.updated_at)}
+                      </span>
                     </div>
                   </td>
-                  <td className="px-4 py-3">
-                    <Badge tone="neutral">{article.content_type}</Badge>
-                  </td>
-                  <td className="px-4 py-3">
+                  <td className="hidden md:table-cell">
                     <Badge tone={statusTone(article.status)}>
-                      {article.status}
+                      {STATUS_LABEL[article.status]}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {(article.target_languages?.length
-                        ? article.target_languages
-                        : []
-                      ).map((code) => {
-                        const lang = languages.find((l) => l.code === code);
-                        const row = byLang.get(code);
-                        const label = row
-                          ? row.status === "SYSTEM_GENERATED"
-                            ? "Auto"
-                            : row.status === "MANUALLY_MODIFIED"
-                              ? "Edited"
-                              : row.status === "APPROVED"
-                                ? "Approved"
-                                : "Missing"
-                          : "Missing";
-                        const tone = row
-                          ? statusTone(row.status)
-                          : ("neutral" as const);
-                        return (
-                          <Badge key={code} tone={tone}>
-                            {(lang?.code ?? code).toUpperCase()} · {label}
-                          </Badge>
-                        );
-                      })}
-                      {!article.target_languages?.length ? (
-                        <span className="text-xs text-[var(--hub-muted)]">
-                          No target languages set
-                        </span>
-                      ) : null}
+                  <td className="hidden text-sm text-[var(--hub-muted-strong)] lg:table-cell">
+                    {translationLine(article)}
+                  </td>
+                  <td className="hidden text-right sm:table-cell">
+                    <div className="text-sm text-[var(--hub-muted-strong)]">
+                      {formatWhen(article.updated_at)}
                     </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <PublishDueCell
-                      scheduledPublishAt={article.scheduled_publish_at}
-                      publishedAt={article.published_at}
-                      status={article.status}
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-sm text-[var(--hub-muted)]">
-                    {formatDate(article.published_at)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-[var(--hub-muted)]">
-                    {formatDate(article.updated_at)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap justify-end gap-2">
-                      <LinkButton
-                        href={`/applications/${applicationId}/articles/${article.id}`}
-                        variant="secondary"
+                    {due.kind === "overdue" || due.kind === "due_soon" ? (
+                      <div
+                        className={`mt-0.5 text-xs ${
+                          due.kind === "overdue" ? "text-red-700" : "text-amber-800"
+                        }`}
                       >
-                        Open
-                      </LinkButton>
-                      <DeleteArticleButton
-                        applicationId={applicationId}
-                        contentId={article.id}
-                        title={article.title}
-                      />
+                        {due.label}
+                        {due.countdown ? ` · ${due.countdown}` : ""}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="text-right">
+                    <div className="inline-flex items-center justify-end gap-1">
+                      <IconButton
+                        label={`Edit ${article.title}`}
+                        href={`/applications/${applicationId}/articles/${article.id}/edit`}
+                      >
+                        <PencilIcon />
+                      </IconButton>
+                      <IconButton
+                        label={`Delete ${article.title}`}
+                        danger
+                        disabled={pending}
+                        onClick={() => runDelete(article)}
+                      >
+                        <TrashIcon />
+                      </IconButton>
                     </div>
                   </td>
                 </tr>
@@ -426,17 +405,14 @@ export function ArticleListTable({
             })}
             {articles.length === 0 ? (
               <tr>
-                <td
-                  colSpan={10}
-                  className="px-4 py-8 text-center text-[var(--hub-muted)]"
-                >
-                  No articles yet.
+                <td colSpan={6} className="py-12 text-center text-sm text-[var(--hub-muted)]">
+                  No articles found.
                 </td>
               </tr>
             ) : null}
           </tbody>
         </table>
-      </Card>
-    </div>
+      </div>
+    </Card>
   );
 }

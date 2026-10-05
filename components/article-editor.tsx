@@ -39,6 +39,7 @@ import { ArticleVersionPanel } from "@/components/version-panel";
 import { DeleteArticleButton } from "@/components/delete-article-button";
 import { ArticleComments } from "@/components/article-comments";
 import { HtmlEditor, type HtmlEditorHandle } from "@/components/html-editor";
+import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
 
 type ArticleWithTranslations = Content & {
   translations: ContentTranslation[];
@@ -125,6 +126,31 @@ function fromLocalInput(value: string): string | null {
   return d.toISOString();
 }
 
+function resolveTargets(
+  codes: string[],
+  languages: Language[],
+  source: string
+) {
+  return normalizeTargetLanguages(
+    codes,
+    source,
+    languages.map((language) => language.code)
+  );
+}
+
+function findLanguage(languages: Language[], code: string) {
+  const key = languageKey(code);
+  return languages.find((language) => languageKey(language.code) === key);
+}
+
+function findTranslation(
+  translations: ContentTranslation[],
+  code: string
+) {
+  const key = languageKey(code);
+  return translations.find((row) => languageKey(row.language_code) === key);
+}
+
 export function ArticleEditor({
   applicationId,
   article,
@@ -155,44 +181,33 @@ export function ArticleEditor({
   );
   const [source, setSource] = useState(article.source_content);
   const [sourceLanguage, setSourceLanguage] = useState(article.source_language);
-  const [targetLanguages, setTargetLanguages] = useState<string[]>(
-    article.target_languages ?? []
+  const initialTargets = resolveTargets(
+    article.target_languages ?? [],
+    languages,
+    article.source_language
   );
+  const initialLang = initialTargets[0] ?? "";
+  const [targetLanguages, setTargetLanguages] = useState<string[]>(initialTargets);
   const allTargets = useMemo(
-    () => languages.filter((l) => l.code !== sourceLanguage),
+    () =>
+      languages.filter(
+        (language) => languageKey(language.code) !== languageKey(sourceLanguage)
+      ),
     [languages, sourceLanguage]
   );
-  const targets = useMemo(() => {
-    const allowed = new Set(targetLanguages);
-    const scoped = allTargets.filter((l) => allowed.has(l.code));
-    return scoped.length > 0 ? scoped : allTargets;
-  }, [allTargets, targetLanguages]);
-  const [targetLang, setTargetLang] = useState(
-    () =>
-      (article.target_languages ?? [])[0] ??
-      languages.find((l) => l.code !== article.source_language)?.code ??
-      "ms"
-  );
+  const [targetLang, setTargetLang] = useState(initialLang);
   const commentLanguages = useMemo(() => {
-    const codes = new Set([sourceLanguage, targetLang, ...targetLanguages]);
-    const scoped = languages.filter((language) => codes.has(language.code));
-    return scoped.length > 0 ? scoped : languages;
-  }, [languages, sourceLanguage, targetLang, targetLanguages]);
-  const [selected, setSelected] = useState<string[]>(() =>
-    (article.target_languages?.length
-      ? article.target_languages
-      : []
-    ).slice(0, 1)
-  );
-  const [draft, setDraft] = useState<SourceContentFields>(() => {
-    const initialLang =
-      (article.target_languages ?? [])[0] ??
-      languages.find((l) => l.code !== article.source_language)?.code ??
-      "ms";
-    return fieldsFromTranslation(
-      article.translations.find((tr) => tr.language_code === initialLang)
+    const codes = new Set(
+      [sourceLanguage, ...targetLanguages].map((code) => languageKey(code))
     );
-  });
+    const scoped = languages.filter((language) =>
+      codes.has(languageKey(language.code))
+    );
+    return scoped.length > 0 ? scoped : languages;
+  }, [languages, sourceLanguage, targetLanguages]);
+  const [draft, setDraft] = useState<SourceContentFields>(() =>
+    fieldsFromTranslation(findTranslation(article.translations, initialLang))
+  );
   const [bodyEpoch, setBodyEpoch] = useState(0);
   const [versions, setVersions] = useState<ContentTranslationVersion[]>([]);
   const [error, setError] = useState("");
@@ -223,11 +238,12 @@ export function ArticleEditor({
     );
   }
 
-  const sourceLang = languages.find((l) => l.code === sourceLanguage);
-  const targetMeta = languages.find((l) => l.code === targetLang);
-  const targetTranslation = article.translations.find(
-    (tr) => tr.language_code === targetLang
-  );
+  const sourceLang = findLanguage(languages, sourceLanguage);
+  const editingCode =
+    targetLanguages.find((code) => languageKey(code) === languageKey(targetLang)) ??
+    "";
+  const targetMeta = findLanguage(languages, editingCode);
+  const targetTranslation = findTranslation(article.translations, editingCode);
   const langStatus: TranslationStatus =
     targetTranslation?.status ?? "MISSING";
   const savedFields = fieldsFromTranslation(targetTranslation);
@@ -242,14 +258,23 @@ export function ArticleEditor({
 
   const statuses = useMemo(
     () =>
-      targets.map((l) => ({
-        code: l.code,
+      allTargets.map((language) => ({
+        code: language.code,
         status:
-          article.translations.find((t) => t.language_code === l.code)
-            ?.status ?? ("MISSING" as TranslationStatus),
+          findTranslation(article.translations, language.code)?.status ??
+          ("MISSING" as TranslationStatus),
       })),
-    [targets, article.translations]
+    [allTargets, article.translations]
   );
+
+  function onTargetsChange(codes: string[]) {
+    const resolved = resolveTargets(codes, languages, sourceLanguage);
+    setTargetLanguages(resolved);
+    setTargetLang((current) => {
+      const match = resolved.find((code) => languageKey(code) === languageKey(current));
+      return match ?? resolved[0] ?? "";
+    });
+  }
 
   useEffect(() => {
     setStatus(article.status);
@@ -257,33 +282,31 @@ export function ArticleEditor({
     setScheduledPublishAt(toLocalInput(article.scheduled_publish_at));
     setSource(article.source_content);
     setSourceLanguage(article.source_language);
-    setTargetLanguages(article.target_languages ?? []);
-    if (
-      article.target_languages?.length &&
-      !article.target_languages.includes(targetLang)
-    ) {
-      setTargetLang(article.target_languages[0]);
-    }
-  }, [article]);
+    const resolved = resolveTargets(
+      article.target_languages ?? [],
+      languages,
+      article.source_language
+    );
+    setTargetLanguages(resolved);
+    setTargetLang((current) => {
+      const match = resolved.find((code) => languageKey(code) === languageKey(current));
+      if (match) return match;
+      return resolved[0] ?? "";
+    });
+  }, [article, languages]);
 
   useEffect(() => {
     setTargetLanguages((prev) => {
-      const next = prev.filter((code) => code !== sourceLanguage);
-      return next.length === prev.length ? prev : next;
-    });
-    setSelected((prev) => {
-      const next = prev.filter((code) => code !== sourceLanguage);
+      const next = prev.filter((code) => languageKey(code) !== languageKey(sourceLanguage));
       return next.length === prev.length ? prev : next;
     });
     setTargetLang((current) => {
-      if (current !== sourceLanguage) return current;
-      return (
-        allTargets.find((l) => l.code !== sourceLanguage)?.code ?? current
-      );
+      if (languageKey(current) !== languageKey(sourceLanguage)) return current;
+      return allTargets[0]?.code ?? "";
     });
   }, [sourceLanguage, allTargets]);
 
-  const translationToken = `${targetLang}:${targetTranslation?.id ?? ""}:${targetTranslation?.updated_at ?? ""}`;
+  const translationToken = `${editingCode}:${targetTranslation?.id ?? ""}:${targetTranslation?.updated_at ?? ""}`;
   const translationTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -330,12 +353,12 @@ export function ArticleEditor({
   }
 
   function runBatchTranslate() {
-    if (selected.length === 0) return;
+    if (targetLanguages.length === 0) return;
     setError("");
     setIsTranslating(true);
     setTranslatingLabel(
-      selected
-        .map((c) => languages.find((l) => l.code === c)?.name ?? c)
+      targetLanguages
+        .map((code) => findLanguage(languages, code)?.name ?? code)
         .join(", ")
     );
     // Prefer TipTap's live HTML — React state can be emptied by editor sync bugs.
@@ -364,17 +387,19 @@ export function ArticleEditor({
       try {
         const results = await autoTranslateArticleLanguages({
           contentId: article.id,
-          targetLanguages: selected.filter((code) => code !== sourceLanguage),
+          targetLanguages: targetLanguages.filter(
+            (code) => languageKey(code) !== languageKey(sourceLanguage)
+          ),
           applicationId,
           sourceLanguage,
           sourceFields,
         });
-        const forCurrent = results.find((r) => r.language_code === targetLang);
+        const forCurrent = results.find(
+          (result) => languageKey(result.language_code) === languageKey(targetLang)
+        );
         if (forCurrent) {
           setDraft(fieldsFromTranslation(forCurrent));
           setBodyEpoch((n) => n + 1);
-        } else if (selected[0] && !selected.includes(targetLang)) {
-          setTargetLang(selected[0]);
         }
         router.refresh();
       } catch (err) {
@@ -473,24 +498,6 @@ export function ArticleEditor({
             />
           </Field>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
-          <LanguageMultiSelect
-            label="Target languages"
-            options={allTargets}
-            selected={targetLanguages}
-            onSelectedChange={(codes) => {
-              setTargetLanguages(codes);
-              setSelected((prev) => prev.filter((c) => codes.includes(c)));
-              if (codes.length && !codes.includes(targetLang)) {
-                setTargetLang(codes[0]);
-              }
-            }}
-            showEditingSwitcher={false}
-          />
-          {/* <p className="mt-2 text-xs text-slate-500">
-            Coverage and translate options are limited to these languages.
-          </p> */}
-        </div>
         <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
           <span>
             Published:{" "}
@@ -525,43 +532,40 @@ export function ArticleEditor({
       </Card>
 
       <Card className="space-y-3 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <LanguageMultiSelect
-              sourceLabel={sourceLang?.name ?? sourceLanguage}
-              options={targets}
-              statuses={statuses}
-              selected={selected}
-              activeCode={targetLang}
-              onSelectedChange={setSelected}
-              onActiveChange={setTargetLang}
-              translateAction={
-                <BatchTranslateButton
-                  count={selected.length}
-                  disabled={pending}
-                  loading={isTranslating}
-                  onClick={runBatchTranslate}
-                />
-              }
-              editingAction={
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={pending || historyLoading || isTranslating}
-                  onClick={() =>
-                    showHistory ? setShowHistory(false) : loadHistory()
-                  }
-                >
-                  {showHistory
-                    ? "Close history"
-                    : historyLoading
-                      ? "Loading…"
-                      : "History"}
-                </Button>
-              }
+        <LanguageMultiSelect
+          label="Languages"
+          sourceLabel={sourceLang?.name ?? sourceLanguage}
+          options={allTargets}
+          statuses={statuses}
+          selected={targetLanguages}
+          activeCode={editingCode || undefined}
+          onSelectedChange={onTargetsChange}
+          onActiveChange={setTargetLang}
+          translateAction={
+            <BatchTranslateButton
+              count={targetLanguages.length}
+              disabled={pending}
+              loading={isTranslating}
+              onClick={runBatchTranslate}
             />
-          </div>
-        </div>
+          }
+          editingAction={
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={pending || historyLoading || isTranslating || !editingCode}
+              onClick={() =>
+                showHistory ? setShowHistory(false) : loadHistory()
+              }
+            >
+              {showHistory
+                ? "Close history"
+                : historyLoading
+                  ? "Loading…"
+                  : "History"}
+            </Button>
+          }
+        />
         {isTranslating ? (
           <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
             <span
@@ -702,14 +706,22 @@ export function ArticleEditor({
                     Editing
                   </span>
                   <span className="mt-0.5 block font-semibold text-slate-900">
-                    {targetMeta?.name ?? targetLang}
+                    {targetMeta?.name ?? "Choose a language"}
                   </span>
                 </span>
               </button>
-              <Badge tone={statusTone(langStatus)}>{langStatus}</Badge>
+              {editingCode ? (
+                <Badge tone={statusTone(langStatus)}>{langStatus}</Badge>
+              ) : null}
             </div>
           </div>
           <div className="space-y-3 p-4" hidden={!editingOpen}>
+            {!editingCode ? (
+              <p className="text-sm text-[var(--hub-muted)]">
+                Choose a language above to edit or auto-translate it.
+              </p>
+            ) : (
+            <>
             <Field label="Title" action={copyField("target-title", draft.title, "Title")}>
               <input
                 className={inputClass}
@@ -719,7 +731,7 @@ export function ArticleEditor({
                   setDraft((d) => ({ ...d, title: e.target.value }))
                 }
                 spellCheck={false}
-                placeholder={`Title in ${targetMeta?.name ?? targetLang}`}
+                placeholder={`Title in ${targetMeta?.name ?? editingCode}`}
               />
             </Field>
             <Field
@@ -735,16 +747,16 @@ export function ArticleEditor({
                   setDraft((d) => ({ ...d, summary: e.target.value }))
                 }
                 spellCheck={false}
-                placeholder={`Description in ${targetMeta?.name ?? targetLang}`}
+                placeholder={`Description in ${targetMeta?.name ?? editingCode}`}
               />
             </Field>
             <Field label="Body" action={copyField("target-body", draft.body, "Body")}>
               <HtmlEditor
-                revision={`target-${article.id}-${targetLang}-${bodyEpoch}`}
+                revision={`target-${article.id}-${editingCode}-${bodyEpoch}`}
                 value={draft.body}
                 disabled={isTranslating}
                 onChange={(html) => setDraft((d) => ({ ...d, body: html }))}
-                placeholder={`Body in ${targetMeta?.name ?? targetLang}`}
+                placeholder={`Body in ${targetMeta?.name ?? editingCode}`}
               />
             </Field>
             <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -759,7 +771,7 @@ export function ArticleEditor({
                       try {
                         await saveManualContentTranslation({
                           contentId: article.id,
-                          languageCode: targetLang,
+                          languageCode: editingCode,
                           fields: {
                             ...draft,
                             seo_title: draft.seo_title || draft.title,
@@ -808,7 +820,7 @@ export function ArticleEditor({
                       if (!contentTranslationId || changed) {
                         const saved = await saveManualContentTranslation({
                           contentId: article.id,
-                          languageCode: targetLang,
+                          languageCode: editingCode,
                           fields: {
                             ...draft,
                             seo_title: draft.seo_title || draft.title,
@@ -847,6 +859,8 @@ export function ArticleEditor({
                 </span>
               ) : null}
             </div>
+            </>
+            )}
           </div>
         </Card>
       </div>
@@ -856,7 +870,7 @@ export function ArticleEditor({
         contentId={article.id}
         comments={comments}
         languages={commentLanguages}
-        activeLanguage={targetLang}
+        activeLanguage={editingCode || sourceLanguage}
         actor={actor}
         loadError={commentsError}
       />
