@@ -48,6 +48,10 @@ html {
   background-color: var(--hub-bg);
 }
 
+body:has(#mobile-nav[open]) {
+  overflow: hidden;
+}
+
 body {
   min-height: 100%;
   overflow-x: clip;

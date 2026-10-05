@@ -2,8 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
 import { SidebarNav } from "@/components/sidebar-nav";
 
 type NavItem = { href: string; label: string; hint?: string };
@@ -100,6 +98,11 @@ function SidebarBody({
   );
 }
 
+function closeMobileNav() {
+  const nav = document.getElementById("mobile-nav");
+  if (nav instanceof HTMLDetailsElement) nav.open = false;
+}
+
 export function AppFrame({
   nav,
   appLinks,
@@ -113,27 +116,6 @@ export function AppFrame({
   isSuperadmin: boolean;
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = previous;
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
   return (
     <div className="flex min-h-dvh text-[var(--hub-fg)]">
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col bg-[var(--hub-sidebar)] text-[var(--hub-sidebar-fg)] shadow-[4px_0_24px_rgba(28,20,8,0.12)] lg:flex">
@@ -145,50 +127,37 @@ export function AppFrame({
         />
       </aside>
 
-      {open ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/40"
-            aria-label="Close menu"
-            onClick={() => setOpen(false)}
-          />
-          <aside
-            id="mobile-nav"
-            className="relative flex h-dvh w-[min(18rem,88vw)] flex-col bg-[var(--hub-sidebar)] text-[var(--hub-sidebar-fg)] shadow-[8px_0_32px_rgba(28,20,8,0.2)]"
-          >
-            <button
-              type="button"
-              className="absolute top-[max(0.75rem,env(safe-area-inset-top))] right-3 z-10 flex h-11 w-11 items-center justify-center rounded-lg text-[var(--hub-sidebar-fg)] hover:bg-[var(--hub-sidebar-hover)]"
-              aria-label="Close menu"
-              onClick={() => setOpen(false)}
-            >
-              <CloseIcon />
-            </button>
-            <SidebarBody
-              nav={nav}
-              appLinks={appLinks}
-              actor={actor}
-              isSuperadmin={isSuperadmin}
-              onNavigate={() => setOpen(false)}
-            />
-          </aside>
-        </div>
-      ) : null}
-
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 border-b border-black/10 bg-[var(--hub-sidebar)] text-[var(--hub-sidebar-fg)] pt-[env(safe-area-inset-top)] lg:hidden">
+        <header className="sticky top-0 z-50 border-b border-black/10 bg-[var(--hub-sidebar)] pt-[env(safe-area-inset-top)] text-[var(--hub-sidebar-fg)] lg:hidden">
           <div className="flex items-center gap-2 px-2 py-2">
-            <button
-              type="button"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-[var(--hub-sidebar-hover)]"
-              aria-expanded={open}
-              aria-controls="mobile-nav"
-              aria-label="Open menu"
-              onClick={() => setOpen(true)}
-            >
-              <MenuIcon />
-            </button>
+            <details id="mobile-nav" className="group">
+              <summary className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-lg [&::-webkit-details-marker]:hidden hover:bg-[var(--hub-sidebar-hover)]">
+                <span className="group-open:hidden">
+                  <MenuIcon />
+                </span>
+                <span className="hidden group-open:inline">
+                  <CloseIcon />
+                </span>
+                <span className="sr-only">Menu</span>
+              </summary>
+              <div className="fixed inset-x-0 bottom-0 z-40 top-[calc(env(safe-area-inset-top)+4.25rem)]">
+                <button
+                  type="button"
+                  className="absolute inset-0 bg-black/40"
+                  aria-label="Close menu"
+                  onClick={closeMobileNav}
+                />
+                <aside className="relative flex h-full w-[min(18rem,88vw)] flex-col overflow-hidden bg-[var(--hub-sidebar)] text-[var(--hub-sidebar-fg)] shadow-[8px_0_32px_rgba(28,20,8,0.2)]">
+                  <SidebarBody
+                    nav={nav}
+                    appLinks={appLinks}
+                    actor={actor}
+                    isSuperadmin={isSuperadmin}
+                    onNavigate={closeMobileNav}
+                  />
+                </aside>
+              </div>
+            </details>
             <Link href="/" className="flex min-w-0 items-center gap-2">
               <Image
                 src="/brand/mr-diy-logo.png"
