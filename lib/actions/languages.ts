@@ -1,12 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireSuperadmin, requireUser } from "@/lib/auth/access";
 import { getDb } from "@/lib/db/client";
 import type { EntityStatus, Language } from "@/lib/types";
 
 export async function listLanguages(opts?: {
   includeInactive?: boolean;
 }): Promise<Language[]> {
+  await requireUser();
   const db = await getDb();
   let query = db.from("languages").select("*").order("name", { ascending: true });
   if (!opts?.includeInactive) {
@@ -21,6 +23,7 @@ export async function createLanguage(input: {
   code: string;
   name: string;
 }): Promise<Language> {
+  await requireSuperadmin();
   const db = await getDb();
   const { data, error } = await db
     .from("languages")
@@ -41,6 +44,7 @@ export async function updateLanguage(
   id: string,
   input: { code: string; name: string; status: EntityStatus }
 ): Promise<Language> {
+  await requireSuperadmin();
   const db = await getDb();
   const { data, error } = await db
     .from("languages")
@@ -62,6 +66,7 @@ export async function setLanguageStatus(
   id: string,
   status: EntityStatus
 ): Promise<void> {
+  await requireSuperadmin();
   const db = await getDb();
   const { error } = await db.from("languages").update({ status }).eq("id", id);
   if (error) throw new Error(error.message);

@@ -205,7 +205,7 @@ export function ArticleComments({
               placeholder={
                 actor
                   ? `Comment on ${languageName(languageCode)} as ${actor.name}`
-                  : "Open this page from Joget to comment"
+                  : "Sign in to comment"
               }
               onChange={(event) => setBody(event.target.value)}
             />

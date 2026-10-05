@@ -14,6 +14,14 @@ import type {
   TranslationStatus,
 } from "@/lib/types";
 import { approvalStamp, versionAuthorFields } from "@/lib/auth/actor";
+import {
+  allowAppCapability,
+  capabilityForReleaseStatus,
+  requireAppCapability,
+  requireContentAccess,
+  requireContentTranslationAccess,
+  requireContentVersionAccess,
+} from "@/lib/auth/access";
 import { emptySourceContent } from "@/lib/types";
 import { getTranslationService } from "@/lib/translation/service";
 import { normalizeSlug } from "@/lib/slug";
@@ -80,6 +88,7 @@ async function clearTargetApprovals(contentId: string, sourceLanguage: string) {
       status: "MANUALLY_MODIFIED",
       approved_by_username: null,
       approved_by_name: null,
+      approved_by_user_id: null,
       approved_at: null,
     })
     .in("id", ids);
@@ -168,6 +177,7 @@ export async function listArticles(input: {
   sourceLanguages?: string[];
   due?: PublishDueKind;
 }): Promise<Paginated<ArticleListItem>> {
+  await requireAppCapability(input.applicationId, "view");
   const db = await getDb();
   const page = Math.max(1, input.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, input.pageSize ?? 50));
@@ -261,6 +271,11 @@ export async function getArticle(id: string): Promise<
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
+  const allowed = await allowAppCapability(
+    (data as Content).application_id,
+    "view"
+  );
+  if (!allowed) return null;
   return {
     ...mapContentRow(data as Content),
     translations: (data.translations ?? []) as ContentTranslation[],
@@ -279,8 +294,12 @@ export async function createArticle(input: {
   scheduled_publish_at?: string | null;
   target_languages?: string[];
 }): Promise<Content> {
-  const db = await getDb();
   const status = input.status ?? "DRAFT";
+  await requireAppCapability(
+    input.application_id,
+    capabilityForReleaseStatus(status)
+  );
+  const db = await getDb();
   const source_content = {
     ...emptySourceContent(),
     ...input.source_content,
@@ -335,6 +354,7 @@ export async function updateArticle(
     target_languages?: string[];
   }
 ): Promise<Content> {
+  await requireContentAccess(id, capabilityForReleaseStatus(input.status));
   const db = await getDb();
   const { data: current, error: currentError } = await db
     .from("content")
@@ -422,6 +442,7 @@ export async function setArticleStatus(
   applicationId: string,
   status: ContentLifecycleStatus
 ): Promise<void> {
+  await requireContentAccess(id, capabilityForReleaseStatus(status));
   const db = await getDb();
   const { data: current, error: currentError } = await db
     .from("content")
@@ -456,6 +477,7 @@ export async function deleteArticles(input: {
   contentIds: string[];
   applicationId: string;
 }): Promise<{ deleted: number }> {
+  await requireAppCapability(input.applicationId, "edit");
   const ids = [...new Set(input.contentIds.filter(Boolean))];
   if (ids.length === 0) return { deleted: 0 };
 
@@ -494,7 +516,6 @@ export async function upsertContentTranslation(input: {
   source_type: SourceType;
   status?: TranslationStatus;
 }): Promise<ContentTranslation> {
-  const db = await getDb();
   const status: TranslationStatus =
     input.status ??
     (input.source_type === "MANUAL"
@@ -502,6 +523,11 @@ export async function upsertContentTranslation(input: {
       : input.source_type === "SYSTEM"
         ? "SYSTEM_GENERATED"
         : "MANUALLY_MODIFIED");
+  const grant = await requireContentAccess(
+    input.content_id,
+    status === "APPROVED" ? "approve" : "edit"
+  );
+  const db = await getDb();
 
   const { data: existing, error: findError } = await db
     .from("content_translations")
@@ -520,6 +546,7 @@ export async function upsertContentTranslation(input: {
     status,
     approved_by_username: null,
     approved_by_name: null,
+    approved_by_user_id: null,
     approved_at: null,
   };
 
@@ -565,6 +592,7 @@ export async function upsertContentTranslation(input: {
       version_number: versionNumber,
       translated_content: input.fields,
       source_type: input.source_type,
+      author_user_id: grant.user.id,
       ...actorFields,
     });
   if (versionError) throw new Error(versionError.message);
@@ -575,6 +603,7 @@ export async function upsertContentTranslation(input: {
 export async function listContentTranslationVersions(
   contentTranslationId: string
 ): Promise<ContentTranslationVersion[]> {
+  await requireContentTranslationAccess(contentTranslationId, "view");
   const db = await getDb();
   const { data, error } = await db
     .from("content_translation_versions")
@@ -593,6 +622,7 @@ export async function deleteContentTranslationVersion(input: {
   applicationId: string;
   contentId: string;
 }): Promise<void> {
+  await requireContentVersionAccess(input.versionId, "edit");
   const db = await getDb();
   const { error } = await db
     .from("content_translation_versions")
@@ -611,8 +641,12 @@ export async function setContentTranslationStatus(input: {
   applicationId: string;
   contentId: string;
 }): Promise<void> {
+  const grant = await requireContentTranslationAccess(
+    input.contentTranslationId,
+    input.status === "APPROVED" ? "approve" : "edit"
+  );
   const db = await getDb();
-  const approval = await approvalStamp(input.status);
+  const approval = await approvalStamp(input.status, grant.user.id);
   const { error } = await db
     .from("content_translations")
     .update({ status: input.status, ...approval })
@@ -639,6 +673,7 @@ export async function autoTranslateArticle(input: {
   /** Prefer live source-language selection over DB when provided. */
   sourceLanguage?: string;
 }): Promise<ContentTranslation> {
+  await requireContentAccess(input.contentId, "edit");
   const article = await getArticle(input.contentId);
   if (!article) throw new Error("Article not found");
 
@@ -734,6 +769,7 @@ export async function autoTranslateArticleLanguages(input: {
   sourceFields?: SourceContentFields;
   sourceLanguage?: string;
 }): Promise<ContentTranslation[]> {
+  await requireContentAccess(input.contentId, "edit");
   const results: ContentTranslation[] = [];
   for (const targetLanguage of input.targetLanguages) {
     results.push(
@@ -755,6 +791,7 @@ export async function saveManualContentTranslation(input: {
   fields: SourceContentFields;
   applicationId: string;
 }): Promise<ContentTranslation> {
+  await requireContentAccess(input.contentId, "edit");
   const db = await getDb();
   const { data: article, error: articleError } = await db
     .from("content")
@@ -819,6 +856,7 @@ export async function exportArticlesFile(input: {
   applicationId: string;
   contentIds: string[];
 }): Promise<{ filename: string; base64: string; notice: string }> {
+  await requireAppCapability(input.applicationId, "view");
   const ids = [...new Set(input.contentIds.map((id) => id.trim()).filter(Boolean))];
   if (ids.length === 0) throw new Error("Select at least one article.");
   if (ids.length > 200) throw new Error("Export up to 200 articles at a time.");
@@ -916,6 +954,7 @@ export async function exportArticlesFile(input: {
 }
 
 export async function getPressStats(applicationId: string) {
+  await requireAppCapability(applicationId, "view");
   const db = await getDb();
   const statuses: ContentLifecycleStatus[] = [
     "DRAFT",

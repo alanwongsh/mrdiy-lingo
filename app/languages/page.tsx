@@ -1,9 +1,21 @@
 import { LanguagesManager } from "@/components/languages-manager";
 import { listLanguages } from "@/lib/actions/languages";
+import { getCurrentUser } from "@/lib/auth/access";
 import { DbErrorPanel, formatDbError } from "@/lib/db/errors";
 import { PageHeader } from "@/components/ui";
 
 export default async function LanguagesPage() {
+  const user = await getCurrentUser().catch(() => null);
+  if (!user?.is_superadmin) {
+    return (
+      <div>
+        <PageHeader
+          title="Languages"
+          description="Language setup is limited to a Lingo superadmin."
+        />
+      </div>
+    );
+  }
   let languages: Awaited<ReturnType<typeof listLanguages>> = [];
   let dbError = "";
 

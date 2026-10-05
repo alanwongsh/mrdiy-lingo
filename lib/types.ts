@@ -34,8 +34,41 @@ export type Application = {
   description: string;
   status: EntityStatus;
   model_type: ApplicationModelType;
+  owner_user_id: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type HubUser = {
+  id: string;
+  username: string | null;
+  employee_id: string | null;
+  email: string | null;
+  display_name: string;
+  is_superadmin: boolean;
+  last_seen_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AppAccess = {
+  is_owner: boolean;
+  can_edit: boolean;
+  can_approve: boolean;
+  can_manage: boolean;
+};
+
+export type VisibleApplication = Application & {
+  access: AppAccess;
+};
+
+export type ApplicationMemberView = {
+  membershipId: string;
+  userId: string;
+  displayName: string;
+  detail: string;
+  canEdit: boolean;
+  canApprove: boolean;
 };
 
 export type Namespace = {
@@ -67,6 +100,7 @@ export type Translation = {
   status: TranslationStatus;
   approved_by_username: string | null;
   approved_by_name: string | null;
+  approved_by_user_id: string | null;
   approved_at: string | null;
   created_at: string;
   updated_at: string;
@@ -80,6 +114,7 @@ export type TranslationVersion = {
   source_type: SourceType;
   author: string | null;
   author_username: string | null;
+  author_user_id: string | null;
   modifier: string | null;
   created_by: string | null;
   modified_by: string | null;
@@ -122,6 +157,7 @@ export type ContentTranslation = {
   status: TranslationStatus;
   approved_by_username: string | null;
   approved_by_name: string | null;
+  approved_by_user_id: string | null;
   approved_at: string | null;
   created_at: string;
   updated_at: string;
@@ -134,6 +170,7 @@ export type ArticleComment = {
   body: string;
   author_username: string;
   author_name: string;
+  author_user_id: string | null;
   created_at: string;
 };
 
@@ -145,6 +182,7 @@ export type ContentTranslationVersion = {
   source_type: SourceType;
   author: string | null;
   author_username: string | null;
+  author_user_id: string | null;
   modifier: string | null;
   created_by: string | null;
   modified_by: string | null;

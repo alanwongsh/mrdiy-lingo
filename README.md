@@ -12,7 +12,7 @@ Centralized multilingual content hub for MR.DIY internal apps (Next.js App Route
 - TipTap 3 for article HTML body
 - PapaParse / SheetJS for CSV/XLSX import
 
-No authentication in V1.
+Sign-in comes from Joget (an embed token). Lingo stores a user row for access and traces. It does not own passwords.
 
 ## Features (current)
 
@@ -44,6 +44,8 @@ NEXT_PRIVATE_SUPABASE_URL=...
 NEXT_PRIVATE_SUPABASE_PUBLISHABLE_KEY=...
 TRANSLATION_PROVIDER=mymemory   # or mock
 JOGET_EMBED_SECRET=...          # shared with Joget; signs the iframe user
+# Comma-separated Joget usernames, emails, or employee IDs that are Lingo superadmins.
+# LINGO_SUPERADMINS=ahmad,lee@example.com
 # Optional: origins allowed to iframe this app (space-separated). Default *
 # JOGET_FRAME_ANCESTORS=https://joget.example.com
 # Local stand-in for Joget. Never enable in production.
@@ -61,6 +63,7 @@ Apply SQL in order (Supabase SQL Editor or `/setup`):
 5. `supabase/migrations/005_article_comments.sql` — article comments, approver name, version username
 6. `supabase/migrations/006_uuidv7.sql` — time-ordered UUID v7 defaults for new rows
 7. `supabase/migrations/007_rewrite_uuidv7.sql` — rewrite existing v4 primary keys (and foreign keys) to v7. Old URLs stop working.
+8. `supabase/migrations/008_access_control.sql` — users, application owners, invited members
 
 ```bash
 npm run dev
@@ -72,13 +75,15 @@ Joget's session cookie does not reach Lingo. Joget mints a short-lived HMAC toke
 
 `https://<lingo-host>/embed?token=<token>&next=/applications/<id>`
 
-Lingo checks the signature, stores an httpOnly cookie, and redirects to `next`. Comments, history, and Approve use that name. Both refuse to run when nobody is signed in.
+Lingo checks the signature, stores the token in the httpOnly cookie `lingo_actor`, and redirects to `next`. Later requests only check that cookie. If it is missing or expired, Lingo shows `/sign-in`. People who are not coming from Joget sign in there with email and password. A future SSO login does the same job as Joget: validate the SSO token, then set `lingo_actor`. Comments, history, and Approve use that signed-in name.
 
 The signed string is compact JSON with no extra spaces, UTF-8, then base64url. The signature is HMAC-SHA256 of that base64url text. The token is `payload.signature`, both base64url and unpadded. `exp` is a unix timestamp at most 12 hours ahead (use 5 minutes from Joget).
 
 ```json
-{"u":"ahmad","n":"Ahmad Lee","e":"ahmad@example.com","exp":1710000000}
+{"u":"ahmad","n":"Ahmad Lee","e":"ahmad@example.com","eid":"E10293","exp":1710000000}
 ```
+
+`eid` is optional. When Joget or a later SSO login sends an employee ID, Lingo stores it on the user row. Until then the Joget username is the identity used for invites and the superadmin list.
 
 Paste this into a Joget Bean Shell userview menu. Joget replaces `#appVariable.lingoEmbedSecret#` before the script runs. Set that app variable to the same secret, and set `JOGET_FRAME_ANCESTORS` to the Joget origin. The iframe host must be HTTPS so the cookie is accepted inside a cross-site frame.
 
@@ -117,6 +122,16 @@ Without Joget, set `EMBED_ALLOW_DEV=true` and use the sidebar form, or mint a 5-
 ```bash
 node scripts/mint-embed-token.mjs ahmad "Ahmad Lee"
 ```
+
+## Access
+
+Joget (later SSO) supplies identity. Lingo copies username, name, email, and optional employee ID (`eid`) onto `hub_users`.
+
+- Any signed-in person can create an application and becomes its owner.
+- The owner invites people by email or employee ID and can grant edit and approve.
+- A person sees only applications they own or were invited to.
+- `LINGO_SUPERADMINS` marks platform superadmins. They use Languages and Setup, and they can open every application without being the owner or an invitee.
+- Existing applications have no owner until a superadmin sets one. Until then only a superadmin can see them.
 
 ## Sample imports
 

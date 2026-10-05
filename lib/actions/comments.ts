@@ -2,12 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { requireActor } from "@/lib/auth/actor";
+import { requireContentAccess } from "@/lib/auth/access";
 import { getDb } from "@/lib/db/client";
 import type { ArticleComment } from "@/lib/types";
 
 export async function listArticleComments(
   contentId: string
 ): Promise<ArticleComment[]> {
+  await requireContentAccess(contentId, "view");
   const db = await getDb();
   const { data, error } = await db
     .from("article_comments")
@@ -24,6 +26,7 @@ export async function addArticleComment(input: {
   body: string;
   languageCode?: string | null;
 }): Promise<void> {
+  const grant = await requireContentAccess(input.contentId, "view");
   const actor = await requireActor();
   const body = input.body.trim();
   if (!body) throw new Error("Write a comment first.");
@@ -51,6 +54,7 @@ export async function addArticleComment(input: {
     body,
     author_username: actor.username,
     author_name: actor.name,
+    author_user_id: grant.user.id,
   });
   if (error) throw new Error(error.message);
 

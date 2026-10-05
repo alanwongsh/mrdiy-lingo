@@ -10,7 +10,10 @@ export default async function ImportPage() {
   let dbError = "";
 
   try {
-    applications = await listApplications({ includeInactive: true });
+    applications = await listApplications({
+      includeInactive: true,
+      editableOnly: true,
+    });
     languages = await listLanguages();
   } catch (e) {
     dbError = formatDbError(e);

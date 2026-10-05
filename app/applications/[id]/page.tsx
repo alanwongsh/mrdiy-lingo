@@ -1,15 +1,16 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppSubnav } from "@/components/app-subnav";
 import {
   Badge,
-  Card,
   PageHeader,
   StatCard,
 } from "@/components/ui";
+import { listApplicationPeople } from "@/lib/actions/applications";
 import { getApplication } from "@/lib/actions/applications";
+import { getCurrentUser } from "@/lib/auth/access";
 import { getProductStats } from "@/lib/actions/product";
 import { getPressStats } from "@/lib/actions/press";
+import { ApplicationAccessPanel } from "@/components/application-access-panel";
 
 export default async function ApplicationOverviewPage({
   params,
@@ -19,11 +20,12 @@ export default async function ApplicationOverviewPage({
   const { id } = await params;
   const app = await getApplication(id);
   if (!app) notFound();
+  const people = app.access.can_manage ? await listApplicationPeople(id) : null;
+  const user = people ? await getCurrentUser() : null;
 
   const isString = app.model_type === "STRING";
   const productStats = isString ? await getProductStats(id) : null;
   const pressStats = !isString ? await getPressStats(id) : null;
-  const base = `/applications/${id}`;
 
   return (
     <div>
@@ -77,6 +79,15 @@ export default async function ApplicationOverviewPage({
           <StatCard label="Translating" value={pressStats.translating} tone="info" />
           <StatCard label="Approved" value={pressStats.approved} tone="good" />
         </div>
+      ) : null}
+
+      {people ? (
+        <ApplicationAccessPanel
+          applicationId={id}
+          owner={people.owner}
+          members={people.members}
+          isSuperadmin={!!user?.is_superadmin}
+        />
       ) : null}
     </div>
   );

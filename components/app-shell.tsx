@@ -1,32 +1,58 @@
 import Image from "next/image";
 import Link from "next/link";
 import { listApplications } from "@/lib/actions/applications";
+import { canOpenSetup, getCurrentUser } from "@/lib/auth/access";
 import { getActor } from "@/lib/auth/actor";
+import { SignInScreen } from "@/components/sign-in-screen";
 import { SidebarNav } from "@/components/sidebar-nav";
 
-const nav = [
-  { href: "/", label: "Dashboard" },
-  { href: "/applications", label: "Applications" },
-  { href: "/languages", label: "Languages" },
-  { href: "/import", label: "Import" },
-  { href: "/setup", label: "Setup" },
-];
-
 export async function AppShell({ children }: { children: React.ReactNode }) {
-  let apps: Awaited<ReturnType<typeof listApplications>> = [];
-  try {
-    apps = await listApplications({ includeInactive: true });
-  } catch {
-    apps = [];
-  }
   const actor = await getActor();
-  const allowDevSignIn = process.env.EMBED_ALLOW_DEV === "true";
+  let user: Awaited<ReturnType<typeof getCurrentUser>> = null;
+  let setupOpen = true;
+  try {
+    setupOpen = await canOpenSetup();
+  } catch {
+    setupOpen = true;
+  }
+  if (actor) {
+    try {
+      user = await getCurrentUser();
+    } catch {
+      user = null;
+    }
+  }
+
+  let apps: Awaited<ReturnType<typeof listApplications>> = [];
+  if (user) {
+    try {
+      apps = await listApplications({ includeInactive: true });
+    } catch {
+      apps = [];
+    }
+  }
+
+  const nav = [
+    { href: "/", label: "Dashboard" },
+    { href: "/applications", label: "Applications" },
+    { href: "/import", label: "Import" },
+  ];
+  if (user?.is_superadmin) {
+    nav.push({ href: "/languages", label: "Languages" });
+  }
+  if (setupOpen) {
+    nav.push({ href: "/setup", label: "Setup" });
+  }
 
   const appLinks = apps.map((app) => ({
     href: `/applications/${app.id}`,
     label: app.name,
     hint: app.model_type === "STRING" ? "Strings" : "Content",
   }));
+
+  if (!actor) {
+    return <SignInScreen nextPath="/" />;
+  }
 
   return (
     <div className="flex min-h-dvh text-[var(--hub-fg)]">
@@ -72,40 +98,16 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           ) : null}
         </nav>
         <div className="border-t border-white/10 px-4 py-4 text-[11px] text-[var(--hub-sidebar-muted)]">
-          {actor ? (
-            <div className="mb-2">
-              <div className="text-sm font-semibold text-white">{actor.name}</div>
-              <div className="mt-0.5">{actor.username}</div>
-              <Link href="/embed/sign-out" className="mt-1 inline-block text-[var(--diy-yellow)]">
-                Sign out
-              </Link>
-            </div>
-          ) : allowDevSignIn ? (
-            <form action="/embed/dev" method="post" className="mb-3 space-y-1.5">
-              <div className="text-[10px] font-semibold tracking-[0.16em] uppercase">
-                Dev sign-in
-              </div>
-              <input
-                name="username"
-                required
-                placeholder="username"
-                className="h-8 w-full rounded-md border border-white/15 bg-white/10 px-2 text-xs text-white placeholder:text-slate-400"
-              />
-              <input
-                name="name"
-                placeholder="Display name"
-                className="h-8 w-full rounded-md border border-white/15 bg-white/10 px-2 text-xs text-white placeholder:text-slate-400"
-              />
-              <button
-                type="submit"
-                className="h-8 w-full rounded-md bg-[var(--diy-yellow)] text-xs font-semibold text-slate-900"
-              >
-                Sign in
-              </button>
-            </form>
-          ) : (
-            <div className="mb-2 text-slate-300">Not signed in</div>
-          )}
+          <div className="mb-2">
+            <div className="text-sm font-semibold text-white">{actor.name}</div>
+            <div className="mt-0.5">{actor.username}</div>
+            {user?.is_superadmin ? (
+              <div className="mt-0.5 text-[var(--diy-yellow)]">Superadmin</div>
+            ) : null}
+            <Link href="/embed/sign-out" className="mt-1 inline-block text-[var(--diy-yellow)]">
+              Sign out
+            </Link>
+          </div>
           Mr DIY Lingo · V1
         </div>
       </aside>

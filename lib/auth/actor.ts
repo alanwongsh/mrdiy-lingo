@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
-import type { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import type { SourceType } from "@/lib/types";
 import { sourceTypeAuthor } from "@/lib/types";
 
@@ -11,12 +11,14 @@ export type HubActor = {
   username: string;
   name: string;
   email: string | null;
+  employeeId?: string | null;
 };
 
 type TokenPayload = {
   u: string;
   n: string;
   e?: string;
+  eid?: string;
   exp: number;
 };
 
@@ -40,6 +42,7 @@ export function signActorToken(
     u: actor.username,
     n: actor.name,
     e: actor.email ?? "",
+    eid: actor.employeeId ?? "",
     exp: Math.floor(Date.now() / 1000) + ttlSeconds,
   };
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -68,7 +71,9 @@ export function verifyActorToken(token: string): HubActor | null {
   const username = typeof parsed.u === "string" ? parsed.u.trim() : "";
   const name = typeof parsed.n === "string" ? parsed.n.trim() : "";
   const email = typeof parsed.e === "string" ? parsed.e.trim() : "";
+  const employeeId = typeof parsed.eid === "string" ? parsed.eid.trim() : "";
   if (!username || username.length > 80 || !name || name.length > 120) return null;
+  if (employeeId.length > 80) return null;
   if (!Number.isFinite(parsed.exp)) return null;
 
   const now = Math.floor(Date.now() / 1000);
@@ -79,6 +84,7 @@ export function verifyActorToken(token: string): HubActor | null {
     username,
     name,
     email: email || null,
+    employeeId: employeeId || null,
   };
 }
 
@@ -115,15 +121,20 @@ export async function getActor(): Promise<HubActor | null> {
   return verifyActorToken(token);
 }
 
-export async function approvalStamp(status: string): Promise<{
+export async function approvalStamp(
+  status: string,
+  userId?: string | null
+): Promise<{
   approved_by_username: string | null;
   approved_by_name: string | null;
+  approved_by_user_id: string | null;
   approved_at: string | null;
 }> {
   if (status !== "APPROVED") {
     return {
       approved_by_username: null,
       approved_by_name: null,
+      approved_by_user_id: null,
       approved_at: null,
     };
   }
@@ -131,6 +142,7 @@ export async function approvalStamp(status: string): Promise<{
   return {
     approved_by_username: actor.username,
     approved_by_name: actor.name,
+    approved_by_user_id: userId ?? null,
     approved_at: new Date().toISOString(),
   };
 }
@@ -138,7 +150,7 @@ export async function approvalStamp(status: string): Promise<{
 export async function requireActor(): Promise<HubActor> {
   const actor = await getActor();
   if (!actor) {
-    throw new Error("Open this page from Joget so Lingo knows who you are.");
+    throw new Error("Sign in to continue.");
   }
   return actor;
 }
@@ -158,6 +170,13 @@ export async function versionAuthorFields(sourceType: SourceType): Promise<{
     modifier: actor.name,
     author_username: actor.username,
   };
+}
+
+export function redirectToPath(path: string, requestUrl: string, status = 303) {
+  const destination = safeNextPath(path);
+  const response = NextResponse.redirect(new URL(destination, requestUrl), status);
+  response.headers.set("Location", destination);
+  return response;
 }
 
 export function safeNextPath(value: string | null): string {

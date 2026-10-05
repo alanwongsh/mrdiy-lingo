@@ -28,7 +28,19 @@ export default function EditApplicationPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    getApplication(id).then(setApp).catch((e) => setError(e.message));
+    getApplication(id)
+      .then((row) => {
+        if (!row) {
+          setError("You do not have access to this application.");
+          return;
+        }
+        if (!row.access.can_manage) {
+          setError("Only the owner or a superadmin can edit this application.");
+          return;
+        }
+        setApp(row);
+      })
+      .catch((e) => setError(e.message));
   }, [id]);
 
   if (!app && !error) {

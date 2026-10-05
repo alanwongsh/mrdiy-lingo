@@ -13,12 +13,21 @@ import type {
   TranslationVersion,
 } from "@/lib/types";
 import { approvalStamp, versionAuthorFields } from "@/lib/auth/actor";
+import {
+  allowAppCapability,
+  requireAppCapability,
+  requireNamespaceAccess,
+  requireTranslationAccess,
+  requireTranslationKeyAccess,
+  requireTranslationVersionAccess,
+} from "@/lib/auth/access";
 import { getTranslationService } from "@/lib/translation/service";
 
 export async function listNamespaces(
   applicationId: string,
   opts?: { includeInactive?: boolean }
 ): Promise<Namespace[]> {
+  await requireAppCapability(applicationId, "view");
   const db = await getDb();
   let query = db
     .from("namespaces")
@@ -38,6 +47,7 @@ export async function createNamespace(input: {
   name: string;
   description: string;
 }): Promise<Namespace> {
+  await requireAppCapability(input.application_id, "edit");
   const db = await getDb();
   const { data, error } = await db
     .from("namespaces")
@@ -59,6 +69,7 @@ export async function updateNamespace(
   applicationId: string,
   input: { name: string; description: string; status: EntityStatus }
 ): Promise<Namespace> {
+  await requireNamespaceAccess(id, "edit");
   const db = await getDb();
   const { data, error } = await db
     .from("namespaces")
@@ -94,6 +105,7 @@ export async function listTranslationKeys(input: {
   languageCode?: string;
   status?: TranslationStatus;
 }): Promise<Paginated<TranslationKeyListItem>> {
+  await requireAppCapability(input.applicationId, "view");
   const db = await getDb();
   const page = Math.max(1, input.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, input.pageSize ?? 50));
@@ -182,6 +194,12 @@ export async function getTranslationKey(
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(error.message);
+  if (!data) return null;
+  const allowed = await allowAppCapability(
+    (data as TranslationKey).application_id,
+    "view"
+  );
+  if (!allowed) return null;
   return data as TranslationKeyListItem | null;
 }
 
@@ -192,6 +210,7 @@ export async function createTranslationKey(input: {
   source_language: string;
   source_text: string;
 }): Promise<TranslationKey> {
+  await requireAppCapability(input.application_id, "edit");
   const db = await getDb();
   const { data, error } = await db
     .from("translation_keys")
@@ -229,6 +248,7 @@ export async function updateTranslationKey(
     source_text: string;
   }
 ): Promise<TranslationKey> {
+  await requireTranslationKeyAccess(id, "edit");
   const db = await getDb();
   const { data, error } = await db
     .from("translation_keys")
@@ -268,7 +288,6 @@ export async function upsertStringTranslation(input: {
   source_type: SourceType;
   status?: TranslationStatus;
 }): Promise<Translation> {
-  const db = await getDb();
   const status: TranslationStatus =
     input.status ??
     (input.text.trim()
@@ -278,6 +297,11 @@ export async function upsertStringTranslation(input: {
           ? "SYSTEM_GENERATED"
           : "MANUALLY_MODIFIED"
       : "MISSING");
+  const grant = await requireTranslationKeyAccess(
+    input.translation_key_id,
+    status === "APPROVED" ? "approve" : "edit"
+  );
+  const db = await getDb();
 
   const { data: existing, error: findError } = await db
     .from("translations")
@@ -302,6 +326,7 @@ export async function upsertStringTranslation(input: {
         status,
         approved_by_username: null,
         approved_by_name: null,
+        approved_by_user_id: null,
         approved_at: null,
       })
       .eq("id", existing.id)
@@ -331,6 +356,7 @@ export async function upsertStringTranslation(input: {
     version_number: versionNumber,
     translated_content: input.text,
     source_type: input.source_type,
+    author_user_id: grant.user.id,
     ...actorFields,
   });
   if (versionError) throw new Error(versionError.message);
@@ -341,6 +367,7 @@ export async function upsertStringTranslation(input: {
 export async function listTranslationVersions(
   translationId: string
 ): Promise<TranslationVersion[]> {
+  await requireTranslationAccess(translationId, "view");
   const db = await getDb();
   const { data, error } = await db
     .from("translation_versions")
@@ -356,6 +383,7 @@ export async function deleteTranslationVersion(input: {
   applicationId: string;
   translationKeyId: string;
 }): Promise<void> {
+  await requireTranslationVersionAccess(input.versionId, "edit");
   const db = await getDb();
   const { error } = await db
     .from("translation_versions")
@@ -374,8 +402,12 @@ export async function setStringTranslationStatus(input: {
   applicationId: string;
   translationKeyId: string;
 }): Promise<void> {
+  const grant = await requireTranslationAccess(
+    input.translationId,
+    input.status === "APPROVED" ? "approve" : "edit"
+  );
   const db = await getDb();
-  const approval = await approvalStamp(input.status);
+  const approval = await approvalStamp(input.status, grant.user.id);
   const { error } = await db
     .from("translations")
     .update({ status: input.status, ...approval })
@@ -392,6 +424,7 @@ export async function autoTranslateKey(input: {
   targetLanguage: string;
   applicationId: string;
 }): Promise<Translation> {
+  await requireTranslationKeyAccess(input.translationKeyId, "edit");
   const key = await getTranslationKey(input.translationKeyId);
   if (!key) throw new Error("Translation key not found");
 
@@ -422,6 +455,7 @@ export async function autoTranslateKeyLanguages(input: {
   targetLanguages: string[];
   applicationId: string;
 }): Promise<Translation[]> {
+  await requireTranslationKeyAccess(input.translationKeyId, "edit");
   const results: Translation[] = [];
   for (const targetLanguage of input.targetLanguages) {
     results.push(
@@ -441,6 +475,7 @@ export async function saveManualStringTranslation(input: {
   text: string;
   applicationId: string;
 }): Promise<Translation> {
+  await requireTranslationKeyAccess(input.translationKeyId, "edit");
   const result = await upsertStringTranslation({
     translation_key_id: input.translationKeyId,
     language_code: input.languageCode,
@@ -456,6 +491,7 @@ export async function saveManualStringTranslation(input: {
 }
 
 export async function getProductStats(applicationId: string) {
+  await requireAppCapability(applicationId, "view");
   const db = await getDb();
   const { count: keyCount, error: keyError } = await db
     .from("translation_keys")

@@ -1,8 +1,7 @@
-import { NextResponse } from "next/server";
-import { clearActorCookie } from "@/lib/auth/actor";
+import { clearActorCookie, redirectToPath } from "@/lib/auth/actor";
 
 export async function GET(request: Request) {
-  const response = NextResponse.redirect(new URL("/", request.url));
+  const response = redirectToPath("/sign-in", request.url, 307);
   clearActorCookie(response, request.url);
   return response;
 }

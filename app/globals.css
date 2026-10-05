@@ -65,6 +65,10 @@ body {
   color: var(--hub-fg);
 }
 
+input[type="checkbox"] {
+  accent-color: var(--hub-accent);
+}
+
 .hub-main {
   color: var(--hub-fg);
 }

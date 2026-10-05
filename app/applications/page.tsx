@@ -66,12 +66,21 @@ export default async function ApplicationsPage() {
                 <Badge tone="info">
                   {app.model_type === "STRING" ? "Strings" : "Content"}
                 </Badge>
-                <Link
-                  href={`/applications/${app.id}/edit`}
-                  className="hub-accent-link text-sm font-semibold"
-                >
-                  Edit
-                </Link>
+                <Badge tone="neutral">
+                  {app.access.is_owner
+                    ? "Owner"
+                    : app.access.can_manage
+                      ? "Superadmin"
+                      : "Invited"}
+                </Badge>
+                {app.access.can_manage ? (
+                  <Link
+                    href={`/applications/${app.id}/edit`}
+                    className="hub-accent-link text-sm font-semibold"
+                  >
+                    Edit
+                  </Link>
+                ) : null}
               </div>
             </Card>
           ))}

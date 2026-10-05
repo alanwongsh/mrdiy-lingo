@@ -1,7 +1,6 @@
-import { NextResponse } from "next/server";
 import {
   applyActorCookie,
-  safeNextPath,
+  redirectToPath,
   signActorToken,
   verifyActorToken,
 } from "@/lib/auth/actor";
@@ -27,9 +26,7 @@ export async function GET(request: Request) {
     });
   }
 
-  const response = NextResponse.redirect(
-    new URL(safeNextPath(url.searchParams.get("next")), request.url)
-  );
+  const response = redirectToPath(url.searchParams.get("next") ?? "/", request.url, 307);
   applyActorCookie(response, session, request.url);
   return response;
 }

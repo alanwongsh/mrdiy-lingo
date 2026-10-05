@@ -2,10 +2,17 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import "@/lib/supabase/env";
 
-export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
+function continueRequest(request: NextRequest) {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-lingo-path", request.nextUrl.pathname);
+  requestHeaders.set("x-lingo-search", request.nextUrl.search);
+  return NextResponse.next({
+    request: { headers: requestHeaders },
   });
+}
+
+export async function updateSession(request: NextRequest) {
+  let supabaseResponse = continueRequest(request);
 
   const supabase = createServerClient(
     process.env.NEXT_PRIVATE_SUPABASE_URL!,
@@ -19,9 +26,7 @@ export async function updateSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
-          supabaseResponse = NextResponse.next({
-            request,
-          });
+          supabaseResponse = continueRequest(request);
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           );

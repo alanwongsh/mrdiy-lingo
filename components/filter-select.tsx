@@ -189,7 +189,6 @@ export function FilterMultiSelect({
                   <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-slate-50">
                     <input
                       type="checkbox"
-                      className="accent-[var(--diy-red)]"
                       checked={checked}
                       onChange={() => toggle(o.value)}
                     />

@@ -1,5 +1,6 @@
 import { readFile } from "fs/promises";
 import path from "path";
+import { canOpenSetup } from "@/lib/auth/access";
 import { getDb } from "@/lib/db/client";
 import { Card, PageHeader, Badge } from "@/components/ui";
 
@@ -15,6 +16,18 @@ async function readMigration(name: string) {
 }
 
 export default async function SetupPage() {
+  const allowed = await canOpenSetup();
+  if (!allowed) {
+    return (
+      <div>
+        <PageHeader
+          title="Setup"
+          description="Platform setup is limited to a Lingo superadmin."
+        />
+      </div>
+    );
+  }
+
   let ready = false;
   let message = "";
   let needsMigration = "";
@@ -50,6 +63,23 @@ export default async function SetupPage() {
           needsMigration = "005_article_comments.sql";
           message =
             "Target languages OK, but run migration 005 for comments and approver names.";
+        } else {
+          const probeAccess = await db.from("hub_users").select("id").limit(1);
+          if (probeAccess.error) {
+            needsMigration = "008_access_control.sql";
+            message =
+              "Comments OK, but run migration 008 for users and application access.";
+          } else {
+            const probePassword = await db
+              .from("hub_users")
+              .select("password_hash")
+              .limit(1);
+            if (probePassword.error) {
+              needsMigration = "009_password_sign_in.sql";
+              message =
+                "Access control OK, but run migration 009 for email and password sign-in.";
+            }
+          }
         }
       }
     }
@@ -64,6 +94,8 @@ export default async function SetupPage() {
   const sql5 = await readMigration("005_article_comments.sql");
   const sql6 = await readMigration("006_uuidv7.sql");
   const sql7 = await readMigration("007_rewrite_uuidv7.sql");
+  const sql8 = await readMigration("008_access_control.sql");
+  const sql9 = await readMigration("009_password_sign_in.sql");
 
   return (
     <div>
@@ -93,6 +125,8 @@ export default async function SetupPage() {
             Run migration 007 only to rewrite existing v4 ids. Saved article and
             application links change.
           </li>
+          <li>Run migration 008 for users, owners, and invited access.</li>
+          <li>Run migration 009 for email and password sign-in.</li>
           <li>Refresh this page.</li>
         </ol>
       </Card>
@@ -107,6 +141,8 @@ export default async function SetupPage() {
             ["5", "005_article_comments.sql", sql5],
             ["6", "006_uuidv7.sql", sql6],
             ["7", "007_rewrite_uuidv7.sql", sql7],
+            ["8", "008_access_control.sql", sql8],
+            ["9", "009_password_sign_in.sql", sql9],
           ] as const
         ).map(([n, name, sql]) => (
           <Card key={name} className="overflow-hidden">
