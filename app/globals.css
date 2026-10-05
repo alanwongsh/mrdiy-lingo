@@ -26,10 +26,10 @@
   --hub-accent-ring: rgba(227, 6, 19, 0.28);
   --hub-yellow: var(--diy-yellow);
   --hub-yellow-soft: var(--diy-yellow-soft);
-  --hub-sidebar: #1a0a0c;
-  --hub-sidebar-fg: #f3f4f6;
-  --hub-sidebar-muted: #a8a29e;
-  --hub-sidebar-hover: #2a1216;
+  --hub-sidebar: var(--diy-yellow);
+  --hub-sidebar-fg: #1c1408;
+  --hub-sidebar-muted: #6b5420;
+  --hub-sidebar-hover: rgba(28, 20, 8, 0.08);
   --hub-sidebar-active: var(--diy-red);
   --hub-shadow: 0 1px 2px rgba(17, 24, 39, 0.05),
     0 8px 24px rgba(17, 24, 39, 0.04);
@@ -79,6 +79,16 @@ input[type="checkbox"] {
 
 .hub-main a.hub-accent-link:hover {
   color: var(--hub-accent-hover);
+}
+
+.hub-text-button {
+  color: var(--diy-red);
+  font-weight: 600;
+}
+
+.hub-text-button:hover {
+  color: var(--diy-red-dark);
+  text-decoration: underline;
 }
 
 a,

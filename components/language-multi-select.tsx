@@ -120,7 +120,7 @@ export function LanguageMultiSelect({
                   <div className="mb-1 flex items-center justify-between gap-2 px-1 pb-1">
                     <button
                       type="button"
-                      className="text-xs font-semibold text-[var(--diy-red)] hover:underline"
+                      className="hub-text-button text-xs"
                       onClick={selectAll}
                     >
                       Select all

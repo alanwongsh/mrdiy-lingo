@@ -56,9 +56,9 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-dvh text-[var(--hub-fg)]">
-      <aside className="sticky top-0 flex h-dvh w-64 shrink-0 flex-col bg-[var(--hub-sidebar)] text-[var(--hub-sidebar-fg)] shadow-[4px_0_24px_rgba(227,6,19,0.18)]">
-        <div className="relative border-b border-white/10 px-4 py-5">
-          <div className="absolute inset-x-0 top-0 h-1 bg-[var(--diy-yellow)]" />
+      <aside className="sticky top-0 flex h-dvh w-64 shrink-0 flex-col bg-[var(--hub-sidebar)] text-[var(--hub-sidebar-fg)] shadow-[4px_0_24px_rgba(28,20,8,0.12)]">
+        <div className="relative border-b border-black/10 px-4 py-5">
+          <div className="absolute inset-x-0 top-0 h-1 bg-[var(--diy-red)]" />
           <Link href="/" className="block text-center">
             {/*
               Brand lockup: circular master logo alone carries MR.DIY + tagline.
@@ -73,10 +73,10 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
               priority
               className="mx-auto h-auto w-14 drop-shadow-[0_4px_12px_rgba(0,0,0,0.35)]"
             />
-            <div className="mt-2 text-lg font-bold tracking-tight text-white">
+            <div className="mt-2 text-lg font-bold tracking-tight text-[var(--hub-sidebar-fg)]">
               Lingo
             </div>
-            <div className="mt-0.5 text-[11px] text-slate-400">
+            <div className="mt-0.5 text-[11px] text-[var(--hub-sidebar-muted)]">
               Translation hub
             </div>
           </Link>
@@ -97,14 +97,14 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           ) : null}
         </nav>
-        <div className="border-t border-white/10 px-4 py-4 text-[11px] text-[var(--hub-sidebar-muted)]">
+        <div className="border-t border-black/10 px-4 py-4 text-[11px] text-[var(--hub-sidebar-muted)]">
           <div className="mb-2">
-            <div className="text-sm font-semibold text-white">{actor.name}</div>
+            <div className="text-sm font-semibold text-[var(--hub-sidebar-fg)]">{actor.name}</div>
             <div className="mt-0.5">{actor.username}</div>
             {user?.is_superadmin ? (
-              <div className="mt-0.5 text-[var(--diy-yellow)]">Superadmin</div>
+              <div className="mt-0.5 font-semibold text-[var(--diy-red)]">Superadmin</div>
             ) : null}
-            <Link href="/embed/sign-out" className="mt-1 inline-block text-[var(--diy-yellow)]">
+            <Link href="/embed/sign-out" className="hub-text-button mt-1 inline-block text-xs">
               Sign out
             </Link>
           </div>

@@ -10,7 +10,7 @@ export function BackLink({
   return (
     <Link
       href={href}
-      className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 no-underline hover:text-[var(--diy-red)]"
+      className="hub-text-button mb-3 inline-flex items-center gap-1.5 text-sm no-underline hover:underline"
     >
       <span aria-hidden="true">←</span>
       {label}
@@ -71,7 +71,7 @@ export function Button({
     danger:
       "bg-red-700 text-white shadow-sm hover:bg-red-800 focus-visible:ring-2 focus-visible:ring-red-300",
     ghost:
-      "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+      "hub-text-button hover:bg-[var(--diy-yellow-soft)] hover:no-underline",
   }[variant];
   return (
     <button
