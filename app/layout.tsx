@@ -3,7 +3,7 @@ import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
-import { getActor, safeNextPath } from "@/lib/auth/actor";
+import { getActor, isAnonymousPath, safeNextPath } from "@/lib/auth/actor";
 import "./globals.css";
 
 const hubSans = IBM_Plex_Sans({
@@ -37,10 +37,10 @@ export default async function RootLayout({
   if (path === "/sign-in" && actor) {
     redirect("/");
   }
-  if (path && path !== "/sign-in" && path !== "/setup" && !actor) {
+  if (path && !actor && !isAnonymousPath(path)) {
     const next = safeNextPath(`${path}${search}`);
     redirect(next === "/" ? "/sign-in" : `/sign-in?next=${encodeURIComponent(next)}`);
-  }
+  } 
 
   const bare = path === "/sign-in" || setupWithoutSession;
 

@@ -1,5 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  ACTOR_COOKIE,
+  isAnonymousPath,
+  safeNextPath,
+  verifyActorToken,
+} from "@/lib/auth/actor";
 import "@/lib/supabase/env";
 
 function continueRequest(request: NextRequest) {
@@ -11,7 +17,20 @@ function continueRequest(request: NextRequest) {
   });
 }
 
+function redirectToSignIn(request: NextRequest) {
+  const next = safeNextPath(`${request.nextUrl.pathname}${request.nextUrl.search}`);
+  const destination =
+    next === "/" ? "/sign-in" : `/sign-in?next=${encodeURIComponent(next)}`;
+  return NextResponse.redirect(new URL(destination, request.url));
+}
+
 export async function updateSession(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+  const actor = verifyActorToken(request.cookies.get(ACTOR_COOKIE)?.value ?? "");
+  if (!actor && !isAnonymousPath(path)) {
+    return redirectToSignIn(request);
+  }
+
   let supabaseResponse = continueRequest(request);
 
   const supabase = createServerClient(

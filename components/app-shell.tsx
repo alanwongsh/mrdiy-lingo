@@ -1,9 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { listApplications } from "@/lib/actions/applications";
 import { canOpenSetup, getCurrentUser } from "@/lib/auth/access";
 import { getActor } from "@/lib/auth/actor";
-import { SignInScreen } from "@/components/sign-in-screen";
 import { SidebarNav } from "@/components/sidebar-nav";
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
@@ -51,7 +51,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   }));
 
   if (!actor) {
-    return <SignInScreen nextPath="/" />;
+    redirect("/sign-in");
   }
 
   return (

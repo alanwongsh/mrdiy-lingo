@@ -185,3 +185,13 @@ export function safeNextPath(value: string | null): string {
   }
   return value;
 }
+
+export function isAnonymousPath(path: string): boolean {
+  return (
+    path === "/sign-in" ||
+    path === "/setup" ||
+    path.startsWith("/auth/") ||
+    path === "/embed" ||
+    path.startsWith("/embed/")
+  );
+}
