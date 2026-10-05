@@ -53,6 +53,13 @@ export function ArticleListFilters({
   const [type, setType] = useState(initial.type);
   const [market, setMarket] = useState(initial.market);
   const [due, setDue] = useState(initial.due);
+  const activeCount =
+    (source.length > 0 ? 1 : 0) +
+    (status ? 1 : 0) +
+    (type ? 1 : 0) +
+    (market ? 1 : 0) +
+    (due ? 1 : 0);
+  const [filtersOpen, setFiltersOpen] = useState(activeCount > 0);
 
   function applyFilters(e: React.FormEvent) {
     e.preventDefault();
@@ -72,53 +79,74 @@ export function ArticleListFilters({
   }
 
   return (
-    <Card className="mb-4 p-4">
-      <form className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-center" onSubmit={applyFilters}>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search title…"
-          className={`${inputClass} h-9 w-full min-w-0 sm:min-w-64 sm:flex-1`}
-        />
-        <FilterMultiSelect
-          value={source}
-          onChange={setSource}
-          placeholder="All source locales"
-          options={languages.map((l) => ({
-            value: l.code,
-            label: `${l.name} (${l.code.toUpperCase()})`,
-          }))}
-        />
-        <FilterSelect
-          value={status}
-          onChange={setStatus}
-          placeholder="All statuses"
-          options={STATUS_OPTIONS}
-        />
-        <FilterSelect
-          value={type}
-          onChange={setType}
-          placeholder="All types"
-          options={TYPE_OPTIONS}
-        />
-        <FilterSelect
-          value={market}
-          onChange={setMarket}
-          placeholder="All markets"
-          options={MARKETS.map((item) => ({
-            value: item.code,
-            label: `${item.code} · ${item.name}`,
-          }))}
-        />
-        <FilterSelect
-          value={due}
-          onChange={setDue}
-          placeholder="All due"
-          options={DUE_OPTIONS}
-        />
-        <Button type="submit" className="w-full sm:w-auto" disabled={pending}>
-          {pending ? "Filtering…" : "Filter"}
-        </Button>
+    <Card className="mb-4 p-3 sm:p-4">
+      <form onSubmit={applyFilters}>
+        <div className="flex items-center gap-2">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search title…"
+            className={`${inputClass} h-9 min-w-0 flex-1`}
+          />
+          <button
+            type="button"
+            className={`inline-flex h-9 shrink-0 items-center rounded-lg border px-3 text-sm font-semibold sm:hidden ${
+              filtersOpen || activeCount > 0
+                ? "border-[var(--hub-accent)] bg-[var(--hub-accent-soft)] text-[var(--hub-accent)]"
+                : "border-[var(--hub-border-strong)] bg-white text-slate-800"
+            }`}
+            aria-expanded={filtersOpen}
+            onClick={() => setFiltersOpen((open) => !open)}
+          >
+            Filters{activeCount > 0 ? ` · ${activeCount}` : ""}
+          </button>
+          <Button type="submit" className="hidden shrink-0 sm:inline-flex" disabled={pending}>
+            {pending ? "Filtering…" : "Filter"}
+          </Button>
+        </div>
+        <div
+          className={`${filtersOpen ? "mt-3 grid" : "hidden"} grid-cols-1 gap-3 sm:mt-3 sm:flex sm:flex-wrap sm:items-center`}
+        >
+          <FilterMultiSelect
+            value={source}
+            onChange={setSource}
+            placeholder="All source locales"
+            options={languages.map((l) => ({
+              value: l.code,
+              label: `${l.name} (${l.code.toUpperCase()})`,
+            }))}
+          />
+          <FilterSelect
+            value={status}
+            onChange={setStatus}
+            placeholder="All statuses"
+            options={STATUS_OPTIONS}
+          />
+          <FilterSelect
+            value={type}
+            onChange={setType}
+            placeholder="All types"
+            options={TYPE_OPTIONS}
+          />
+          <FilterSelect
+            value={market}
+            onChange={setMarket}
+            placeholder="All markets"
+            options={MARKETS.map((item) => ({
+              value: item.code,
+              label: `${item.code} · ${item.name}`,
+            }))}
+          />
+          <FilterSelect
+            value={due}
+            onChange={setDue}
+            placeholder="All due"
+            options={DUE_OPTIONS}
+          />
+          <Button type="submit" className="w-full sm:hidden" disabled={pending}>
+            {pending ? "Filtering…" : "Apply"}
+          </Button>
+        </div>
       </form>
     </Card>
   );
