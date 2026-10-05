@@ -183,9 +183,9 @@ function LayoutSwitch({
 }) {
   return (
     <div
-      role="radiogroup"
+      role="tablist"
       aria-label="View layout"
-      className="inline-flex flex-wrap rounded-lg border border-[var(--hub-border)] bg-[var(--hub-panel-soft)] p-0.5"
+      className="flex flex-wrap gap-1 rounded-lg border border-[var(--hub-border)] bg-white p-1"
     >
       {LAYOUTS.map((layout) => {
         const active = value === layout.id;
@@ -193,8 +193,8 @@ function LayoutSwitch({
           <button
             key={layout.id}
             type="button"
-            role="radio"
-            aria-checked={active}
+            role="tab"
+            aria-selected={active}
             title={
               layout.id === "source"
                 ? "Show the source language"
@@ -204,10 +204,10 @@ function LayoutSwitch({
                     ? "Show every language in its own column"
                     : "Line up title, summary, and body across languages"
             }
-            className={`rounded-md px-2.5 py-1 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[var(--hub-accent-ring)] ${
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-[var(--hub-accent-ring)] ${
               active
-                ? "bg-white text-[var(--hub-fg)] shadow-sm"
-                : "text-[var(--hub-muted-strong)] hover:text-[var(--hub-fg)]"
+                ? "bg-[var(--diy-red)] text-white shadow-sm"
+                : "text-slate-600 hover:bg-[var(--diy-yellow-soft)] hover:text-slate-900"
             }`}
             onClick={() => onChange(layout.id)}
           >
