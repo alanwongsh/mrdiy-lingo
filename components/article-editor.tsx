@@ -487,9 +487,9 @@ export function ArticleEditor({
             }}
             showEditingSwitcher={false}
           />
-          <p className="mt-2 text-xs text-slate-500">
+          {/* <p className="mt-2 text-xs text-slate-500">
             Coverage and translate options are limited to these languages.
-          </p>
+          </p> */}
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
           <span>
@@ -500,11 +500,11 @@ export function ArticleEditor({
                 : "—"}
             </strong>
           </span>
-          <span className="text-slate-300">·</span>
+          {/* <span className="text-slate-300">·</span>
           <span>
             Set status to PUBLISHED to stamp publish time; other statuses clear
             it.
-          </span>
+          </span> */}
           <div className="ml-auto flex flex-wrap gap-2">
             <Button
               type="button"
