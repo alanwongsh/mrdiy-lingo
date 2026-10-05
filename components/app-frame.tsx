@@ -45,7 +45,7 @@ function SidebarBody({
 }) {
   return (
     <>
-      <div className="relative border-b border-black/10 px-4 py-5">
+      <div className="relative border-b border-[var(--hub-border)] px-4 py-5">
         <div className="absolute inset-x-0 top-0 h-1 bg-[var(--diy-red)]" />
         <Link href="/" className="block text-center" onClick={onNavigate}>
           {/*
@@ -59,7 +59,7 @@ function SidebarBody({
             width={88}
             height={80}
             priority
-            className="mx-auto h-auto w-14 drop-shadow-[0_4px_12px_rgba(0,0,0,0.35)]"
+            className="mx-auto h-auto w-14 drop-shadow-[0_2px_8px_rgba(28,20,8,0.12)]"
           />
           <div className="mt-2 text-lg font-bold tracking-tight text-[var(--hub-sidebar-fg)]">
             Lingo
@@ -87,14 +87,14 @@ function SidebarBody({
           </div>
         ) : null}
       </nav>
-      <div className="border-t border-black/10 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-[11px] text-[var(--hub-sidebar-muted)]">
-        <div className="mb-2">
-          <div className="text-sm font-semibold text-[var(--hub-sidebar-fg)]">{actor.name}</div>
-          <div className="mt-0.5 break-all">{actor.username}</div>
-          {isSuperadmin ? (
-            <div className="mt-0.5 font-semibold text-[var(--diy-red)]">Superadmin</div>
-          ) : null}
-          {embedded ? null : (
+      <div className="border-t border-[var(--hub-border)] px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-[11px] text-[var(--hub-sidebar-muted)]">
+        {embedded ? null : (
+          <div className="mb-2">
+            <div className="text-sm font-semibold text-[var(--hub-sidebar-fg)]">{actor.name}</div>
+            <div className="mt-0.5 break-all">{actor.username}</div>
+            {isSuperadmin ? (
+              <div className="mt-0.5 font-semibold text-[var(--diy-red)]">Superadmin</div>
+            ) : null}
             <Link
               href="/embed/sign-out"
               className="hub-text-button mt-1 inline-block text-xs"
@@ -102,8 +102,8 @@ function SidebarBody({
             >
               Sign out
             </Link>
-          )}
-        </div>
+          </div>
+        )}
         Mr DIY Lingo · V1
       </div>
     </>
@@ -132,7 +132,7 @@ export function AppFrame({
 }) {
   return (
     <div className="flex min-h-dvh text-[var(--hub-fg)]">
-      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col bg-[var(--hub-sidebar)] text-[var(--hub-sidebar-fg)] shadow-[4px_0_24px_rgba(28,20,8,0.12)] lg:flex">
+      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-[var(--hub-border)] bg-[var(--hub-sidebar)] text-[var(--hub-sidebar-fg)] lg:flex">
         <SidebarBody
           nav={nav}
           appLinks={appLinks}
@@ -143,7 +143,7 @@ export function AppFrame({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-50 border-b border-black/10 bg-[var(--hub-sidebar)] pt-[env(safe-area-inset-top)] text-[var(--hub-sidebar-fg)] lg:hidden">
+        <header className="sticky top-0 z-50 border-b border-[var(--hub-border)] bg-[var(--hub-sidebar)] pt-[env(safe-area-inset-top)] text-[var(--hub-sidebar-fg)] lg:hidden">
           <div className="flex items-center gap-2 px-2 py-2">
             <details id="mobile-nav" className="group">
               <summary className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-lg [&::-webkit-details-marker]:hidden hover:bg-[var(--hub-sidebar-hover)]">
@@ -162,7 +162,7 @@ export function AppFrame({
                   aria-label="Close menu"
                   onClick={closeMobileNav}
                 />
-                <aside className="relative flex h-full w-[min(18rem,88vw)] flex-col overflow-hidden bg-[var(--hub-sidebar)] text-[var(--hub-sidebar-fg)] shadow-[8px_0_32px_rgba(28,20,8,0.2)]">
+                <aside className="relative flex h-full w-[min(18rem,88vw)] flex-col overflow-hidden border-r border-[var(--hub-border)] bg-[var(--hub-sidebar)] text-[var(--hub-sidebar-fg)]">
                   <SidebarBody
                     nav={nav}
                     appLinks={appLinks}
