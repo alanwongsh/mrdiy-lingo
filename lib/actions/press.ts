@@ -747,6 +747,8 @@ export async function autoTranslateArticle(input: {
   sourceFields?: SourceContentFields;
   /** Prefer live source-language selection over DB when provided. */
   sourceLanguage?: string;
+  /** HOD import: store the translation as approved and leave the article status alone. */
+  approveTranslation?: boolean;
 }): Promise<ContentTranslation> {
   await requireContentAccess(input.contentId, "edit");
   const article = await getArticle(input.contentId);
@@ -782,7 +784,9 @@ export async function autoTranslateArticle(input: {
     );
   }
 
-  await setArticleStatus(input.contentId, input.applicationId, "TRANSLATING");
+  if (!input.approveTranslation) {
+    await setArticleStatus(input.contentId, input.applicationId, "TRANSLATING");
+  }
 
   // Persist latest source / language so translation isn't based on stale DB content.
   const liveHasContent = Boolean(
@@ -828,10 +832,12 @@ export async function autoTranslateArticle(input: {
     language_code: input.targetLanguage,
     fields,
     source_type: "SYSTEM",
-    status: "SYSTEM_GENERATED",
+    status: input.approveTranslation ? "APPROVED" : "SYSTEM_GENERATED",
   });
 
-  await setArticleStatus(input.contentId, input.applicationId, "REVIEW");
+  if (!input.approveTranslation) {
+    await setArticleStatus(input.contentId, input.applicationId, "REVIEW");
+  }
   revalidatePath(
     `/applications/${input.applicationId}/articles/${input.contentId}`
   );
@@ -844,15 +850,24 @@ export async function autoTranslateArticleLanguages(input: {
   applicationId: string;
   sourceFields?: SourceContentFields;
   sourceLanguage?: string;
+  /** HOD import: approve each generated translation and keep the article approved. */
+  approveTranslations?: boolean;
 }): Promise<ContentTranslation[]> {
   await requireContentAccess(input.contentId, "edit");
   const article = await getArticle(input.contentId);
   if (!article) throw new Error("Article not found");
   const sourceLanguage = input.sourceLanguage?.trim() || article.source_language;
-  const targets = normalizeTargetLanguages(input.targetLanguages, sourceLanguage);
-  if (targets.length === 0) {
+  const toTranslate = normalizeTargetLanguages(
+    input.targetLanguages,
+    sourceLanguage
+  );
+  if (toTranslate.length === 0) {
     throw new Error("Choose a language other than the source.");
   }
+  const storedTargets = normalizeTargetLanguages(
+    [...(article.target_languages ?? []), ...toTranslate],
+    sourceLanguage
+  );
   await updateArticle(input.contentId, input.applicationId, {
     title: input.sourceFields?.title?.trim() || article.title,
     slug: null,
@@ -863,10 +878,10 @@ export async function autoTranslateArticleLanguages(input: {
       : article.source_content,
     status: article.status,
     scheduled_publish_at: article.scheduled_publish_at,
-    target_languages: targets,
+    target_languages: storedTargets,
   });
   const results: ContentTranslation[] = [];
-  for (const targetLanguage of targets) {
+  for (const targetLanguage of toTranslate) {
     results.push(
       await autoTranslateArticle({
         contentId: input.contentId,
@@ -874,8 +889,12 @@ export async function autoTranslateArticleLanguages(input: {
         applicationId: input.applicationId,
         sourceFields: input.sourceFields,
         sourceLanguage,
+        approveTranslation: input.approveTranslations,
       })
     );
+  }
+  if (input.approveTranslations) {
+    await syncArticleStatusFromApprovals(input.contentId, input.applicationId);
   }
   return results;
 }

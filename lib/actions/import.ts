@@ -332,6 +332,7 @@ export async function confirmArticleImport(input: {
           contentId,
           targetLanguages: missingTranslate,
           applicationId: input.applicationId,
+          approveTranslations: grant.access.can_approve,
         });
         translated += results.length;
       }
