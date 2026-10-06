@@ -433,19 +433,42 @@ export function ArticleEditor({
     });
   }
 
-  function saveSourceMeta() {
+  function saveSettings() {
+    startTransition(async () => {
+      setError("");
+      try {
+        await updateArticle(article.id, applicationId, {
+          title: article.title,
+          slug: article.slug,
+          content_type: contentType,
+          source_language: sourceLanguage,
+          source_content: article.source_content,
+          status,
+          scheduled_publish_at: fromLocalInput(scheduledPublishAt),
+          target_languages: targetLanguages,
+          market: market || null,
+        });
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Save failed");
+      }
+    });
+  }
+
+  function saveSource() {
+    const liveBody = sourceBodyRef.current?.getHTML() ?? source.body;
     startTransition(async () => {
       setError("");
       try {
         await updateArticle(article.id, applicationId, {
           title: source.title || article.title,
-          slug: null,
+          slug: article.slug,
           content_type: contentType,
           source_language: sourceLanguage,
           source_content: {
+            ...article.source_content,
             ...source,
-            seo_title: source.seo_title || source.title,
-            seo_description: source.seo_description || source.summary,
+            body: liveBody,
           },
           status,
           scheduled_publish_at: fromLocalInput(scheduledPublishAt),
@@ -563,7 +586,7 @@ export function ArticleEditor({
               type="button"
               variant="secondary"
               disabled={pending}
-              onClick={saveSourceMeta}
+              onClick={saveSettings}
             >
               Save settings
             </Button>
@@ -692,7 +715,7 @@ export function ArticleEditor({
                 type="button"
                 variant="secondary"
                 disabled={pending}
-                onClick={saveSourceMeta}
+                onClick={saveSource}
               >
                 Save source
               </Button>

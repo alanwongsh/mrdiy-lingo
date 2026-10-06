@@ -422,13 +422,10 @@ export async function updateArticle(
     throw new Error("Approval is limited to HOD and above.");
   }
 
-  const sourceChanged =
-    String(current.source_language).trim().toLowerCase() !==
-      input.source_language.trim().toLowerCase() ||
-    sourceContentChanged(
-      asSourceContent(current.source_content),
-      input.source_content
-    );
+  const textChanged = sourceContentChanged(
+    asSourceContent(current.source_content),
+    input.source_content
+  );
   const currentTargets = normalizeTargetLanguages(
     current.target_languages,
     current.source_language
@@ -441,7 +438,7 @@ export async function updateArticle(
     input.target_languages !== undefined &&
     !sameCodeSet(currentTargets, nextTargets);
 
-  if (sourceChanged && !input.keepApprovals) {
+  if (textChanged && !input.keepApprovals) {
     await clearTargetApprovals(id, input.source_language);
   }
 
@@ -450,19 +447,8 @@ export async function updateArticle(
   const markingReleased =
     input.status === "APPROVED" || input.status === "PUBLISHED";
   let nextStatus = input.status;
-  if (!input.keepApprovals && sourceChanged && (released || markingReleased)) {
+  if (!input.keepApprovals && textChanged && (released || markingReleased)) {
     nextStatus = "REVIEW";
-  } else if (
-    !input.keepApprovals &&
-    targetsChanged &&
-    (released || markingReleased)
-  ) {
-    const allApproved = await targetsAllApproved(
-      id,
-      input.source_language,
-      nextTargets
-    );
-    if (!allApproved) nextStatus = "REVIEW";
   }
 
   const patch: Record<string, unknown> = {
@@ -503,8 +489,19 @@ export async function updateArticle(
     .select("*")
     .single();
   if (error) throw new Error(error.message);
-  if (targetsChanged && !input.keepApprovals) {
-    await syncArticleStatusFromApprovals(id, applicationId);
+  if (targetsChanged && !textChanged && !input.keepApprovals) {
+    const allApproved = await targetsAllApproved(
+      id,
+      input.source_language,
+      nextTargets
+    );
+    if (
+      allApproved &&
+      nextStatus !== "APPROVED" &&
+      nextStatus !== "PUBLISHED"
+    ) {
+      await persistArticleStatus(id, applicationId, "APPROVED");
+    }
   }
   revalidatePath(`/applications/${applicationId}`);
   revalidatePath(`/applications/${applicationId}/articles/${id}`);
@@ -931,7 +928,8 @@ export async function saveManualContentTranslation(input: {
   fields: SourceContentFields;
   applicationId: string;
 }): Promise<ContentTranslation> {
-  await requireContentAccess(input.contentId, "edit");
+  const grant = await requireContentAccess(input.contentId, "edit");
+  const approver = grant.access.can_approve;
   const db = await getDb();
   const { data: article, error: articleError } = await db
     .from("content")
@@ -952,10 +950,11 @@ export async function saveManualContentTranslation(input: {
     language_code: input.languageCode,
     fields: input.fields,
     source_type: "MANUAL",
-    status: "MANUALLY_MODIFIED",
+    status: approver ? "APPROVED" : "MANUALLY_MODIFIED",
   });
   const changed = !existing || existing.updated_at !== result.updated_at;
   if (
+    !approver &&
     changed &&
     (article.status === "APPROVED" || article.status === "PUBLISHED")
   ) {

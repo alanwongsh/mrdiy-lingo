@@ -85,7 +85,8 @@ flowchart TB
   NS --> Keys[Translation keys]
   Keys --> Tr[Translations per language]
   Tr --> TV[Version history]
-  Content --> Article[Articles]
+  Content --> Types[Content types]
+  Types --> Article[Articles]
   Article --> CT[Translations per language]
   CT --> CV[Version history]
   Article --> Comments[Comments per language]
@@ -94,7 +95,7 @@ flowchart TB
 | Model | Used for | Unit of work | Main screens |
 | --- | --- | --- | --- |
 | `STRING` | Product interface copy | A key inside a namespace, with one source string and one translation per language | Namespaces, translation keys |
-| `CONTENT` | Press and editorial content | An article with title, summary, HTML body, and SEO fields, plus one translation per target language | Articles |
+| `CONTENT` | Press and editorial content | An article with a type, title, summary, HTML body, and SEO fields, plus one translation per target language | Types, articles |
 
 ---
 
@@ -151,26 +152,28 @@ Primary keys are time-ordered UUID v7 (`uuidv7()`), so new rows append in index 
 
 ## 4. Data model
 
-Schema is applied in order from `supabase/migrations/001` through `009`. Setup (`/setup`) shows which migrations the connected database still needs.
+Schema is applied in order from `supabase/migrations/001` through `013`. Setup (`/setup`) shows which migrations the connected database still needs.
 
 ### 4.1 Tables
 
 | Table | Description |
 | --- | --- |
 | `languages` | Languages available for translation. Each row has a code, a name, and a status of `ACTIVE` or `INACTIVE`. |
-| `hub_users` | Lingo user directory. A row is created when someone signs in from Joget, signs in with email and password, or is invited before their first sign-in. Holds display name, username, email, employee ID, superadmin flag, and the password hash used for email sign-in. |
+| `hub_users` | Lingo user directory. A row is created when someone signs in from Joget, signs in with email and password, or is invited before their first sign-in. Holds display name, username, email, employee ID, superadmin flag, the password hash used for email sign-in, and `ldap_role` (the account title, such as Executive or HOD). |
+| `org_role_map` | Maps an account title (`ldap_role`) to a permission group: `EDITOR` or `HOD`. Titles in the HOD group can approve. Every other title can edit and draft. Maintained from the Roles screen. |
 | `applications` | Applications managed for translation. Each application is either `STRING` (product copy) or `CONTENT` (press articles), and has one owner. |
-| `application_members` | Users invited to one application, with `can_edit` and `can_approve`. |
+| `application_members` | Users invited to one application. `role` is `EDITOR`, `HOD`, or `ADMIN`. HOD and Admin can approve. Editor can edit and draft. `can_edit` and `can_approve` follow that role. |
 | `namespaces` | Groups translation keys inside a STRING application. The name is unique per application. |
 | `translation_keys` | A STRING key: key name, source language, and source text. The key is unique per application. |
 | `translations` | The current string for one key and one language, plus status and the approval stamp. |
 | `translation_versions` | Append-only history of a string translation. |
-| `content` | An article in a CONTENT application: type, title, slug, source language, source JSON, lifecycle status, target languages, and schedule and publish timestamps. |
+| `content_types` | Types owned by one CONTENT application. Each row has a stable `code`, a display `name`, a description, `ACTIVE` or `INACTIVE`, and a sort order. The code is unique per application. New articles default to `GENERAL`. An inactive type stays on articles that already use it and is hidden from new choices. Import creates a type when the file uses a code this app does not have yet. |
+| `content` | An article in a CONTENT application. `content_type` is that app’s type code. Also stores title, slug, source language, source JSON, market, who submitted it, lifecycle status, target languages, and schedule and publish timestamps. |
 | `content_translations` | One translation of an article into one language: title, summary, body, SEO title, SEO description, status, and the approval stamp. |
 | `content_translation_versions` | Append-only history of an article translation, stored as JSON of those five fields. |
 | `article_comments` | A comment on an article, scoped to one language. |
 
-Deleting an application cascades to its namespaces, keys, translations, articles, and memberships.
+Deleting an application cascades to its namespaces, keys, translations, content types, articles, and memberships.
 
 ### 4.2 Article source fields
 
@@ -197,7 +200,7 @@ Deleting an application cascades to its namespaces, keys, translations, articles
 | `MANUALLY_MODIFIED` | Written or edited by a person, or brought in by import |
 | `APPROVED` | Signed off. Stores approver username, display name, user id, and time |
 
-Saving a translation clears its approval stamp. A new version row is written only when the text or status actually changes.
+An editor save stores `MANUALLY_MODIFIED` and clears the approval stamp. An HOD save of an article language stores `APPROVED` and records who approved it and when. A string edit stays `MANUALLY_MODIFIED` until someone approves it. A new version row is written only when the text or status actually changes.
 
 **Article lifecycle** (`content.status`):
 
@@ -211,9 +214,9 @@ Saving a translation clears its approval stamp. A new version row is written onl
 
 **Version source** (`source_type`): `SYSTEM` (provider), `MANUAL` (editor), `IMPORT` (file).
 
-**Article type:** `ARTICLE`, `NEWS`, `ANNOUNCEMENT`.
+**Article type:** each CONTENT application defines its own codes in `content_types`. `GENERAL` is the default. Existing articles may still use `ARTICLE`, `NEWS`, or `ANNOUNCEMENT`.
 
-**Record status** for applications, languages, and namespaces: `ACTIVE` or `INACTIVE`.
+**Record status** for applications, languages, namespaces, and content types: `ACTIVE` or `INACTIVE`.
 
 ---
 
@@ -223,12 +226,12 @@ Identity comes from Joget or from email sign-in. Lingo stores the person on `hub
 
 | Actor | What they can do |
 | --- | --- |
-| Signed-in user | Create an application and become its owner. See applications they own or were invited to |
-| Owner | Edit, approve, invite and remove members, grant edit and approve |
-| Member | View the application. Edit when `can_edit` is on. Approve when `can_approve` is on. Cannot manage membership |
-| Superadmin | Listed in `LINGO_SUPERADMINS` (username, email, or employee ID). Opens every application, including ones with no owner. Uses Languages and Setup. Can assign an owner |
+| Signed-in user | Create an application and become its owner. See applications they own or were invited to. |
+| Owner | Edit and approve that application. Invite and remove members, and set each member’s account role. The role map does not limit the owner. |
+| Member | View the application. Cannot manage membership. Edit and approve follow the account title on `hub_users.ldap_role`, grouped by `org_role_map`. A title in the HOD group can edit and approve. Every other title, including a blank one, can edit and draft only. |
+| Superadmin | Listed in `LINGO_SUPERADMINS` (username, email, or employee ID) and stored as `hub_users.is_superadmin`. Opens every application, including ones with no owner. Edit, approve, and manage members on all of them. Uses Languages, Roles, and Setup. Can assign an owner. |
 
-Moving an article to `APPROVED` or `PUBLISHED`, and approving a language, requires the approve capability. Other writes require edit.
+Moving an article to `APPROVED` or `PUBLISHED`, and approving a language, requires the approve capability. Other writes require edit. An HOD who saves a language stores that language as `APPROVED`. An editor’s save stores it as `MANUALLY_MODIFIED` and returns an approved or published article to `REVIEW`.
 
 Applications created before access control have no owner. Until a superadmin sets one, only a superadmin can see them.
 
@@ -286,10 +289,10 @@ flowchart TD
   A[Dashboard or Applications] --> B[New application]
   B --> C{Model}
   C -->|Strings| D[Namespaces and keys]
-  C -->|Content| E[Articles]
+  C -->|Content| E[General type and articles]
   B --> F[Creator becomes owner]
   F --> G[Owner invites by email or employee ID]
-  G --> H[Grant edit and or approve]
+  G --> H[Assign an account role]
   H --> I[Invitee sees the app after they sign in]
 ```
 
@@ -301,34 +304,43 @@ This is the main CONTENT flow.
 
 ```mermaid
 flowchart TD
-  Create[Create or import article] --> Draft[DRAFT]
-  Draft --> Edit[Edit source pane]
-  Edit --> Targets[Choose target languages]
-  Targets --> Auto[Auto-translate]
-  Auto --> Translating[TRANSLATING]
-  Translating --> Review[REVIEW]
-  Review --> Manual[Edit a language]
+  Create[Create or import article] --> Start{Creator can approve?}
+  Start -->|No| Draft[DRAFT]
+  Start -->|Yes| Approved[APPROVED]
+  Draft --> Work[Edit source text and target languages]
+  Work --> Auto[Auto-translate]
+  Auto --> AutoWho{Who ran it?}
+  AutoWho -->|Editor| Review[REVIEW]
+  AutoWho -->|HOD| LangOk[Language APPROVED]
+  Review --> SaveLang[Save a language]
+  SaveLang --> Actor{Who saved?}
+  Actor -->|Editor| Manual[MANUALLY_MODIFIED and article REVIEW]
+  Actor -->|HOD| LangOk
   Manual --> Review
-  Review --> ApproveLang[Approve each target language]
-  ApproveLang --> All{All targets approved?}
-  All -->|Yes| Approved[APPROVED]
-  All -->|No| Review
+  LangOk --> All{All targets approved?}
+  All -->|No| Stay[Article status unchanged]
+  All -->|Yes| Approved
   Approved --> Publish[PUBLISHED]
-  Approved --> Change[Edit source or an approved translation]
-  Publish --> Change
-  Change --> Review
+  Publish --> SaveLang
+  Approved --> SourceEdit[Edit source text]
+  Publish --> SourceEdit
+  SourceEdit --> Cleared[Clear target approvals]
+  Cleared --> Review
+  Approved --> Settings[Type, market, schedule, or language list]
+  Publish --> Settings
+  Settings --> Keep[Approval unchanged]
 ```
 
 Step by step:
 
-1. An editor creates an article (or imports one). They set the source language, write title, description, HTML body, and SEO fields, and pick target languages. The source language is also stored as a translation row so the source text has history.
-2. **Auto-translate** sends the live editor text to the translation service, one target language at a time. The article status becomes `TRANSLATING`, then `REVIEW` when the run finishes. Each target is saved as `SYSTEM_GENERATED` and a version is appended.
+1. An editor creates an article (or imports one) as `DRAFT`. An HOD, owner, or superadmin creates it as `APPROVED`. The type defaults to General. They set the source language, write title, description, HTML body, and SEO fields, and pick target languages. The source language is also stored as a translation row so the source text has history.
+2. **Auto-translate** sends the live editor text to the translation service, one target language at a time. An editor’s run sets the article to `TRANSLATING`, then `REVIEW`, and each target is `SYSTEM_GENERATED`. An HOD’s run stores each target as `APPROVED`. A version is appended either way.
 3. For an article, the service translates title, summary, SEO title, and SEO description as four plain-text calls, and the body as one call per HTML text node so tags stay in place. A rich article is often about 20–25 MyMemory calls per language.
-4. A reviewer edits a language in the second pane. Saving marks that language `MANUALLY_MODIFIED` and clears its approval.
-5. A person with approve permission approves a language. The row stores who approved it and when.
-6. When every language in `target_languages` is `APPROVED`, the article itself becomes `APPROVED`.
+4. An editor saves a language as `MANUALLY_MODIFIED`. If the article was `APPROVED` or `PUBLISHED`, it returns to `REVIEW`.
+5. An HOD saves a language as `APPROVED` immediately. A published article stays `PUBLISHED`. The row stores who approved it and when.
+6. When every language in `target_languages` is `APPROVED`, the article itself can become `APPROVED`.
 7. Publishing sets status to `PUBLISHED` and stamps `published_at`. Leaving `PUBLISHED` clears `published_at`.
-8. Editing the source of an approved or published article clears approval on every target language and returns the article to `REVIEW`. Saving an approved translation, or changing the target list so that not every target is approved, does the same.
+8. Editing the source text of an approved or published article clears approval on every target language and returns the article to `REVIEW`. Changing type, market, schedule, source language, or the target list does not.
 9. Export is separate from approval. On the article list, an editor selects articles and downloads Excel. Source columns are always filled. A language is filled only when that translation is already approved. An article with no approved target language is skipped, and languages that are not approved stay blank.
 
 The article list sorts by the nearest `scheduled_publish_at` and can filter overdue, due within 24 hours, scheduled, no date, or published.
@@ -344,12 +356,13 @@ The same four statuses apply to product strings and to article languages.
 ```mermaid
 stateDiagram-v2
   [*] --> MISSING
-  MISSING --> SYSTEM_GENERATED: Auto-translate
-  MISSING --> MANUALLY_MODIFIED: Type or import
-  SYSTEM_GENERATED --> MANUALLY_MODIFIED: Edit
-  SYSTEM_GENERATED --> APPROVED: Approve
-  MANUALLY_MODIFIED --> APPROVED: Approve
-  APPROVED --> MANUALLY_MODIFIED: Edit or source change
+  MISSING --> SYSTEM_GENERATED: Editor auto-translate
+  MISSING --> MANUALLY_MODIFIED: Editor types or imports
+  MISSING --> APPROVED: HOD saves, translates, or imports
+  SYSTEM_GENERATED --> MANUALLY_MODIFIED: Editor saves
+  SYSTEM_GENERATED --> APPROVED: HOD saves or approves
+  MANUALLY_MODIFIED --> APPROVED: HOD saves or approves
+  APPROVED --> MANUALLY_MODIFIED: Editor saves or source text changes
 ```
 
 ### 6.5 Product string workflow
@@ -381,7 +394,8 @@ flowchart TD
   Pick[Choose a STRING or CONTENT application] --> File[Upload CSV or XLSX]
   File --> Preview[Validate and preview]
   Preview --> Confirm[Confirm]
-  Confirm --> Opt{Auto-translate missing targets?}
+  Confirm --> Created[Create a missing namespace or content type]
+  Created --> Opt{Auto-translate missing targets?}
   Opt -->|Yes| Run[Provider fills languages absent from the file]
   Opt -->|No| Done[Stored as IMPORT]
   Run --> Done
@@ -398,7 +412,7 @@ flowchart TD
 
 A namespace named in the file is created on confirm if it does not exist yet.
 
-**Articles.** Required columns are `title` and `source_language`. Optional columns: `content_type`, `status`, `summary`, `body`, `seo_title`, `seo_description`, and `{lang}_{field}` such as `ms_title` or `en_body`.
+**Articles.** Required columns are `title` and `source_language`. Optional columns: `content_type`, `status`, `summary`, `body`, `seo_title`, `seo_description`, and `{lang}_{field}` such as `ms_title` or `en_body`. A blank `content_type` becomes General. A code this app does not have yet is created on confirm. An HOD import stores supplied translations as `APPROVED`. An editor import stores them as `MANUALLY_MODIFIED`.
 
 Each valid article row is inserted as a new article. The file is not matched to an existing article by title or slug. Invalid rows (missing title) are `ERROR` and are skipped. Optional auto-translate runs only for target languages that the file did not already supply.
 
