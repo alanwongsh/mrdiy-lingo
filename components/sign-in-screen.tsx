@@ -33,10 +33,6 @@ export async function SignInScreen({
               className="mx-auto h-auto w-14"
             />
             <h1 className="mt-3 text-2xl font-bold tracking-tight">Sign in</h1>
-            <p className="mt-2 text-sm leading-relaxed text-[var(--hub-muted-strong)]">
-              Use your email and password when you are not opening Lingo from
-              Joget. Joget still signs you in with its token.
-            </p>
           </div>
 
           <form action="/auth/password" method="post" className="mt-6 space-y-3">
@@ -49,7 +45,6 @@ export async function SignInScreen({
                 required
                 autoComplete="email"
                 className={inputClass}
-                placeholder="alan.wongsh@mrdiy.com"
               />
             </Field>
             <Field label="Password" htmlFor="password">
