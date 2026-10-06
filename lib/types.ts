@@ -1,3 +1,13 @@
+import type { AppRole, OrgRoleBand } from "@/lib/auth/roles";
+
+export type { AppRole, OrgRoleBand };
+
+export type OrgRoleMapping = {
+  id: string;
+  ldap_role: string;
+  band: OrgRoleBand;
+};
+
 export type EntityStatus = "ACTIVE" | "INACTIVE";
 
 export type ApplicationModelType = "STRING" | "CONTENT";
@@ -8,7 +18,20 @@ export type TranslationStatus =
   | "MANUALLY_MODIFIED"
   | "APPROVED";
 
-export type ContentType = "ARTICLE" | "NEWS" | "ANNOUNCEMENT";
+/** Stable code defined per application in content_types. */
+export type ContentType = string;
+
+export type ContentTypeRecord = {
+  id: string;
+  application_id: string;
+  code: string;
+  name: string;
+  description: string;
+  status: EntityStatus;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
 
 export type ContentLifecycleStatus =
   | "DRAFT"
@@ -46,6 +69,8 @@ export type HubUser = {
   email: string | null;
   display_name: string;
   is_superadmin: boolean;
+  /** Role stored on the account, such as Executive or HOD. Grouped by org_role_map. */
+  ldap_role: string | null;
   last_seen_at: string | null;
   created_at: string;
   updated_at: string;
@@ -53,6 +78,8 @@ export type HubUser = {
 
 export type AppAccess = {
   is_owner: boolean;
+  /** Resolved permission group. Null for the owner and for a superadmin. */
+  role: AppRole | null;
   can_edit: boolean;
   can_approve: boolean;
   can_manage: boolean;
@@ -67,6 +94,8 @@ export type ApplicationMemberView = {
   userId: string;
   displayName: string;
   detail: string;
+  ldapRole: string | null;
+  role: AppRole | null;
   canEdit: boolean;
   canApprove: boolean;
 };

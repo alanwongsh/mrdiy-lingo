@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { IconButton, PencilIcon } from "@/components/icon-button";
 
 const triggerClass =
   "inline-flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm hover:border-slate-400 sm:w-auto sm:min-w-[11rem] sm:max-w-[16rem]";
@@ -40,11 +41,15 @@ export function FilterSelect({
   onChange,
   options,
   placeholder,
+  onEditOption,
+  footer,
 }: {
   value: string;
   onChange: (value: string) => void;
   options: FilterOption[];
   placeholder: string;
+  onEditOption?: (option: FilterOption) => void;
+  footer?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useMenuDismiss(open, setOpen);
@@ -90,12 +95,12 @@ export function FilterSelect({
             {options.map((o) => {
               const active = o.value === value;
               return (
-                <li key={o.value}>
+                <li key={o.value} className="flex items-center gap-1">
                   <button
                     type="button"
                     role="option"
                     aria-selected={active}
-                    className={`flex w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-50 ${
+                    className={`flex min-w-0 flex-1 rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-50 ${
                       active
                         ? "bg-slate-50 font-semibold text-slate-900"
                         : "text-slate-700"
@@ -105,12 +110,31 @@ export function FilterSelect({
                       setOpen(false);
                     }}
                   >
-                    {o.label}
+                    <span className="truncate">{o.label}</span>
                   </button>
+                  {onEditOption ? (
+                    <IconButton
+                      label={`Edit ${o.label}`}
+                      onClick={() => {
+                        onEditOption(o);
+                        setOpen(false);
+                      }}
+                    >
+                      <PencilIcon />
+                    </IconButton>
+                  ) : null}
                 </li>
               );
             })}
           </ul>
+          {footer ? (
+            <div
+              className="mt-2 border-t border-slate-200 pt-2"
+              onClick={() => setOpen(false)}
+            >
+              {footer}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

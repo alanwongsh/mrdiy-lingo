@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   ACTOR_COOKIE,
   EMBED_COOKIE,
-  actorCookieOptions,
+  devEmbedEnabled,
   isAnonymousPath,
   safeNextPath,
   verifyActorToken,
@@ -21,9 +21,6 @@ function continueRequest(request: NextRequest) {
   const response = NextResponse.next({
     request: { headers: requestHeaders },
   });
-  if (request.nextUrl.searchParams.get("embed") === "true") {
-    response.cookies.set(EMBED_COOKIE, "1", actorCookieOptions(request.url, true));
-  }
   return response;
 }
 
@@ -34,7 +31,25 @@ function redirectToSignIn(request: NextRequest) {
   return NextResponse.redirect(new URL(destination, request.url));
 }
 
+function redirectDevEmail(request: NextRequest) {
+  if (!devEmbedEnabled()) return null;
+  const path = request.nextUrl.pathname;
+  if (path === "/embed" || path.startsWith("/embed/")) return null;
+  const email = request.nextUrl.searchParams.get("email")?.trim() ?? "";
+  if (!email) return null;
+  const nextUrl = request.nextUrl.clone();
+  nextUrl.searchParams.delete("email");
+  const next = safeNextPath(`${nextUrl.pathname}${nextUrl.search}`);
+  const destination = new URL("/embed", request.url);
+  destination.searchParams.set("email", email);
+  if (next !== "/") destination.searchParams.set("next", next);
+  return NextResponse.redirect(destination);
+}
+
 export async function updateSession(request: NextRequest) {
+  const devEmail = redirectDevEmail(request);
+  if (devEmail) return devEmail;
+
   const path = request.nextUrl.pathname;
   const actor = verifyActorToken(request.cookies.get(ACTOR_COOKIE)?.value ?? "");
   if (!actor && !isAnonymousPath(path)) {

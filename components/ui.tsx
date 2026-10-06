@@ -265,7 +265,6 @@ export function Pagination({
   query?: Record<string, string | undefined>;
 }) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  if (totalPages <= 1) return null;
 
   function href(p: number) {
     const params = new URLSearchParams();
@@ -276,7 +275,7 @@ export function Pagination({
     return `${basePath}?${params.toString()}`;
   }
 
-  const from = (page - 1) * pageSize + 1;
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, total);
 
   return (

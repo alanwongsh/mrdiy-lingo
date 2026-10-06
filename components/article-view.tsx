@@ -1,21 +1,14 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 import { Badge, Card, inputClass, statusTone } from "@/components/ui";
 import type {
   Content,
   ContentLifecycleStatus,
   ContentTranslation,
-  ContentType,
   Language,
   TranslationStatus,
 } from "@/lib/types";
-
-const TYPE_LABEL: Record<ContentType, string> = {
-  ARTICLE: "Article",
-  NEWS: "News",
-  ANNOUNCEMENT: "Announcement",
-};
 
 const STATUS_LABEL: Record<ContentLifecycleStatus, string> = {
   DRAFT: "Draft",
@@ -219,6 +212,116 @@ function LayoutSwitch({
   );
 }
 
+function sameCode(a: string, b: string) {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function VisibleLanguages({
+  options,
+  selected,
+  onChange,
+}: {
+  options: { code: string; label: string }[];
+  selected: string[];
+  onChange: (codes: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
+  const chosen = options.filter((option) =>
+    selected.some((code) => sameCode(code, option.code))
+  );
+  const summary =
+    chosen.length === 0
+      ? "No languages"
+      : chosen.length === options.length
+        ? "All languages"
+        : chosen.length === 1
+          ? chosen[0].label
+          : `${chosen.length} languages`;
+
+  useEffect(() => {
+    function onDoc(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
+  function toggle(code: string) {
+    if (selected.some((item) => sameCode(item, code))) {
+      onChange(selected.filter((item) => !sameCode(item, code)));
+      return;
+    }
+    onChange([...selected, code]);
+  }
+
+  return (
+    <div className={`relative ${open ? "z-30" : ""}`} ref={rootRef}>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-label="Languages to show"
+        className="inline-flex h-8 max-w-full items-center justify-between gap-2 rounded-lg border border-[var(--hub-border)] bg-white px-3 text-xs font-semibold text-slate-700 hover:border-slate-400 sm:min-w-40"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className="truncate">{summary}</span>
+        <span className="text-slate-400" aria-hidden>
+          ▾
+        </span>
+      </button>
+      {open ? (
+        <div
+          id={listId}
+          className="absolute right-0 z-30 mt-1 w-56 rounded-lg border border-[var(--hub-border)] bg-white p-2 shadow-lg"
+        >
+          <div className="mb-1 flex items-center justify-between px-1 pb-1">
+            <button
+              type="button"
+              className="hub-text-button text-xs"
+              onClick={() => onChange(options.map((option) => option.code))}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              className="hub-text-button text-xs"
+              onClick={() => onChange([])}
+            >
+              None
+            </button>
+          </div>
+          <ul className="max-h-60 space-y-0.5 overflow-auto">
+            {options.map((option) => {
+              const checked = selected.some((code) => sameCode(code, option.code));
+              return (
+                <li key={option.code}>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-slate-50">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggle(option.code)}
+                    />
+                    <span className="font-medium text-slate-900">{option.label}</span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function LanguageSelect({
   id,
   label,
@@ -360,9 +463,11 @@ function FieldCompare({ panes }: { panes: Pane[] }) {
 export function ArticleView({
   article,
   languages,
+  contentTypeName,
 }: {
   article: Article;
   languages: Language[];
+  contentTypeName: string;
 }) {
   const options = Array.from(
     new Set([
@@ -384,6 +489,12 @@ export function ArticleView({
   const [layout, setLayout] = useState<ViewLayout>("source");
   const [left, setLeft] = useState(article.source_language);
   const [right, setRight] = useState(defaultRight);
+  const [visibleCodes, setVisibleCodes] = useState(options);
+  const optionKey = options.join("\0");
+
+  useEffect(() => {
+    setVisibleCodes(optionKey ? optionKey.split("\0") : []);
+  }, [optionKey]);
 
   useEffect(() => {
     const saved = localStorage.getItem(LAYOUT_STORAGE_KEY);
@@ -409,7 +520,10 @@ export function ArticleView({
     paneFor(article, languages, leftCode),
     paneFor(article, languages, rightCode),
   ];
-  const allPanes = options.map((code) => paneFor(article, languages, code));
+  const shownCodes = options.filter((code) =>
+    visibleCodes.some((selected) => sameCode(selected, code))
+  );
+  const shownPanes = shownCodes.map((code) => paneFor(article, languages, code));
 
   function assignSide(index: number, code: string) {
     if (index === 0) {
@@ -429,7 +543,7 @@ export function ArticleView({
   return (
     <div className="space-y-4">
       <Card className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm text-[var(--hub-muted-strong)]">
-        <span>{TYPE_LABEL[article.content_type]}</span>
+        <span>{contentTypeName}</span>
         {article.market ? (
           <>
             <span aria-hidden>·</span>
@@ -453,7 +567,7 @@ export function ArticleView({
         ) : null}
       </Card>
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-visible">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--hub-border)] px-4 py-3">
           {canCompare ? (
             <LayoutSwitch value={activeLayout} onChange={chooseLayout} />
@@ -472,6 +586,13 @@ export function ArticleView({
               Swap sides
             </button>
           ) : null}
+          {activeLayout === "columns" || activeLayout === "fields" ? (
+            <VisibleLanguages
+              options={optionLabels}
+              selected={visibleCodes}
+              onChange={setVisibleCodes}
+            />
+          ) : null}
         </div>
 
         {activeLayout === "source" ? (
@@ -486,10 +607,17 @@ export function ArticleView({
             onChange={assignSide}
           />
         ) : null}
-        {activeLayout === "columns" ? (
-          <PaneGrid panes={allPanes} optionLabels={optionLabels} scroll />
+        {activeLayout === "columns" || activeLayout === "fields" ? (
+          shownPanes.length === 0 ? (
+            <p className="px-4 py-4 text-sm text-[var(--hub-muted)]">
+              Choose a language to show.
+            </p>
+          ) : activeLayout === "columns" ? (
+            <PaneGrid panes={shownPanes} optionLabels={optionLabels} scroll />
+          ) : (
+            <FieldCompare panes={shownPanes} />
+          )
         ) : null}
-        {activeLayout === "fields" ? <FieldCompare panes={allPanes} /> : null}
       </Card>
     </div>
   );

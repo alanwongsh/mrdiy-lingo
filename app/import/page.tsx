@@ -23,7 +23,7 @@ export default async function ImportPage() {
     <div>
       <PageHeader
         title="Import"
-        description="Upload Excel or CSV, validate, preview changes, then confirm. Optionally auto-translate selected languages for new/updated rows."
+        description="Upload Excel or CSV. Chosen languages are translated as part of the import."
       />
       {dbError ? (
         <DbErrorPanel message={dbError} />

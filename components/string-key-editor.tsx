@@ -29,11 +29,13 @@ export function StringKeyEditor({
   translationKey,
   languages,
   actor,
+  canApprove,
 }: {
   applicationId: string;
   translationKey: TranslationKeyListItem;
   languages: Language[];
   actor: { username: string; name: string } | null;
+  canApprove: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -245,56 +247,62 @@ export function StringKeyEditor({
                   Saved
                 </span>
               ) : null}
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={
-                  pending ||
-                  isTranslating ||
-                  status === "APPROVED" ||
-                  !draft.trim() ||
-                  !actor
-                }
-                onClick={() =>
-                  startTransition(async () => {
-                    setError("");
-                    try {
-                      let translationId = targetTranslation?.id;
-                      if (
-                        !translationId ||
-                        draft !== (targetTranslation?.current_text ?? "")
-                      ) {
-                        const saved = await saveManualStringTranslation({
-                          translationKeyId: translationKey.id,
-                          languageCode: targetLang,
-                          text: draft,
+              {canApprove ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={
+                    pending ||
+                    isTranslating ||
+                    status === "APPROVED" ||
+                    !draft.trim() ||
+                    !actor
+                  }
+                  onClick={() =>
+                    startTransition(async () => {
+                      setError("");
+                      try {
+                        let translationId = targetTranslation?.id;
+                        if (
+                          !translationId ||
+                          draft !== (targetTranslation?.current_text ?? "")
+                        ) {
+                          const saved = await saveManualStringTranslation({
+                            translationKeyId: translationKey.id,
+                            languageCode: targetLang,
+                            text: draft,
+                            applicationId,
+                          });
+                          translationId = saved.id;
+                        }
+                        await setStringTranslationStatus({
+                          translationId,
+                          status: "APPROVED",
                           applicationId,
+                          translationKeyId: translationKey.id,
                         });
-                        translationId = saved.id;
+                        router.refresh();
+                      } catch (err) {
+                        setError(
+                          err instanceof Error ? err.message : "Approve failed"
+                        );
                       }
-                      await setStringTranslationStatus({
-                        translationId,
-                        status: "APPROVED",
-                        applicationId,
-                        translationKeyId: translationKey.id,
-                      });
-                      router.refresh();
-                    } catch (err) {
-                      setError(
-                        err instanceof Error ? err.message : "Approve failed"
-                      );
-                    }
-                  })
-                }
-              >
-                {status === "APPROVED" ? "Approved" : "Approve"}
-              </Button>
+                    })
+                  }
+                >
+                  {status === "APPROVED" ? "Approved" : "Approve"}
+                </Button>
+              ) : (
+                <span className="text-xs text-slate-500">
+                  HOD and above can approve this language.
+                </span>
+              )}
               {status === "APPROVED" && targetTranslation?.approved_by_name ? (
                 <span className="text-xs text-slate-500">
                   by {targetTranslation.approved_by_name}
                 </span>
               ) : null}
-              {!actor ? (
+              {canApprove && !actor ? (
                 <span className="text-xs text-slate-500">
                   Joget sign-in required to approve
                 </span>

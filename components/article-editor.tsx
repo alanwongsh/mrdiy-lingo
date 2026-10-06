@@ -15,7 +15,7 @@ import type {
   ContentLifecycleStatus,
   ContentTranslation,
   ContentTranslationVersion,
-  ContentType,
+  ContentTypeRecord,
   Language,
   ArticleComment,
   SourceContentFields,
@@ -152,18 +152,37 @@ function findTranslation(
   return translations.find((row) => languageKey(row.language_code) === key);
 }
 
+const DRAFT_STATUSES = ["DRAFT", "TRANSLATING", "REVIEW"] as const;
+
+function lifecycleChoices(
+  canApprove: boolean,
+  current: ContentLifecycleStatus
+): ContentLifecycleStatus[] {
+  const choices: ContentLifecycleStatus[] = [...DRAFT_STATUSES];
+  if (canApprove) {
+    choices.push("APPROVED", "PUBLISHED");
+  } else if (current === "APPROVED" || current === "PUBLISHED") {
+    choices.push(current);
+  }
+  return choices;
+}
+
 export function ArticleEditor({
   applicationId,
   article,
   languages,
+  contentTypes,
   actor,
+  canApprove,
   comments,
   commentsError,
 }: {
   applicationId: string;
   article: ArticleWithTranslations;
   languages: Language[];
+  contentTypes: ContentTypeRecord[];
   actor: { username: string; name: string } | null;
+  canApprove: boolean;
   comments: ArticleComment[];
   commentsError?: string;
 }) {
@@ -448,13 +467,22 @@ export function ArticleEditor({
             <select
               className={inputClass}
               value={contentType}
-              onChange={(e) => setContentType(e.target.value as ContentType)}
+              onChange={(e) => setContentType(e.target.value)}
             >
-              {(["ARTICLE", "NEWS", "ANNOUNCEMENT"] as const).map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
+              {contentTypes
+                .filter(
+                  (type) => type.status === "ACTIVE" || type.code === contentType
+                )
+                .map((type) => (
+                  <option key={type.id} value={type.code}>
+                    {type.status === "ACTIVE"
+                      ? type.name
+                      : `${type.name} (inactive)`}
+                  </option>
+                ))}
+              {contentTypes.some((type) => type.code === contentType) ? null : (
+                <option value={contentType}>{contentType}</option>
+              )}
             </select>
           </Field>
           <Field label="Source language">
@@ -495,20 +523,17 @@ export function ArticleEditor({
                 setStatus(e.target.value as ContentLifecycleStatus)
               }
             >
-              {(
-                [
-                  "DRAFT",
-                  "TRANSLATING",
-                  "REVIEW",
-                  "APPROVED",
-                  "PUBLISHED",
-                ] as const
-              ).map((s) => (
+              {lifecycleChoices(canApprove, article.status).map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
               ))}
             </select>
+            {canApprove ? null : (
+              <p className="mt-1 text-xs text-[var(--hub-muted)]">
+                Approval and publishing are limited to HOD and above.
+              </p>
+            )}
           </Field>
           <Field label="Estimated publish">
             <input
@@ -818,63 +843,69 @@ export function ArticleEditor({
                   Saved
                 </span>
               ) : null}
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={
-                  pending ||
-                  isTranslating ||
-                  langStatus === "APPROVED" ||
-                  !draft.title.trim() ||
-                  !actor
-                }
-                onClick={() =>
-                  startTransition(async () => {
-                    setError("");
-                    try {
-                      const current = fieldsFromTranslation(targetTranslation);
-                      const changed =
-                        draft.title !== current.title ||
-                        draft.summary !== current.summary ||
-                        draft.body !== current.body;
-                      let contentTranslationId = targetTranslation?.id;
-                      if (!contentTranslationId || changed) {
-                        const saved = await saveManualContentTranslation({
-                          contentId: article.id,
-                          languageCode: editingCode,
-                          fields: {
-                            ...draft,
-                            seo_title: draft.seo_title || draft.title,
-                            seo_description:
-                              draft.seo_description || draft.summary,
-                          },
+              {canApprove ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={
+                    pending ||
+                    isTranslating ||
+                    langStatus === "APPROVED" ||
+                    !draft.title.trim() ||
+                    !actor
+                  }
+                  onClick={() =>
+                    startTransition(async () => {
+                      setError("");
+                      try {
+                        const current = fieldsFromTranslation(targetTranslation);
+                        const changed =
+                          draft.title !== current.title ||
+                          draft.summary !== current.summary ||
+                          draft.body !== current.body;
+                        let contentTranslationId = targetTranslation?.id;
+                        if (!contentTranslationId || changed) {
+                          const saved = await saveManualContentTranslation({
+                            contentId: article.id,
+                            languageCode: editingCode,
+                            fields: {
+                              ...draft,
+                              seo_title: draft.seo_title || draft.title,
+                              seo_description:
+                                draft.seo_description || draft.summary,
+                            },
+                            applicationId,
+                          });
+                          contentTranslationId = saved.id;
+                        }
+                        await setContentTranslationStatus({
+                          contentTranslationId,
+                          status: "APPROVED",
                           applicationId,
+                          contentId: article.id,
                         });
-                        contentTranslationId = saved.id;
+                        router.refresh();
+                      } catch (err) {
+                        setError(
+                          err instanceof Error ? err.message : "Approve failed"
+                        );
                       }
-                      await setContentTranslationStatus({
-                        contentTranslationId,
-                        status: "APPROVED",
-                        applicationId,
-                        contentId: article.id,
-                      });
-                      router.refresh();
-                    } catch (err) {
-                      setError(
-                        err instanceof Error ? err.message : "Approve failed"
-                      );
-                    }
-                  })
-                }
-              >
-                {langStatus === "APPROVED" ? "Approved" : "Approve"}
-              </Button>
+                    })
+                  }
+                >
+                  {langStatus === "APPROVED" ? "Approved" : "Approve"}
+                </Button>
+              ) : (
+                <span className="text-xs text-slate-500">
+                  HOD and above can approve this language.
+                </span>
+              )}
               {langStatus === "APPROVED" && targetTranslation?.approved_by_name ? (
                 <span className="text-xs text-slate-500">
                   by {targetTranslation.approved_by_name}
                 </span>
               ) : null}
-              {!actor ? (
+              {canApprove && !actor ? (
                 <span className="text-xs text-slate-500">
                   Joget sign-in required to approve
                 </span>

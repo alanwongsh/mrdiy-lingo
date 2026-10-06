@@ -20,7 +20,8 @@ import {
   upsertContentTranslation,
   autoTranslateArticleLanguages,
 } from "@/lib/actions/press";
-import type { ContentLifecycleStatus, ContentType, SourceContentFields } from "@/lib/types";
+import { ensureContentType } from "@/lib/actions/content-types";
+import type { ContentLifecycleStatus, SourceContentFields } from "@/lib/types";
 import { emptySourceContent } from "@/lib/types";
 import { requireAppCapability } from "@/lib/auth/access";
 import { normalizeTargetLanguages } from "@/lib/target-languages";
@@ -262,8 +263,12 @@ export async function confirmArticleImport(input: {
   unchanged: number;
   errors: number;
   translated: number;
+  typesCreated: number;
 }> {
-  await requireAppCapability(input.applicationId, "edit");
+  const grant = await requireAppCapability(input.applicationId, "edit");
+  const importedTranslationStatus = grant.access.can_approve
+    ? "APPROVED"
+    : "MANUALLY_MODIFIED";
   const preview = await previewArticleImport(input);
   const translateLanguages = input.translateLanguages ?? [];
   let imported = 0;
@@ -271,6 +276,7 @@ export async function confirmArticleImport(input: {
   let unchanged = 0;
   let errors = 0;
   let translated = 0;
+  let typesCreated = 0;
 
   for (const item of preview.items) {
     if (item.action === "ERROR") {
@@ -291,13 +297,18 @@ export async function confirmArticleImport(input: {
         [...Object.keys(item.translations), ...translateLanguages],
         item.source_language
       );
+      const type = await ensureContentType(
+        input.applicationId,
+        item.content_type
+      );
+      if (type.created) typesCreated += 1;
       const created = await createArticle({
         application_id: input.applicationId,
         title: item.title,
         slug: null,
         source_language: item.source_language,
         source_content: fields,
-        content_type: (item.content_type as ContentType) || "ARTICLE",
+        content_type: type.code,
         status: (item.status as ContentLifecycleStatus) || "DRAFT",
         target_languages: targetLanguages,
       });
@@ -314,6 +325,7 @@ export async function confirmArticleImport(input: {
             title: partial.title ?? item.title,
           },
           source_type: "IMPORT",
+          status: importedTranslationStatus,
         });
       }
 
@@ -328,6 +340,7 @@ export async function confirmArticleImport(input: {
           contentId,
           targetLanguages: missingTranslate,
           applicationId: input.applicationId,
+          approveTranslations: grant.access.can_approve,
         });
         translated += results.length;
       }
@@ -338,5 +351,5 @@ export async function confirmArticleImport(input: {
 
   revalidatePath(`/applications/${input.applicationId}`);
   revalidatePath("/import");
-  return { imported, updated, unchanged, errors, translated };
+  return { imported, updated, unchanged, errors, translated, typesCreated };
 }

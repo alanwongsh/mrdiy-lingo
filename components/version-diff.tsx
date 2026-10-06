@@ -213,11 +213,17 @@ export function ArticleVersionComparer({
 
   const left = options.find((o) => o.id === leftId) ?? options[0];
   const right = options.find((o) => o.id === rightId) ?? options[0];
-  const [openFields, setOpenFields] = useState<Record<string, boolean>>({
-    title: true,
-    summary: true,
-    body: false,
-  });
+  const compareKey = ARTICLE_FIELDS.map(([key]) => {
+    const leftValue = left?.fields[key] ?? "";
+    const rightValue = right?.fields[key] ?? "";
+    return `${leftValue}\u0001${rightValue}`;
+  }).join("\u0002");
+  const [trackedKey, setTrackedKey] = useState(compareKey);
+  const [openOverrides, setOpenOverrides] = useState<Record<string, boolean>>({});
+  if (trackedKey !== compareKey) {
+    setTrackedKey(compareKey);
+    setOpenOverrides({});
+  }
 
   if (options.length < 2) {
     return (
@@ -267,7 +273,7 @@ export function ArticleVersionComparer({
               ? diffHtml(leftValue, rightValue)
               : diffWords(leftValue, rightValue);
           const summary = summarizeDiff(tokens);
-          const open = openFields[key] ?? false;
+          const open = openOverrides[key] ?? summary.changed;
           return (
             <Card key={key} className="overflow-hidden">
               <button
@@ -275,7 +281,7 @@ export function ArticleVersionComparer({
                 className="flex w-full flex-wrap items-center gap-2 bg-slate-50 px-3 py-2 text-left"
                 aria-expanded={open}
                 onClick={() =>
-                  setOpenFields((current) => ({ ...current, [key]: !open }))
+                  setOpenOverrides((current) => ({ ...current, [key]: !open }))
                 }
               >
                 <span className="text-[var(--diy-red)]" aria-hidden>

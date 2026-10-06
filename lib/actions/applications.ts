@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  accessErrorMessage,
   ensureDirectoryUser,
   personDetail,
   requireAppCapability,
@@ -9,6 +10,17 @@ import {
   requireUser,
   resolveAppAccess,
 } from "@/lib/auth/access";
+import {
+  bandForLdapRole,
+  loadOrgRoleMap,
+  normalizeLdapRole,
+} from "@/lib/auth/org-roles";
+import {
+  capabilitiesForRole,
+  parseAppRole,
+  roleFromApprovalFlag,
+} from "@/lib/auth/roles";
+import { ensureDefaultContentType } from "@/lib/actions/content-types";
 import { getDb } from "@/lib/db/client";
 import type {
   Application,
@@ -109,9 +121,13 @@ export async function createApplication(input: {
     .select("*")
     .single();
   if (error) throw new Error(error.message);
+  const application = data as Application;
+  if (application.model_type === "CONTENT") {
+    await ensureDefaultContentType(application.id);
+  }
   revalidatePath("/");
   revalidatePath("/applications");
-  return data as Application;
+  return application;
 }
 
 export async function updateApplication(
@@ -137,8 +153,12 @@ export async function updateApplication(
     .select("*")
     .single();
   if (error) throw new Error(error.message);
+  const application = data as Application;
+  if (application.model_type === "CONTENT") {
+    await ensureDefaultContentType(application.id);
+  }
   revalidateApplication(id);
-  return data as Application;
+  return application;
 }
 
 export async function setApplicationStatus(
@@ -158,6 +178,7 @@ export async function setApplicationStatus(
 export async function listApplicationPeople(applicationId: string): Promise<{
   owner: ApplicationMemberView | null;
   members: ApplicationMemberView[];
+  orgRoles: Awaited<ReturnType<typeof loadOrgRoleMap>>;
 }> {
   await requireAppCapability(applicationId, "manage");
   const db = await getDb();
@@ -184,42 +205,114 @@ export async function listApplicationPeople(applicationId: string): Promise<{
         userId: user.id,
         displayName: user.display_name,
         detail: personDetail(user),
+        ldapRole: user.ldap_role ?? null,
+        role: null,
         canEdit: true,
         canApprove: true,
       };
     }
   }
 
-  const { data: rows, error } = await db
+  const listed = await db
     .from("application_members")
-    .select("id, can_edit, can_approve, user:hub_users(*)")
+    .select("id, role, can_edit, can_approve, user:hub_users(*)")
     .eq("application_id", applicationId)
     .order("created_at", { ascending: true });
-  if (error) throw new Error(error.message);
+  let rows = listed.data;
+  if (listed.error) {
+    const missingRole =
+      listed.error.code === "42703" && /\brole\b/i.test(listed.error.message);
+    if (!missingRole) throw new Error(accessErrorMessage(listed.error));
+    const legacy = await db
+      .from("application_members")
+      .select("id, can_edit, can_approve, user:hub_users(*)")
+      .eq("application_id", applicationId)
+      .order("created_at", { ascending: true });
+    if (legacy.error) throw new Error(accessErrorMessage(legacy.error));
+    rows = (legacy.data ?? []).map((row) => ({ ...row, role: null }));
+  }
 
+  const orgRoles = await loadOrgRoleMap();
   const members = (rows ?? []).flatMap((row) => {
     const user = (Array.isArray(row.user) ? row.user[0] : row.user) as HubUser | null;
     if (!user) return [];
+    const stored =
+      parseAppRole(row.role) ?? roleFromApprovalFlag(!!row.can_approve);
+    const role = orgRoles ? bandForLdapRole(user.ldap_role, orgRoles) : stored;
+    const caps = capabilitiesForRole(role === "ADMIN" ? "HOD" : role);
     return [
       {
         membershipId: row.id as string,
         userId: user.id,
         displayName: user.display_name,
         detail: personDetail(user),
-        canEdit: !!row.can_edit,
-        canApprove: !!row.can_approve,
+        ldapRole: user.ldap_role ?? null,
+        role,
+        canEdit: orgRoles ? caps.can_edit : !!row.can_edit,
+        canApprove: orgRoles ? caps.can_approve : !!row.can_approve,
       },
     ];
   });
 
-  return { owner, members };
+  return { owner, members, orgRoles };
+}
+
+function mappedTitle(
+  ldapRole: string,
+  orgRoles: NonNullable<Awaited<ReturnType<typeof loadOrgRoleMap>>>
+): string | null {
+  const key = normalizeLdapRole(ldapRole).toLowerCase();
+  if (!key) return null;
+  return (
+    orgRoles.find(
+      (row) => normalizeLdapRole(row.ldap_role).toLowerCase() === key
+    )?.ldap_role ?? null
+  );
+}
+
+async function writeAccountRole(
+  userId: string,
+  ldapRole: string | null,
+  band: "EDITOR" | "HOD"
+): Promise<string | undefined> {
+  const caps = capabilitiesForRole(band);
+  const db = await getDb();
+  const { error: userError } = await db
+    .from("hub_users")
+    .update({ ldap_role: ldapRole })
+    .eq("id", userId);
+  if (userError) return accessErrorMessage(userError);
+  const { error } = await db
+    .from("application_members")
+    .update({
+      role: band,
+      can_edit: caps.can_edit,
+      can_approve: caps.can_approve,
+    })
+    .eq("user_id", userId);
+  if (error) return accessErrorMessage(error);
+}
+
+async function assignLdapRole(userId: string, ldapRole: string): Promise<void> {
+  const trimmed = ldapRole.trim();
+  if (!trimmed) {
+    const error = await writeAccountRole(userId, null, "EDITOR");
+    if (error) throw new Error(error);
+    return;
+  }
+  const orgRoles = await loadOrgRoleMap();
+  if (!orgRoles) throw new Error("Run migration 012_org_role_map.sql from Setup.");
+  const title = mappedTitle(trimmed, orgRoles);
+  if (!title) throw new Error("Add that role on the Roles page before assigning it.");
+  const band = bandForLdapRole(title, orgRoles);
+  const error = await writeAccountRole(userId, title, band === "ADMIN" ? "HOD" : band);
+  if (error) throw new Error(error);
 }
 
 export async function inviteApplicationMember(input: {
   applicationId: string;
   identity: string;
-  canEdit: boolean;
-  canApprove: boolean;
+  ldapRole: string;
 }): Promise<{ error?: string }> {
   try {
     await requireAppCapability(input.applicationId, "manage");
@@ -236,16 +329,35 @@ export async function inviteApplicationMember(input: {
       return { error: "That person already owns this application." };
     }
 
+    const trimmedRole = input.ldapRole.trim();
+    let storedRole: string | null = null;
+    let band: "EDITOR" | "HOD" = "EDITOR";
+    if (trimmedRole) {
+      const orgRoles = await loadOrgRoleMap();
+      if (!orgRoles) return { error: "Run migration 012_org_role_map.sql from Setup." };
+      const title = mappedTitle(trimmedRole, orgRoles);
+      if (!title) return { error: "Add that role on the Roles page before assigning it." };
+      storedRole = title;
+      const mapped = bandForLdapRole(title, orgRoles);
+      band = mapped === "ADMIN" ? "HOD" : mapped;
+    }
+    const caps = capabilitiesForRole(band);
+    const { error: userError } = await db
+      .from("hub_users")
+      .update({ ldap_role: storedRole })
+      .eq("id", user.id);
+    if (userError) return { error: accessErrorMessage(userError) };
     const { error } = await db.from("application_members").upsert(
       {
         application_id: input.applicationId,
         user_id: user.id,
-        can_edit: input.canEdit,
-        can_approve: input.canApprove,
+        role: band,
+        can_edit: caps.can_edit,
+        can_approve: caps.can_approve,
       },
       { onConflict: "application_id,user_id" }
     );
-    if (error) return { error: error.message };
+    if (error) return { error: accessErrorMessage(error) };
     revalidateApplication(input.applicationId);
     return {};
   } catch (error) {
@@ -258,20 +370,19 @@ export async function inviteApplicationMember(input: {
 export async function updateApplicationMember(input: {
   applicationId: string;
   membershipId: string;
-  canEdit: boolean;
-  canApprove: boolean;
+  ldapRole: string;
 }): Promise<void> {
   await requireAppCapability(input.applicationId, "manage");
   const db = await getDb();
-  const { error } = await db
+  const { data: member, error: memberError } = await db
     .from("application_members")
-    .update({
-      can_edit: input.canEdit,
-      can_approve: input.canApprove,
-    })
+    .select("user_id")
     .eq("id", input.membershipId)
-    .eq("application_id", input.applicationId);
-  if (error) throw new Error(error.message);
+    .eq("application_id", input.applicationId)
+    .maybeSingle();
+  if (memberError) throw new Error(accessErrorMessage(memberError));
+  if (!member?.user_id) throw new Error("That person is not on this application.");
+  await assignLdapRole(member.user_id as string, input.ldapRole);
   revalidateApplication(input.applicationId);
 }
 

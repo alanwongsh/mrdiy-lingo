@@ -101,6 +101,7 @@ export default async function ApplicationOverviewPage({
           applicationId={id}
           owner={people.owner}
           members={people.members}
+          orgRoles={people.orgRoles}
           isSuperadmin={!!user?.is_superadmin}
         />
       ) : null}

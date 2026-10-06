@@ -27,6 +27,7 @@ import { emptySourceContent } from "@/lib/types";
 import { getTranslationService } from "@/lib/translation/service";
 import { normalizeSlug } from "@/lib/slug";
 import { DUE_SOON_MS, type PublishDueKind } from "@/lib/publish-due";
+import { requireContentTypeCode } from "@/lib/actions/content-types";
 import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
 import { normalizeMarket } from "@/lib/markets";
 import { buildArticleWorkbook } from "@/lib/export/articles";
@@ -139,12 +140,12 @@ async function syncArticleStatusFromApprovals(
     data.status !== "APPROVED" &&
     data.status !== "PUBLISHED"
   ) {
-    await setArticleStatus(contentId, applicationId, "APPROVED");
+    await persistArticleStatus(contentId, applicationId, "APPROVED");
   } else if (
     !allApproved &&
     (data.status === "APPROVED" || data.status === "PUBLISHED")
   ) {
-    await setArticleStatus(contentId, applicationId, "REVIEW");
+    await persistArticleStatus(contentId, applicationId, "REVIEW");
   }
 }
 
@@ -325,11 +326,17 @@ export async function createArticle(input: {
   target_languages?: string[];
   market?: string | null;
 }): Promise<Content> {
-  const status = input.status ?? "DRAFT";
-  await requireAppCapability(
-    input.application_id,
-    capabilityForReleaseStatus(status)
-  );
+  const grant = await requireAppCapability(input.application_id, "edit");
+  let status: ContentLifecycleStatus = input.status ?? "DRAFT";
+  if (grant.access.can_approve && status !== "PUBLISHED") {
+    status = "APPROVED";
+  }
+  if (
+    (status === "APPROVED" || status === "PUBLISHED") &&
+    !grant.access.can_approve
+  ) {
+    throw new Error("Approval is limited to HOD and above.");
+  }
   const db = await getDb();
   const source_content = {
     ...emptySourceContent(),
@@ -345,7 +352,10 @@ export async function createArticle(input: {
     .from("content")
     .insert({
       application_id: input.application_id,
-      content_type: input.content_type ?? "ARTICLE",
+      content_type: await requireContentTypeCode(
+        input.application_id,
+        input.content_type
+      ),
       title: input.title.trim(),
       slug:
         input.slug === null ? null : normalizeSlug(input.slug, input.title),
@@ -368,7 +378,10 @@ export async function createArticle(input: {
     language_code: input.source_language,
     fields: source_content,
     source_type: "MANUAL",
-    status: "MANUALLY_MODIFIED",
+    status:
+      status === "APPROVED" || status === "PUBLISHED"
+        ? "APPROVED"
+        : "MANUALLY_MODIFIED",
   });
 
   revalidatePath(`/applications/${input.application_id}`);
@@ -388,9 +401,11 @@ export async function updateArticle(
     scheduled_publish_at?: string | null;
     target_languages?: string[];
     market?: string | null;
+    /** Adding a language must not clear other approvals or drop the article to review. */
+    keepApprovals?: boolean;
   }
 ): Promise<Content> {
-  await requireContentAccess(id, capabilityForReleaseStatus(input.status));
+  const grant = await requireContentAccess(id, "edit");
   const db = await getDb();
   const { data: current, error: currentError } = await db
     .from("content")
@@ -400,6 +415,12 @@ export async function updateArticle(
     .eq("id", id)
     .single();
   if (currentError) throw new Error(currentError.message);
+
+  const releasing =
+    input.status === "APPROVED" || input.status === "PUBLISHED";
+  if (releasing && input.status !== current.status && !grant.access.can_approve) {
+    throw new Error("Approval is limited to HOD and above.");
+  }
 
   const sourceChanged =
     String(current.source_language).trim().toLowerCase() !==
@@ -420,7 +441,7 @@ export async function updateArticle(
     input.target_languages !== undefined &&
     !sameCodeSet(currentTargets, nextTargets);
 
-  if (sourceChanged) {
+  if (sourceChanged && !input.keepApprovals) {
     await clearTargetApprovals(id, input.source_language);
   }
 
@@ -429,9 +450,13 @@ export async function updateArticle(
   const markingReleased =
     input.status === "APPROVED" || input.status === "PUBLISHED";
   let nextStatus = input.status;
-  if (sourceChanged && (released || markingReleased)) {
+  if (!input.keepApprovals && sourceChanged && (released || markingReleased)) {
     nextStatus = "REVIEW";
-  } else if (targetsChanged && (released || markingReleased)) {
+  } else if (
+    !input.keepApprovals &&
+    targetsChanged &&
+    (released || markingReleased)
+  ) {
     const allApproved = await targetsAllApproved(
       id,
       input.source_language,
@@ -445,7 +470,10 @@ export async function updateArticle(
     slug: (input.slug ?? "").trim()
       ? normalizeSlug(input.slug, input.title)
       : null,
-    content_type: input.content_type,
+    content_type: await requireContentTypeCode(
+      applicationId,
+      input.content_type
+    ),
     source_language: input.source_language,
     source_content: input.source_content,
     status: nextStatus,
@@ -475,7 +503,7 @@ export async function updateArticle(
     .select("*")
     .single();
   if (error) throw new Error(error.message);
-  if (targetsChanged) {
+  if (targetsChanged && !input.keepApprovals) {
     await syncArticleStatusFromApprovals(id, applicationId);
   }
   revalidatePath(`/applications/${applicationId}`);
@@ -483,12 +511,11 @@ export async function updateArticle(
   return mapContentRow(data as Content);
 }
 
-export async function setArticleStatus(
+async function persistArticleStatus(
   id: string,
   applicationId: string,
   status: ContentLifecycleStatus
 ): Promise<void> {
-  await requireContentAccess(id, capabilityForReleaseStatus(status));
   const db = await getDb();
   const { data: current, error: currentError } = await db
     .from("content")
@@ -507,6 +534,15 @@ export async function setArticleStatus(
   if (error) throw new Error(error.message);
   revalidatePath(`/applications/${applicationId}`);
   revalidatePath(`/applications/${applicationId}/articles/${id}`);
+}
+
+export async function setArticleStatus(
+  id: string,
+  applicationId: string,
+  status: ContentLifecycleStatus
+): Promise<void> {
+  await requireContentAccess(id, capabilityForReleaseStatus(status));
+  await persistArticleStatus(id, applicationId, status);
 }
 
 export async function deleteArticle(input: {
@@ -583,6 +619,15 @@ export async function upsertContentTranslation(input: {
     .maybeSingle();
   if (findError) throw new Error(findError.message);
 
+  const approval =
+    status === "APPROVED"
+      ? await approvalStamp("APPROVED", grant.user.id)
+      : {
+          approved_by_username: null,
+          approved_by_name: null,
+          approved_by_user_id: null,
+          approved_at: null,
+        };
   const payload = {
     title: input.fields.title,
     summary: input.fields.summary,
@@ -590,10 +635,7 @@ export async function upsertContentTranslation(input: {
     seo_title: input.fields.seo_title,
     seo_description: input.fields.seo_description,
     status,
-    approved_by_username: null,
-    approved_by_name: null,
-    approved_by_user_id: null,
-    approved_at: null,
+    ...approval,
   };
 
   let translation: ContentTranslation;
@@ -718,6 +760,8 @@ export async function autoTranslateArticle(input: {
   sourceFields?: SourceContentFields;
   /** Prefer live source-language selection over DB when provided. */
   sourceLanguage?: string;
+  /** HOD import: store the translation as approved and leave the article status alone. */
+  approveTranslation?: boolean;
 }): Promise<ContentTranslation> {
   await requireContentAccess(input.contentId, "edit");
   const article = await getArticle(input.contentId);
@@ -753,7 +797,9 @@ export async function autoTranslateArticle(input: {
     );
   }
 
-  await setArticleStatus(input.contentId, input.applicationId, "TRANSLATING");
+  if (!input.approveTranslation) {
+    await setArticleStatus(input.contentId, input.applicationId, "TRANSLATING");
+  }
 
   // Persist latest source / language so translation isn't based on stale DB content.
   const liveHasContent = Boolean(
@@ -770,12 +816,13 @@ export async function autoTranslateArticle(input: {
       content_type: article.content_type,
       source_language: sourceLanguage,
       source_content: sourceFields,
-      status: "TRANSLATING",
+      status: input.approveTranslation ? article.status : "TRANSLATING",
       scheduled_publish_at: article.scheduled_publish_at,
       target_languages: normalizeTargetLanguages(
         article.target_languages,
         sourceLanguage
       ),
+      keepApprovals: true,
     });
   }
 
@@ -799,10 +846,12 @@ export async function autoTranslateArticle(input: {
     language_code: input.targetLanguage,
     fields,
     source_type: "SYSTEM",
-    status: "SYSTEM_GENERATED",
+    status: input.approveTranslation ? "APPROVED" : "SYSTEM_GENERATED",
   });
 
-  await setArticleStatus(input.contentId, input.applicationId, "REVIEW");
+  if (!input.approveTranslation) {
+    await setArticleStatus(input.contentId, input.applicationId, "REVIEW");
+  }
   revalidatePath(
     `/applications/${input.applicationId}/articles/${input.contentId}`
   );
@@ -815,15 +864,35 @@ export async function autoTranslateArticleLanguages(input: {
   applicationId: string;
   sourceFields?: SourceContentFields;
   sourceLanguage?: string;
+  /** HOD import: approve each generated translation and keep the article approved. */
+  approveTranslations?: boolean;
 }): Promise<ContentTranslation[]> {
-  await requireContentAccess(input.contentId, "edit");
+  const grant = await requireContentAccess(input.contentId, "edit");
+  const approveTranslations =
+    input.approveTranslations ?? grant.access.can_approve;
   const article = await getArticle(input.contentId);
   if (!article) throw new Error("Article not found");
   const sourceLanguage = input.sourceLanguage?.trim() || article.source_language;
-  const targets = normalizeTargetLanguages(input.targetLanguages, sourceLanguage);
-  if (targets.length === 0) {
+  const requested = normalizeTargetLanguages(
+    input.targetLanguages,
+    sourceLanguage
+  );
+  if (requested.length === 0) {
     throw new Error("Choose a language other than the source.");
   }
+  const approved = new Set(
+    (article.translations ?? [])
+      .filter((row) => row.status === "APPROVED")
+      .map((row) => languageKey(row.language_code))
+  );
+  const toTranslate = requested.filter((code) => !approved.has(languageKey(code)));
+  if (toTranslate.length === 0) {
+    throw new Error("Selected languages are already approved.");
+  }
+  const storedTargets = normalizeTargetLanguages(
+    [...(article.target_languages ?? []), ...requested],
+    sourceLanguage
+  );
   await updateArticle(input.contentId, input.applicationId, {
     title: input.sourceFields?.title?.trim() || article.title,
     slug: null,
@@ -834,10 +903,11 @@ export async function autoTranslateArticleLanguages(input: {
       : article.source_content,
     status: article.status,
     scheduled_publish_at: article.scheduled_publish_at,
-    target_languages: targets,
+    target_languages: storedTargets,
+    keepApprovals: true,
   });
   const results: ContentTranslation[] = [];
-  for (const targetLanguage of targets) {
+  for (const targetLanguage of toTranslate) {
     results.push(
       await autoTranslateArticle({
         contentId: input.contentId,
@@ -845,8 +915,12 @@ export async function autoTranslateArticleLanguages(input: {
         applicationId: input.applicationId,
         sourceFields: input.sourceFields,
         sourceLanguage,
+        approveTranslation: approveTranslations,
       })
     );
+  }
+  if (approveTranslations) {
+    await syncArticleStatusFromApprovals(input.contentId, input.applicationId);
   }
   return results;
 }

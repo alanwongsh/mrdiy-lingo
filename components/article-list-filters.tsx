@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import type { Language } from "@/lib/types";
+import type { ContentTypeRecord, Language } from "@/lib/types";
 import { MARKETS } from "@/lib/markets";
+import { ContentTypeDialog } from "@/components/content-type-dialog";
 import { FilterMultiSelect, FilterSelect } from "@/components/filter-select";
 import { Button, Card, inputClass } from "@/components/ui";
 
@@ -13,12 +15,6 @@ const STATUS_OPTIONS = [
   { value: "REVIEW", label: "REVIEW" },
   { value: "APPROVED", label: "APPROVED" },
   { value: "PUBLISHED", label: "PUBLISHED" },
-];
-
-const TYPE_OPTIONS = [
-  { value: "ARTICLE", label: "ARTICLE" },
-  { value: "NEWS", label: "NEWS" },
-  { value: "ANNOUNCEMENT", label: "ANNOUNCEMENT" },
 ];
 
 const DUE_OPTIONS = [
@@ -32,10 +28,14 @@ const DUE_OPTIONS = [
 export function ArticleListFilters({
   applicationId,
   languages,
+  contentTypes,
+  canEdit,
   initial,
 }: {
   applicationId: string;
   languages: Language[];
+  contentTypes: ContentTypeRecord[];
+  canEdit: boolean;
   initial: {
     q: string;
     source: string[];
@@ -53,6 +53,15 @@ export function ArticleListFilters({
   const [type, setType] = useState(initial.type);
   const [market, setMarket] = useState(initial.market);
   const [due, setDue] = useState(initial.due);
+  const [typeDialog, setTypeDialog] = useState<ContentTypeRecord | "new" | null>(
+    null
+  );
+  const typeOptions = contentTypes
+    .filter((item) => item.status === "ACTIVE" || item.code === type)
+    .map((item) => ({
+      value: item.code,
+      label: item.status === "ACTIVE" ? item.name : `${item.name} (inactive)`,
+    }));
   const activeCount =
     (source.length > 0 ? 1 : 0) +
     (status ? 1 : 0) +
@@ -79,6 +88,7 @@ export function ArticleListFilters({
   }
 
   return (
+    <>
     <Card className="mb-4 p-3 sm:p-4">
       <form onSubmit={applyFilters}>
         <div className="flex items-center gap-2">
@@ -126,7 +136,38 @@ export function ArticleListFilters({
             value={type}
             onChange={setType}
             placeholder="All types"
-            options={TYPE_OPTIONS}
+            options={typeOptions}
+            onEditOption={
+              canEdit
+                ? (option) => {
+                    const match = contentTypes.find(
+                      (item) => item.code === option.value
+                    );
+                    if (match) setTypeDialog(match);
+                  }
+                : undefined
+            }
+            footer={
+              <div className="flex items-center justify-between gap-2 px-1">
+                {canEdit ? (
+                  <button
+                    type="button"
+                    className="text-sm font-semibold hover:underline text-[var(--hub-accent)]"
+                    onClick={() => setTypeDialog("new")}
+                  >
+                    Add type
+                  </button>
+                ) : (
+                  <span />
+                )}
+                <Link
+                  href={`/applications/${applicationId}/types`}
+                  className="text-sm text-slate-600 hover:underline"
+                >
+                  Manage types
+                </Link>
+              </div>
+            }
           />
           <FilterSelect
             value={market}
@@ -149,5 +190,14 @@ export function ArticleListFilters({
         </div>
       </form>
     </Card>
+    {typeDialog ? (
+      <ContentTypeDialog
+        applicationId={applicationId}
+        contentType={typeDialog === "new" ? null : typeDialog}
+        onClose={() => setTypeDialog(null)}
+        onSaved={() => router.refresh()}
+      />
+    ) : null}
+  </>
   );
 }

@@ -75,7 +75,7 @@ export function ArticleComments({
     <>
       <button
         type="button"
-        className={`fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-40 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--diy-red)] text-white shadow-[0_8px_24px_rgba(227,6,19,0.35)] transition hover:bg-[var(--hub-accent-hover)] ${
+        className={`fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-50 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--diy-red)] text-white shadow-[0_8px_24px_rgba(227,6,19,0.35)] transition hover:bg-[var(--hub-accent-hover)] ${
           open ? "right-full max-sm:hidden sm:right-[24rem]" : "right-[max(1.5rem,env(safe-area-inset-right))]"
         }`}
         aria-expanded={open}
@@ -105,6 +105,15 @@ export function ArticleComments({
           </span>
         ) : null}
       </button>
+
+      {open ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-30 bg-slate-900/20"
+          aria-label="Close comments"
+          onClick={() => setOpen(false)}
+        />
+      ) : null}
 
       {open ? (
         <aside
