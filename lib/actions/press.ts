@@ -1084,7 +1084,11 @@ export async function exportArticlesFile(input: {
   });
   const notice = describeExportGaps(skipped, blankCounts);
   if (ordered.length === 0) {
-    throw new Error(notice || "No matching articles to export.");
+    return {
+      filename: "",
+      base64: "",
+      notice: notice || "No matching articles to export.",
+    };
   }
 
   const { base64 } = buildArticleWorkbook(ordered);

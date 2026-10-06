@@ -122,6 +122,10 @@ export function ArticleListTable({
           applicationId,
           contentIds: selectedOnPage,
         });
+        if (!file.base64) {
+          setError(file.notice || "No matching articles to export.");
+          return;
+        }
         downloadWorkbook(file.filename, file.base64);
         setNotice(file.notice);
       } catch (err) {
