@@ -2,40 +2,10 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import {
-  confirmArticleImport,
-  confirmStringImport,
-  previewArticleImport,
-  previewStringImport,
-} from "@/lib/actions/import";
+import { confirmArticleImport, confirmStringImport } from "@/lib/actions/import";
 import type { Application, Language } from "@/lib/types";
-import {
-  Badge,
-  Button,
-  Card,
-  Field,
-  inputClass,
-  statusTone,
-} from "@/components/ui";
+import { Badge, Button, Card, Field, inputClass } from "@/components/ui";
 import { LanguageMultiSelect } from "@/components/language-multi-select";
-
-type PreviewResult = {
-  items: Array<{
-    action: string;
-    error?: string;
-    rowNumber: number;
-    key?: string;
-    namespace?: string;
-    title?: string;
-  }>;
-  summary: {
-    new: number;
-    updated: number;
-    unchanged: number;
-    errors: number;
-    total: number;
-  };
-};
 
 async function fileToBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
@@ -204,7 +174,6 @@ export function ImportWizard({
     (selectedApp?.model_type === "CONTENT" ? "CONTENT" : "STRING");
 
   const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [receipt, setReceipt] = useState<{
     filename: string;
     imported: number;
@@ -222,35 +191,8 @@ export function ImportWizard({
       : `/applications/${applicationId}/translations`
     : "";
 
-  function runPreview() {
-    if (!file || !applicationId) return;
-    setError("");
-    setReceipt(null);
-    startTransition(async () => {
-      try {
-        const base64 = await fileToBase64(file);
-        const data =
-          importType === "STRING"
-            ? await previewStringImport({
-                applicationId,
-                filename: file.name,
-                base64,
-              })
-            : await previewArticleImport({
-                applicationId,
-                filename: file.name,
-                base64,
-              });
-        setPreview(data as PreviewResult);
-      } catch (err) {
-        setPreview(null);
-        setError(err instanceof Error ? err.message : "Preview failed");
-      }
-    });
-  }
-
-  function runConfirm() {
-    if (!file || !applicationId) return;
+  function runImport() {
+    if (!file || !applicationId || receipt) return;
     setError("");
     startTransition(async () => {
       try {
@@ -277,19 +219,6 @@ export function ImportWizard({
           errors: res.errors,
           translated: res.translated,
         });
-        const refreshed =
-          importType === "STRING"
-            ? await previewStringImport({
-                applicationId,
-                filename: file.name,
-                base64,
-              })
-            : await previewArticleImport({
-                applicationId,
-                filename: file.name,
-                base64,
-              });
-        setPreview(refreshed as PreviewResult);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Import failed");
       }
@@ -306,7 +235,6 @@ export function ImportWizard({
               value={applicationId}
               onChange={(e) => {
                 setApplicationId(e.target.value);
-                setPreview(null);
                 setReceipt(null);
               }}
             >
@@ -340,7 +268,6 @@ export function ImportWizard({
                 className="sr-only"
                 onChange={(e) => {
                   setFile(e.target.files?.[0] ?? null);
-                  setPreview(null);
                   setReceipt(null);
                 }}
               />
@@ -361,7 +288,7 @@ export function ImportWizard({
         {languages.length > 0 ? (
           <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4">
             <LanguageMultiSelect
-              label="Also set as target languages + auto-translate"
+              label="Translate into"
               options={languages}
               selected={translateLanguages}
               onSelectedChange={setTranslateLanguages}
@@ -371,24 +298,16 @@ export function ImportWizard({
         ) : null}
 
         <div className="flex flex-wrap gap-2">
-          <Button type="button" onClick={runPreview} disabled={!file || pending}>
-            {pending ? "Working…" : "Validate & preview"}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={runConfirm}
-            disabled={!preview || pending || !!receipt}
-          >
+          <Button type="button" onClick={runImport} disabled={!file || pending || !!receipt}>
             {receipt
               ? "Imported"
               : pending
                 ? translateLanguages.length > 0
-                  ? "Importing & translating…"
+                  ? "Importing and translating…"
                   : "Importing…"
                 : translateLanguages.length > 0
-                  ? `Confirm import + translate (${translateLanguages.length})`
-                  : "Confirm import"}
+                  ? "Import and translate"
+                  : "Import"}
           </Button>
         </div>
         {error ? <p className="text-sm text-red-700">{error}</p> : null}
@@ -425,78 +344,6 @@ export function ImportWizard({
           </div>
         ) : null}
       </Card>
-
-      {preview ? (
-        <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {(
-              [
-                ["New", preview.summary.new, "good"],
-                ["Updated", preview.summary.updated, "info"],
-                ["Unchanged", preview.summary.unchanged, "neutral"],
-                ["Errors", preview.summary.errors, "bad"],
-              ] as const
-            ).map(([label, value, tone]) => (
-              <Card key={label} className="p-4">
-                <div className="text-xs text-[var(--hub-muted)] uppercase">
-                  {label}
-                </div>
-                <div className="mt-1 text-2xl font-semibold tabular-nums">
-                  {value}
-                </div>
-                <Badge
-                  tone={
-                    tone === "good"
-                      ? "good"
-                      : tone === "info"
-                        ? "info"
-                        : tone === "bad"
-                          ? "bad"
-                          : "neutral"
-                  }
-                >
-                  {label}
-                </Badge>
-              </Card>
-            ))}
-          </div>
-
-          <Card className="overflow-x-auto">
-            <table className="hub-table">
-              <thead>
-                <tr>
-                  <th>Row</th>
-                  <th>Item</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {preview.items.slice(0, 50).map((item) => (
-                  <tr
-                    key={`${item.rowNumber}-${item.key ?? item.title}`}
-                    className="border-b border-[var(--hub-border)]"
-                  >
-                    <td className="px-4 py-2 tabular-nums">{item.rowNumber}</td>
-                    <td className="px-4 py-2">
-                      {item.key
-                        ? `${item.namespace} / ${item.key}`
-                        : item.title}
-                      {item.error ? (
-                        <span className="mt-0.5 block text-xs text-red-700">
-                          {item.error}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-2">
-                      <Badge tone={statusTone(item.action)}>{item.action}</Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        </>
-      ) : null}
     </div>
   );
 }
