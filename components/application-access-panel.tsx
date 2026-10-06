@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
@@ -9,7 +8,7 @@ import {
   setApplicationOwner,
   updateApplicationMember,
 } from "@/lib/actions/applications";
-import { ORG_BAND_LABEL, type OrgRoleBand } from "@/lib/auth/roles";
+import type { OrgRoleBand } from "@/lib/auth/roles";
 import type { ApplicationMemberView, OrgRoleMapping } from "@/lib/types";
 import { Button, Card, Field, inputClass } from "@/components/ui";
 
@@ -31,15 +30,14 @@ function RoleSelect({
       className={inputClass}
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      required
     >
-      <option value="">Choose a role</option>
-      {value && !known ? <option value={value}>{value} · not in the map</option> : null}
+      <option value="">No role</option>
+      {value && !known ? <option value={value}>{value}</option> : null}
       {groups.map((band) => {
         const items = roles.filter((role) => role.band === band);
         if (items.length === 0) return null;
         return (
-          <optgroup key={band} label={ORG_BAND_LABEL[band]}>
+          <optgroup key={band} label={band === "HOD" ? "HOD" : "Editor"}>
             {items.map((role) => (
               <option key={role.id} value={role.ldap_role}>
                 {role.ldap_role}
@@ -65,9 +63,6 @@ function MemberRow({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const [ldapRole, setLdapRole] = useState(member.ldapRole ?? "");
-  const band = orgRoles.find(
-    (role) => role.ldap_role.toLowerCase() === ldapRole.trim().toLowerCase()
-  )?.band;
 
   function save() {
     setError("");
@@ -108,16 +103,13 @@ function MemberRow({
           {member.detail ? (
             <div className="text-sm text-[var(--hub-muted)]">{member.detail}</div>
           ) : null}
-          {band ? (
-            <div className="text-sm text-[var(--hub-muted)]">{ORG_BAND_LABEL[band]}</div>
-          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <label className="flex items-center gap-2">
             <span className="text-[var(--hub-muted)]">Role</span>
             <RoleSelect value={ldapRole} roles={orgRoles} onChange={setLdapRole} />
           </label>
-          <Button type="button" variant="secondary" disabled={pending || !ldapRole} onClick={save}>
+          <Button type="button" variant="secondary" disabled={pending} onClick={save}>
             Save
           </Button>
           <Button type="button" variant="ghost" disabled={pending} onClick={remove}>
@@ -198,28 +190,9 @@ export function ApplicationAccessPanel({
   return (
     <Card className="mt-8 p-5">
       <h2 className="text-base font-semibold">People</h2>
-      <p className="mt-1 text-sm text-[var(--hub-muted)]">
-        Each account keeps its role in the database. HOD can approve, and
-        articles they create are approved immediately. Executive and the other
-        titles in Edit and draft can only edit and save drafts.
-      </p>
       {orgRoles === null ? (
         <p className="mt-3 text-sm text-amber-800">
           Run migration 012 from Setup before assigning roles.
-        </p>
-      ) : roles.length === 0 ? (
-        <p className="mt-3 text-sm text-amber-800">
-          No roles are mapped yet.
-          {isSuperadmin ? (
-            <>
-              {" "}
-              <Link href="/roles" className="font-semibold underline">
-                Add them on the Roles page.
-              </Link>
-            </>
-          ) : (
-            " A superadmin needs to add them on the Roles page."
-          )}
         </p>
       ) : null}
 
@@ -233,12 +206,6 @@ export function ApplicationAccessPanel({
             {owner.detail ? (
               <div className="text-sm text-[var(--hub-muted)]">{owner.detail}</div>
             ) : null}
-            <p className="mt-1 text-sm text-[var(--hub-muted)]">
-              {owner.ldapRole
-                ? `Company role: ${owner.ldapRole}. `
-                : ""}
-              Owners can approve, and articles they create are approved immediately.
-            </p>
           </div>
         ) : (
           <p className="mt-2 text-sm text-[var(--hub-muted)]">No owner yet.</p>
@@ -291,18 +258,7 @@ export function ApplicationAccessPanel({
             <RoleSelect value={ldapRole} roles={roles} onChange={setLdapRole} />
           </Field>
         </div>
-        <p className="text-sm text-[var(--hub-muted)]">
-          This role is stored on the account and applies to every application they can open.
-          {isSuperadmin ? (
-            <>
-              {" "}
-              <Link href="/roles" className="font-semibold underline">
-                Group titles on the Roles page.
-              </Link>
-            </>
-          ) : null}
-        </p>
-        <Button type="submit" disabled={pending || roles.length === 0}>
+        <Button type="submit" disabled={pending || (roles.length === 0 && ldapRole.trim().length > 0)}>
           {pending ? "Saving…" : "Add person"}
         </Button>
       </form>

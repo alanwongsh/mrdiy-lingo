@@ -95,13 +95,15 @@ function SidebarBody({
             {isSuperadmin ? (
               <div className="mt-0.5 font-semibold text-[var(--diy-red)]">Superadmin</div>
             ) : null}
-            <Link
-              href="/embed/sign-out"
-              className="hub-text-button mt-1 inline-block text-xs"
-              onClick={onNavigate}
-            >
-              Sign out
-            </Link>
+            <form action="/embed/sign-out" method="post" className="mt-1">
+              <button
+                type="submit"
+                className="hub-text-button text-xs"
+                onClick={onNavigate}
+              >
+                Sign out
+              </button>
+            </form>
           </div>
         )}
         Mr DIY Lingo · V1

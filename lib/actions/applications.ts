@@ -261,19 +261,18 @@ function mappedTitle(
   );
 }
 
-async function assignLdapRole(userId: string, ldapRole: string): Promise<void> {
-  const orgRoles = await loadOrgRoleMap();
-  if (!orgRoles) throw new Error("Run migration 012_org_role_map.sql from Setup.");
-  const title = mappedTitle(ldapRole, orgRoles);
-  if (!title) throw new Error("Add that role on the Roles page before assigning it.");
-  const band = bandForLdapRole(title, orgRoles);
+async function writeAccountRole(
+  userId: string,
+  ldapRole: string | null,
+  band: "EDITOR" | "HOD"
+): Promise<string | undefined> {
   const caps = capabilitiesForRole(band);
   const db = await getDb();
   const { error: userError } = await db
     .from("hub_users")
-    .update({ ldap_role: title })
+    .update({ ldap_role: ldapRole })
     .eq("id", userId);
-  if (userError) throw new Error(accessErrorMessage(userError));
+  if (userError) return accessErrorMessage(userError);
   const { error } = await db
     .from("application_members")
     .update({
@@ -282,7 +281,23 @@ async function assignLdapRole(userId: string, ldapRole: string): Promise<void> {
       can_approve: caps.can_approve,
     })
     .eq("user_id", userId);
-  if (error) throw new Error(accessErrorMessage(error));
+  if (error) return accessErrorMessage(error);
+}
+
+async function assignLdapRole(userId: string, ldapRole: string): Promise<void> {
+  const trimmed = ldapRole.trim();
+  if (!trimmed) {
+    const error = await writeAccountRole(userId, null, "EDITOR");
+    if (error) throw new Error(error);
+    return;
+  }
+  const orgRoles = await loadOrgRoleMap();
+  if (!orgRoles) throw new Error("Run migration 012_org_role_map.sql from Setup.");
+  const title = mappedTitle(trimmed, orgRoles);
+  if (!title) throw new Error("Add that role on the Roles page before assigning it.");
+  const band = bandForLdapRole(title, orgRoles);
+  const error = await writeAccountRole(userId, title, band === "ADMIN" ? "HOD" : band);
+  if (error) throw new Error(error);
 }
 
 export async function inviteApplicationMember(input: {
@@ -305,15 +320,22 @@ export async function inviteApplicationMember(input: {
       return { error: "That person already owns this application." };
     }
 
-    const orgRoles = await loadOrgRoleMap();
-    if (!orgRoles) return { error: "Run migration 012_org_role_map.sql from Setup." };
-    const title = mappedTitle(input.ldapRole, orgRoles);
-    if (!title) return { error: "Add that role on the Roles page before assigning it." };
-    const band = bandForLdapRole(title, orgRoles);
+    const trimmedRole = input.ldapRole.trim();
+    let storedRole: string | null = null;
+    let band: "EDITOR" | "HOD" = "EDITOR";
+    if (trimmedRole) {
+      const orgRoles = await loadOrgRoleMap();
+      if (!orgRoles) return { error: "Run migration 012_org_role_map.sql from Setup." };
+      const title = mappedTitle(trimmedRole, orgRoles);
+      if (!title) return { error: "Add that role on the Roles page before assigning it." };
+      storedRole = title;
+      const mapped = bandForLdapRole(title, orgRoles);
+      band = mapped === "ADMIN" ? "HOD" : mapped;
+    }
     const caps = capabilitiesForRole(band);
     const { error: userError } = await db
       .from("hub_users")
-      .update({ ldap_role: title })
+      .update({ ldap_role: storedRole })
       .eq("id", user.id);
     if (userError) return { error: accessErrorMessage(userError) };
     const { error } = await db.from("application_members").upsert(

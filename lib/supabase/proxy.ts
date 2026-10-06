@@ -3,7 +3,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   ACTOR_COOKIE,
   EMBED_COOKIE,
-  actorCookieOptions,
   devEmbedEnabled,
   isAnonymousPath,
   safeNextPath,
@@ -22,9 +21,6 @@ function continueRequest(request: NextRequest) {
   const response = NextResponse.next({
     request: { headers: requestHeaders },
   });
-  if (request.nextUrl.searchParams.get("embed") === "true") {
-    response.cookies.set(EMBED_COOKIE, "1", actorCookieOptions(request.url, true));
-  }
   return response;
 }
 

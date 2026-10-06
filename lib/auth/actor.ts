@@ -9,7 +9,9 @@ export const EMBED_COOKIE = "lingo_embed";
 
 export function devEmbedEnabled(): boolean {
   return process.env.EMBED_ALLOW_DEV === "true";
-}const SESSION_SECONDS = 60 * 60 * 12;
+}
+
+const SESSION_SECONDS = 60 * 60 * 12;
 
 export type HubActor = {
   username: string;
@@ -92,27 +94,70 @@ export function verifyActorToken(token: string): HubActor | null {
   };
 }
 
-export function actorCookieOptions(requestUrl: string, embedded = false) {
+type CookieWrite = {
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: "lax" | "none";
+  partitioned?: boolean;
+  path: string;
+  maxAge: number;
+};
+
+// Chrome accepts Secure cookies on localhost, which is what SameSite=None requires.
+export function crossSiteCookieAllowed(requestUrl: string): boolean {
+  const url = new URL(requestUrl);
+  if (url.protocol === "https:") return true;
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+}
+
+function crossSiteBase(): Omit<CookieWrite, "partitioned"> {
+  return {
+    httpOnly: true,
+    secure: true,
+    sameSite: "none",
+    path: "/",
+    maxAge: SESSION_SECONDS,
+  };
+}
+
+export function actorCookieOptions(requestUrl: string, embedded = false): CookieWrite {
   const secure = new URL(requestUrl).protocol === "https:";
-  // Partitioned + SameSite=None is only for the Joget iframe. On a normal
-  // Vercel visit that cookie is not sent again on refresh, so the session dies.
-  if (embedded && secure) {
-    return {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none" as const,
-      partitioned: true,
-      path: "/",
-      maxAge: SESSION_SECONDS,
-    };
+  // SameSite=Lax is not sent on in-iframe fetches, so switching tabs inside
+  // Joget drops the session. Partitioned covers browsers that block third-party
+  // cookies. A normal top-level visit must stay Lax, or this cookie is not sent
+  // again on refresh.
+  if (embedded && crossSiteCookieAllowed(requestUrl)) {
+    return { ...crossSiteBase(), partitioned: true };
   }
   return {
     httpOnly: true,
     secure,
-    sameSite: "lax" as const,
+    sameSite: "lax",
     path: "/",
     maxAge: SESSION_SECONDS,
   };
+}
+
+function cookieHeader(name: string, value: string, options: CookieWrite): string {
+  const parts = [
+    `${name}=${value}`,
+    `Path=${options.path}`,
+    `Max-Age=${options.maxAge}`,
+    "HttpOnly",
+    `SameSite=${options.sameSite === "none" ? "None" : "Lax"}`,
+  ];
+  if (options.secure) parts.push("Secure");
+  if (options.partitioned) parts.push("Partitioned");
+  return parts.join("; ");
+}
+
+function appendCookie(response: NextResponse, name: string, value: string, options: CookieWrite) {
+  response.headers.append("Set-Cookie", cookieHeader(name, value, options));
+}
+
+export function requestInFrame(request: Request): boolean {
+  return request.headers.get("sec-fetch-dest") === "iframe";
 }
 
 export function applyActorCookie(
@@ -121,49 +166,59 @@ export function applyActorCookie(
   requestUrl: string,
   embedded = false
 ) {
-  response.cookies.set(ACTOR_COOKIE, token, actorCookieOptions(requestUrl, embedded));
+  if (embedded && crossSiteCookieAllowed(requestUrl)) {
+    // Only a real cross-site iframe gets SameSite=None. A partitioned cookie is
+    // not sent on a normal tab, so the next in-app navigation looks signed out.
+    const base = crossSiteBase();
+    appendCookie(response, ACTOR_COOKIE, token, { ...base, partitioned: true });
+    appendCookie(response, ACTOR_COOKIE, token, base);
+    return;
+  }
+  response.cookies.set(ACTOR_COOKIE, token, actorCookieOptions(requestUrl, false));
 }
 
 export function applyEmbedCookie(response: NextResponse, requestUrl: string) {
-  response.cookies.set(EMBED_COOKIE, "1", actorCookieOptions(requestUrl, true));
+  if (crossSiteCookieAllowed(requestUrl)) {
+    const base = crossSiteBase();
+    appendCookie(response, EMBED_COOKIE, "1", { ...base, partitioned: true });
+    appendCookie(response, EMBED_COOKIE, "1", base);
+    return;
+  }
+  response.cookies.set(EMBED_COOKIE, "1", actorCookieOptions(requestUrl, false));
 }
 
-function expiredCookieHeader(name: string, requestUrl: string, embedded: boolean) {
-  const options = { ...actorCookieOptions(requestUrl, embedded), maxAge: 0 };
-  const parts = [
-    `${name}=`,
-    "Path=/",
-    "HttpOnly",
-    "Max-Age=0",
-    `SameSite=${options.sameSite === "none" ? "None" : "Lax"}`,
-  ];
-  if (options.secure) parts.push("Secure");
-  if ("partitioned" in options && options.partitioned) parts.push("Partitioned");
+function expiredCookieHeader(name: string, mode: "lax" | "none" | "partitioned", https: boolean) {
+  const parts = [`${name}=`, "Path=/", "HttpOnly", "Max-Age=0"];
+  if (mode === "lax") {
+    parts.push("SameSite=Lax");
+    if (https) parts.push("Secure");
+  } else {
+    parts.push("SameSite=None", "Secure");
+    if (mode === "partitioned") parts.push("Partitioned");
+  }
   return parts.join("; ");
 }
 
 export function clearActorCookie(response: NextResponse, requestUrl: string) {
-  response.headers.append(
-    "Set-Cookie",
-    expiredCookieHeader(ACTOR_COOKIE, requestUrl, false)
-  );
-  if (new URL(requestUrl).protocol === "https:") {
+  const https = new URL(requestUrl).protocol === "https:";
+  response.headers.append("Set-Cookie", expiredCookieHeader(ACTOR_COOKIE, "lax", https));
+  if (crossSiteCookieAllowed(requestUrl)) {
+    response.headers.append("Set-Cookie", expiredCookieHeader(ACTOR_COOKIE, "none", https));
     response.headers.append(
       "Set-Cookie",
-      expiredCookieHeader(ACTOR_COOKIE, requestUrl, true)
+      expiredCookieHeader(ACTOR_COOKIE, "partitioned", https)
     );
   }
 }
 
 export function clearEmbedCookie(response: NextResponse, requestUrl: string) {
-  response.headers.append(
-    "Set-Cookie",
-    expiredCookieHeader(EMBED_COOKIE, requestUrl, false)
-  );
-  if (new URL(requestUrl).protocol === "https:") {
+  const https = new URL(requestUrl).protocol === "https:";
+  response.headers.append("Set-Cookie", expiredCookieHeader(EMBED_COOKIE, "lax", https));
+  if (crossSiteCookieAllowed(requestUrl)) {
+    response.headers.append("Set-Cookie", expiredCookieHeader(EMBED_COOKIE, "none", https));
     response.headers.append(
       "Set-Cookie",
-      expiredCookieHeader(EMBED_COOKIE, requestUrl, true)
+      expiredCookieHeader(EMBED_COOKIE, "partitioned", https)
     );
   }
 }
