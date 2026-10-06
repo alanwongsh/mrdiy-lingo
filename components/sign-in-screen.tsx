@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { canOpenSetup } from "@/lib/auth/access";
+import { devEmbedEnabled } from "@/lib/auth/actor";
 import { Button, Card, Field, inputClass } from "@/components/ui";
 
 export async function SignInScreen({

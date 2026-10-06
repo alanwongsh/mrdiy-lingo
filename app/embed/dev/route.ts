@@ -1,7 +1,7 @@
-import { applyActorCookie, redirectToPath, safeNextPath, signActorToken } from "@/lib/auth/actor";
+import { applyActorCookie, devEmbedEnabled, redirectToPath, safeNextPath, signActorToken } from "@/lib/auth/actor";
 
 export async function POST(request: Request) {
-  if (process.env.EMBED_ALLOW_DEV !== "true") {
+  if (!devEmbedEnabled()) {
     return new Response("Dev sign-in is disabled.", {
       status: 403,
       headers: { "content-type": "text/plain; charset=utf-8" },

@@ -139,12 +139,12 @@ async function syncArticleStatusFromApprovals(
     data.status !== "APPROVED" &&
     data.status !== "PUBLISHED"
   ) {
-    await setArticleStatus(contentId, applicationId, "APPROVED");
+    await persistArticleStatus(contentId, applicationId, "APPROVED");
   } else if (
     !allApproved &&
     (data.status === "APPROVED" || data.status === "PUBLISHED")
   ) {
-    await setArticleStatus(contentId, applicationId, "REVIEW");
+    await persistArticleStatus(contentId, applicationId, "REVIEW");
   }
 }
 
@@ -325,11 +325,17 @@ export async function createArticle(input: {
   target_languages?: string[];
   market?: string | null;
 }): Promise<Content> {
-  const status = input.status ?? "DRAFT";
-  await requireAppCapability(
-    input.application_id,
-    capabilityForReleaseStatus(status)
-  );
+  const grant = await requireAppCapability(input.application_id, "edit");
+  let status: ContentLifecycleStatus = input.status ?? "DRAFT";
+  if (grant.access.can_approve && status !== "PUBLISHED") {
+    status = "APPROVED";
+  }
+  if (
+    (status === "APPROVED" || status === "PUBLISHED") &&
+    !grant.access.can_approve
+  ) {
+    throw new Error("Approval is limited to HOD and above.");
+  }
   const db = await getDb();
   const source_content = {
     ...emptySourceContent(),
@@ -368,7 +374,10 @@ export async function createArticle(input: {
     language_code: input.source_language,
     fields: source_content,
     source_type: "MANUAL",
-    status: "MANUALLY_MODIFIED",
+    status:
+      status === "APPROVED" || status === "PUBLISHED"
+        ? "APPROVED"
+        : "MANUALLY_MODIFIED",
   });
 
   revalidatePath(`/applications/${input.application_id}`);
@@ -390,7 +399,7 @@ export async function updateArticle(
     market?: string | null;
   }
 ): Promise<Content> {
-  await requireContentAccess(id, capabilityForReleaseStatus(input.status));
+  const grant = await requireContentAccess(id, "edit");
   const db = await getDb();
   const { data: current, error: currentError } = await db
     .from("content")
@@ -400,6 +409,12 @@ export async function updateArticle(
     .eq("id", id)
     .single();
   if (currentError) throw new Error(currentError.message);
+
+  const releasing =
+    input.status === "APPROVED" || input.status === "PUBLISHED";
+  if (releasing && input.status !== current.status && !grant.access.can_approve) {
+    throw new Error("Approval is limited to HOD and above.");
+  }
 
   const sourceChanged =
     String(current.source_language).trim().toLowerCase() !==
@@ -483,12 +498,11 @@ export async function updateArticle(
   return mapContentRow(data as Content);
 }
 
-export async function setArticleStatus(
+async function persistArticleStatus(
   id: string,
   applicationId: string,
   status: ContentLifecycleStatus
 ): Promise<void> {
-  await requireContentAccess(id, capabilityForReleaseStatus(status));
   const db = await getDb();
   const { data: current, error: currentError } = await db
     .from("content")
@@ -507,6 +521,15 @@ export async function setArticleStatus(
   if (error) throw new Error(error.message);
   revalidatePath(`/applications/${applicationId}`);
   revalidatePath(`/applications/${applicationId}/articles/${id}`);
+}
+
+export async function setArticleStatus(
+  id: string,
+  applicationId: string,
+  status: ContentLifecycleStatus
+): Promise<void> {
+  await requireContentAccess(id, capabilityForReleaseStatus(status));
+  await persistArticleStatus(id, applicationId, status);
 }
 
 export async function deleteArticle(input: {
@@ -583,6 +606,15 @@ export async function upsertContentTranslation(input: {
     .maybeSingle();
   if (findError) throw new Error(findError.message);
 
+  const approval =
+    status === "APPROVED"
+      ? await approvalStamp("APPROVED", grant.user.id)
+      : {
+          approved_by_username: null,
+          approved_by_name: null,
+          approved_by_user_id: null,
+          approved_at: null,
+        };
   const payload = {
     title: input.fields.title,
     summary: input.fields.summary,
@@ -590,10 +622,7 @@ export async function upsertContentTranslation(input: {
     seo_title: input.fields.seo_title,
     seo_description: input.fields.seo_description,
     status,
-    approved_by_username: null,
-    approved_by_name: null,
-    approved_by_user_id: null,
-    approved_at: null,
+    ...approval,
   };
 
   let translation: ContentTranslation;

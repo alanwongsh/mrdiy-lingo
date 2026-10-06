@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
@@ -8,21 +9,65 @@ import {
   setApplicationOwner,
   updateApplicationMember,
 } from "@/lib/actions/applications";
-import type { ApplicationMemberView } from "@/lib/types";
+import { ORG_BAND_LABEL, type OrgRoleBand } from "@/lib/auth/roles";
+import type { ApplicationMemberView, OrgRoleMapping } from "@/lib/types";
 import { Button, Card, Field, inputClass } from "@/components/ui";
+
+function RoleSelect({
+  value,
+  roles,
+  onChange,
+}: {
+  value: string;
+  roles: OrgRoleMapping[];
+  onChange: (value: string) => void;
+}) {
+  const groups: OrgRoleBand[] = ["HOD", "EDITOR"];
+  const known = roles.some(
+    (role) => role.ldap_role.toLowerCase() === value.trim().toLowerCase()
+  );
+  return (
+    <select
+      className={inputClass}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      required
+    >
+      <option value="">Choose a role</option>
+      {value && !known ? <option value={value}>{value} · not in the map</option> : null}
+      {groups.map((band) => {
+        const items = roles.filter((role) => role.band === band);
+        if (items.length === 0) return null;
+        return (
+          <optgroup key={band} label={ORG_BAND_LABEL[band]}>
+            {items.map((role) => (
+              <option key={role.id} value={role.ldap_role}>
+                {role.ldap_role}
+              </option>
+            ))}
+          </optgroup>
+        );
+      })}
+    </select>
+  );
+}
 
 function MemberRow({
   applicationId,
   member,
+  orgRoles,
 }: {
   applicationId: string;
   member: ApplicationMemberView;
+  orgRoles: OrgRoleMapping[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
-  const [canEdit, setCanEdit] = useState(member.canEdit);
-  const [canApprove, setCanApprove] = useState(member.canApprove);
+  const [ldapRole, setLdapRole] = useState(member.ldapRole ?? "");
+  const band = orgRoles.find(
+    (role) => role.ldap_role.toLowerCase() === ldapRole.trim().toLowerCase()
+  )?.band;
 
   function save() {
     setError("");
@@ -31,8 +76,7 @@ function MemberRow({
         await updateApplicationMember({
           applicationId,
           membershipId: member.membershipId,
-          canEdit,
-          canApprove,
+          ldapRole,
         });
         router.refresh();
       } catch (err) {
@@ -64,25 +108,16 @@ function MemberRow({
           {member.detail ? (
             <div className="text-sm text-[var(--hub-muted)]">{member.detail}</div>
           ) : null}
+          {band ? (
+            <div className="text-sm text-[var(--hub-muted)]">{ORG_BAND_LABEL[band]}</div>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm">
-          <label className="flex items-center gap-1.5">
-            <input
-              type="checkbox"
-              checked={canEdit}
-              onChange={(event) => setCanEdit(event.target.checked)}
-            />
-            Edit
+          <label className="flex items-center gap-2">
+            <span className="text-[var(--hub-muted)]">Role</span>
+            <RoleSelect value={ldapRole} roles={orgRoles} onChange={setLdapRole} />
           </label>
-          <label className="flex items-center gap-1.5">
-            <input
-              type="checkbox"
-              checked={canApprove}
-              onChange={(event) => setCanApprove(event.target.checked)}
-            />
-            Approve
-          </label>
-          <Button type="button" variant="secondary" disabled={pending} onClick={save}>
+          <Button type="button" variant="secondary" disabled={pending || !ldapRole} onClick={save}>
             Save
           </Button>
           <Button type="button" variant="ghost" disabled={pending} onClick={remove}>
@@ -99,20 +134,22 @@ export function ApplicationAccessPanel({
   applicationId,
   owner,
   members,
+  orgRoles,
   isSuperadmin,
 }: {
   applicationId: string;
   owner: ApplicationMemberView | null;
   members: ApplicationMemberView[];
+  orgRoles: OrgRoleMapping[] | null;
   isSuperadmin: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [identity, setIdentity] = useState("");
   const [ownerIdentity, setOwnerIdentity] = useState("");
-  const [canEdit, setCanEdit] = useState(true);
-  const [canApprove, setCanApprove] = useState(false);
+  const [ldapRole, setLdapRole] = useState("");
   const [error, setError] = useState("");
+  const roles = orgRoles ?? [];
 
   function invite(event: React.FormEvent) {
     event.preventDefault();
@@ -122,14 +159,14 @@ export function ApplicationAccessPanel({
         const result = await inviteApplicationMember({
           applicationId,
           identity,
-          canEdit,
-          canApprove,
+          ldapRole,
         });
         if (result.error) {
           setError(result.error);
           return;
         }
         setIdentity("");
+        setLdapRole("");
         router.refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not invite this person.");
@@ -162,8 +199,29 @@ export function ApplicationAccessPanel({
     <Card className="mt-8 p-5">
       <h2 className="text-base font-semibold">People</h2>
       <p className="mt-1 text-sm text-[var(--hub-muted)]">
-        The owner manages this application. Invited people get edit or approval access.
+        Each account keeps its role in the database. HOD can approve, and
+        articles they create are approved immediately. Executive and the other
+        titles in Edit and draft can only edit and save drafts.
       </p>
+      {orgRoles === null ? (
+        <p className="mt-3 text-sm text-amber-800">
+          Run migration 012 from Setup before assigning roles.
+        </p>
+      ) : roles.length === 0 ? (
+        <p className="mt-3 text-sm text-amber-800">
+          No roles are mapped yet.
+          {isSuperadmin ? (
+            <>
+              {" "}
+              <Link href="/roles" className="font-semibold underline">
+                Add them on the Roles page.
+              </Link>
+            </>
+          ) : (
+            " A superadmin needs to add them on the Roles page."
+          )}
+        </p>
+      ) : null}
 
       <div className="mt-4 border-b border-[var(--hub-border)] pb-3">
         <div className="text-xs font-semibold tracking-wide text-[var(--hub-muted-strong)] uppercase">
@@ -175,6 +233,12 @@ export function ApplicationAccessPanel({
             {owner.detail ? (
               <div className="text-sm text-[var(--hub-muted)]">{owner.detail}</div>
             ) : null}
+            <p className="mt-1 text-sm text-[var(--hub-muted)]">
+              {owner.ldapRole
+                ? `Company role: ${owner.ldapRole}. `
+                : ""}
+              Owners can approve, and articles they create are approved immediately.
+            </p>
           </div>
         ) : (
           <p className="mt-2 text-sm text-[var(--hub-muted)]">No owner yet.</p>
@@ -206,42 +270,41 @@ export function ApplicationAccessPanel({
               key={member.membershipId}
               applicationId={applicationId}
               member={member}
+              orgRoles={roles}
             />
           ))
         )}
       </div>
 
       <form onSubmit={invite} className="mt-4 space-y-3 border-t border-[var(--hub-border)] pt-4">
-        <Field label="Invite">
-          <input
-            className={inputClass}
-            value={identity}
-            onChange={(event) => setIdentity(event.target.value)}
-            placeholder="Email or employee ID"
-            required
-          />
-        </Field>
-        <div className="flex flex-wrap items-center gap-4 text-sm">
-          <label className="flex items-center gap-1.5">
+        <div className="grid gap-3 sm:grid-cols-[1fr_16rem] sm:items-end">
+          <Field label="Invite">
             <input
-              type="checkbox"
-              checked={canEdit}
-              onChange={(event) => setCanEdit(event.target.checked)}
+              className={inputClass}
+              value={identity}
+              onChange={(event) => setIdentity(event.target.value)}
+              placeholder="Email or employee ID"
+              required
             />
-            Edit
-          </label>
-          <label className="flex items-center gap-1.5">
-            <input
-              type="checkbox"
-              checked={canApprove}
-              onChange={(event) => setCanApprove(event.target.checked)}
-            />
-            Approve
-          </label>
-          <Button type="submit" disabled={pending}>
-            {pending ? "Saving…" : "Add person"}
-          </Button>
+          </Field>
+          <Field label="Role">
+            <RoleSelect value={ldapRole} roles={roles} onChange={setLdapRole} />
+          </Field>
         </div>
+        <p className="text-sm text-[var(--hub-muted)]">
+          This role is stored on the account and applies to every application they can open.
+          {isSuperadmin ? (
+            <>
+              {" "}
+              <Link href="/roles" className="font-semibold underline">
+                Group titles on the Roles page.
+              </Link>
+            </>
+          ) : null}
+        </p>
+        <Button type="submit" disabled={pending || roles.length === 0}>
+          {pending ? "Saving…" : "Add person"}
+        </Button>
       </form>
       {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
     </Card>

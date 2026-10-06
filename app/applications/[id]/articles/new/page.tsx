@@ -2,6 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { getApplication } from "@/lib/actions/applications";
 import { listLanguages } from "@/lib/actions/languages";
 import { createArticle } from "@/lib/actions/press";
 import type { ContentType, Language } from "@/lib/types";
@@ -27,8 +28,15 @@ export default function NewArticlePage() {
   const [sourceLanguage, setSourceLanguage] = useState("en");
   const [market, setMarket] = useState("");
   const [targetLanguages, setTargetLanguages] = useState<string[]>([]);
+  const [canApprove, setCanApprove] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    getApplication(applicationId).then((app) => {
+      setCanApprove(!!app?.access.can_approve);
+    });
+  }, [applicationId]);
 
   useEffect(() => {
     listLanguages().then((list) => {
@@ -178,6 +186,15 @@ export default function NewArticlePage() {
               minHeightClass="min-h-[14rem]"
             />
           </Field>
+          {canApprove ? (
+            <p className="text-sm text-[var(--hub-muted)]">
+              This article will be created as approved.
+            </p>
+          ) : (
+            <p className="text-sm text-[var(--hub-muted)]">
+              This article will be saved as a draft. HOD and above approve it.
+            </p>
+          )}
           {error ? <p className="text-sm text-red-700">{error}</p> : null}
           <Button type="submit" disabled={pending}>
             {pending ? "Creating…" : "Create article"}

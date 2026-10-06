@@ -6,7 +6,10 @@ import { sourceTypeAuthor } from "@/lib/types";
 
 export const ACTOR_COOKIE = "lingo_actor";
 export const EMBED_COOKIE = "lingo_embed";
-const SESSION_SECONDS = 60 * 60 * 12;
+
+export function devEmbedEnabled(): boolean {
+  return process.env.EMBED_ALLOW_DEV === "true";
+}const SESSION_SECONDS = 60 * 60 * 12;
 
 export type HubActor = {
   username: string;

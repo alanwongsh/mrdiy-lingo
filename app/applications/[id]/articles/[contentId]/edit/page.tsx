@@ -45,6 +45,7 @@ export default async function ArticleEditPage({
         article={article}
         languages={languages}
         actor={actor}
+        canApprove={app.access.can_approve}
         comments={comments}
         commentsError={commentsError}
       />

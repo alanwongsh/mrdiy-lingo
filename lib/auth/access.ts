@@ -2,6 +2,13 @@ import { cache } from "react";
 import type { HubActor } from "@/lib/auth/actor";
 import { getActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
+import { bandForLdapRole, loadOrgRoleMap } from "@/lib/auth/org-roles";
+import {
+  capabilitiesForRole,
+  parseAppRole,
+  roleFromApprovalFlag,
+  type AppRole,
+} from "@/lib/auth/roles";
 import type { AppAccess, HubUser } from "@/lib/types";
 
 export type AppCapability = "view" | "edit" | "approve" | "manage";
@@ -14,6 +21,7 @@ export type AccessGrant = {
 
 const SIGN_IN_MESSAGE = "Sign in to continue.";
 const SCHEMA_MESSAGE = "Run migration 008_access_control.sql from Setup.";
+const ROLE_SCHEMA_MESSAGE = "Run migration 011_member_roles.sql from Setup.";
 
 type Identity = {
   username?: string | null;
@@ -50,18 +58,31 @@ function asUser(row: HubUser): HubUser {
     email: row.email,
     display_name: row.display_name,
     is_superadmin: !!row.is_superadmin,
+    ldap_role: row.ldap_role ?? null,
     last_seen_at: row.last_seen_at,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
 }
 
-function throwDb(error: { message: string; code?: string }): never {
+function isMissingRoleColumn(error: { message: string; code?: string }): boolean {
+  return error.code === "42703" && /\brole\b/i.test(error.message);
+}
+
+export function accessErrorMessage(error: {
+  message: string;
+  code?: string;
+}): string {
+  if (isMissingRoleColumn(error)) return ROLE_SCHEMA_MESSAGE;
   const missing =
     error.code === "42P01" ||
     error.code === "42703" ||
     /hub_users|application_members|owner_user_id/i.test(error.message);
-  throw new Error(missing ? SCHEMA_MESSAGE : error.message);
+  return missing ? SCHEMA_MESSAGE : error.message;
+}
+
+function throwDb(error: { message: string; code?: string }): never {
+  throw new Error(accessErrorMessage(error));
 }
 
 function literalIlike(value: string): string {
@@ -145,6 +166,35 @@ export const getCurrentUser = cache(async (): Promise<HubUser | null> => {
   return upsertFromActor(actor);
 });
 
+/** Sign-in identity for an account that already exists. Does not create a user. */
+export async function actorForStoredEmail(email: string): Promise<HubActor | null> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized || normalized.length > 160 || !normalized.includes("@")) return null;
+  const db = await getDb();
+  const { data, error } = await db
+    .from("hub_users")
+    .select("username, employee_id, email, display_name")
+    .ilike("email", literalIlike(normalized))
+    .maybeSingle();
+  if (error) throwDb(error);
+  if (!data) return null;
+  const storedEmail = data.email?.trim() || normalized;
+  const username = (
+    data.username?.trim() ||
+    data.employee_id?.trim() ||
+    storedEmail.split("@")[0] ||
+    ""
+  ).slice(0, 80);
+  const name = (data.display_name?.trim() || username).slice(0, 120);
+  if (!username || !name) return null;
+  return {
+    username,
+    name,
+    email: storedEmail,
+    employeeId: data.employee_id?.trim() || null,
+  };
+}
+
 export async function requireUser(): Promise<HubUser> {
   const user = await getCurrentUser();
   if (!user) throw new Error(SIGN_IN_MESSAGE);
@@ -178,27 +228,61 @@ export async function resolveAppAccess(
   if (user.is_superadmin || application.owner_user_id === user.id) {
     return {
       is_owner: application.owner_user_id === user.id,
+      role: null,
       can_edit: true,
       can_approve: true,
       can_manage: true,
     };
   }
 
-  const db = await getDb();
-  const { data, error } = await db
-    .from("application_members")
-    .select("can_edit, can_approve")
-    .eq("application_id", application.id)
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (error) throwDb(error);
-  if (!data) return null;
+  const membership = await loadMembership(application.id, user.id);
+  if (!membership) return null;
+  const map = await loadOrgRoleMap();
+  const role = map ? bandForLdapRole(user.ldap_role, map) : membership.role;
+  const caps = capabilitiesForRole(role === "ADMIN" ? "HOD" : role);
   return {
     is_owner: false,
-    can_edit: !!data.can_edit,
-    can_approve: !!data.can_approve,
+    role,
+    can_edit: map ? caps.can_edit : membership.can_edit,
+    can_approve: map ? caps.can_approve : membership.can_approve,
     can_manage: false,
   };
+}
+
+async function loadMembership(
+  applicationId: string,
+  userId: string
+): Promise<{ role: AppRole; can_edit: boolean; can_approve: boolean } | null> {
+  const db = await getDb();
+  const withRole = await db
+    .from("application_members")
+    .select("role, can_edit, can_approve")
+    .eq("application_id", applicationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (withRole.error && isMissingRoleColumn(withRole.error)) {
+    const legacy = await db
+      .from("application_members")
+      .select("can_edit, can_approve")
+      .eq("application_id", applicationId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (legacy.error) throwDb(legacy.error);
+    if (!legacy.data) return null;
+    const canApprove = !!legacy.data.can_approve;
+    return {
+      role: roleFromApprovalFlag(canApprove),
+      can_edit: !!legacy.data.can_edit,
+      can_approve: canApprove,
+    };
+  }
+  if (withRole.error) throwDb(withRole.error);
+  if (!withRole.data) return null;
+  const role =
+    parseAppRole(withRole.data.role) ??
+    roleFromApprovalFlag(!!withRole.data.can_approve);
+  const caps = capabilitiesForRole(role);
+  return { role, can_edit: caps.can_edit, can_approve: caps.can_approve };
 }
 
 async function loadApplication(applicationId: string): Promise<{

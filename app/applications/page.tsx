@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { listApplications } from "@/lib/actions/applications";
+import { ORG_BAND_LABEL } from "@/lib/auth/roles";
 import { DbErrorPanel, formatDbError } from "@/lib/db/errors";
 import {
   Badge,
@@ -75,7 +76,11 @@ export default async function ApplicationsPage() {
                     ? "Owner"
                     : app.access.can_manage
                       ? "Superadmin"
-                      : "Invited"}
+                      : app.access.role === "HOD" || app.access.role === "ADMIN"
+                        ? ORG_BAND_LABEL.HOD
+                        : app.access.role === "EDITOR"
+                          ? ORG_BAND_LABEL.EDITOR
+                          : "Invited"}
                 </Badge>
                 {app.access.can_manage ? (
                   <Link
