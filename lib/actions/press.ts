@@ -397,6 +397,8 @@ export async function updateArticle(
     scheduled_publish_at?: string | null;
     target_languages?: string[];
     market?: string | null;
+    /** Adding a language must not clear other approvals or drop the article to review. */
+    keepApprovals?: boolean;
   }
 ): Promise<Content> {
   const grant = await requireContentAccess(id, "edit");
@@ -435,7 +437,7 @@ export async function updateArticle(
     input.target_languages !== undefined &&
     !sameCodeSet(currentTargets, nextTargets);
 
-  if (sourceChanged) {
+  if (sourceChanged && !input.keepApprovals) {
     await clearTargetApprovals(id, input.source_language);
   }
 
@@ -444,9 +446,13 @@ export async function updateArticle(
   const markingReleased =
     input.status === "APPROVED" || input.status === "PUBLISHED";
   let nextStatus = input.status;
-  if (sourceChanged && (released || markingReleased)) {
+  if (!input.keepApprovals && sourceChanged && (released || markingReleased)) {
     nextStatus = "REVIEW";
-  } else if (targetsChanged && (released || markingReleased)) {
+  } else if (
+    !input.keepApprovals &&
+    targetsChanged &&
+    (released || markingReleased)
+  ) {
     const allApproved = await targetsAllApproved(
       id,
       input.source_language,
@@ -490,7 +496,7 @@ export async function updateArticle(
     .select("*")
     .single();
   if (error) throw new Error(error.message);
-  if (targetsChanged) {
+  if (targetsChanged && !input.keepApprovals) {
     await syncArticleStatusFromApprovals(id, applicationId);
   }
   revalidatePath(`/applications/${applicationId}`);
@@ -803,12 +809,13 @@ export async function autoTranslateArticle(input: {
       content_type: article.content_type,
       source_language: sourceLanguage,
       source_content: sourceFields,
-      status: "TRANSLATING",
+      status: input.approveTranslation ? article.status : "TRANSLATING",
       scheduled_publish_at: article.scheduled_publish_at,
       target_languages: normalizeTargetLanguages(
         article.target_languages,
         sourceLanguage
       ),
+      keepApprovals: true,
     });
   }
 
@@ -853,19 +860,30 @@ export async function autoTranslateArticleLanguages(input: {
   /** HOD import: approve each generated translation and keep the article approved. */
   approveTranslations?: boolean;
 }): Promise<ContentTranslation[]> {
-  await requireContentAccess(input.contentId, "edit");
+  const grant = await requireContentAccess(input.contentId, "edit");
+  const approveTranslations =
+    input.approveTranslations ?? grant.access.can_approve;
   const article = await getArticle(input.contentId);
   if (!article) throw new Error("Article not found");
   const sourceLanguage = input.sourceLanguage?.trim() || article.source_language;
-  const toTranslate = normalizeTargetLanguages(
+  const requested = normalizeTargetLanguages(
     input.targetLanguages,
     sourceLanguage
   );
-  if (toTranslate.length === 0) {
+  if (requested.length === 0) {
     throw new Error("Choose a language other than the source.");
   }
+  const approved = new Set(
+    (article.translations ?? [])
+      .filter((row) => row.status === "APPROVED")
+      .map((row) => languageKey(row.language_code))
+  );
+  const toTranslate = requested.filter((code) => !approved.has(languageKey(code)));
+  if (toTranslate.length === 0) {
+    throw new Error("Selected languages are already approved.");
+  }
   const storedTargets = normalizeTargetLanguages(
-    [...(article.target_languages ?? []), ...toTranslate],
+    [...(article.target_languages ?? []), ...requested],
     sourceLanguage
   );
   await updateArticle(input.contentId, input.applicationId, {
@@ -879,6 +897,7 @@ export async function autoTranslateArticleLanguages(input: {
     status: article.status,
     scheduled_publish_at: article.scheduled_publish_at,
     target_languages: storedTargets,
+    keepApprovals: true,
   });
   const results: ContentTranslation[] = [];
   for (const targetLanguage of toTranslate) {
@@ -889,11 +908,11 @@ export async function autoTranslateArticleLanguages(input: {
         applicationId: input.applicationId,
         sourceFields: input.sourceFields,
         sourceLanguage,
-        approveTranslation: input.approveTranslations,
+        approveTranslation: approveTranslations,
       })
     );
   }
-  if (input.approveTranslations) {
+  if (approveTranslations) {
     await syncArticleStatusFromApprovals(input.contentId, input.applicationId);
   }
   return results;
