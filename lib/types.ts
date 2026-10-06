@@ -18,7 +18,20 @@ export type TranslationStatus =
   | "MANUALLY_MODIFIED"
   | "APPROVED";
 
-export type ContentType = "ARTICLE" | "NEWS" | "ANNOUNCEMENT";
+/** Stable code defined per application in content_types. */
+export type ContentType = string;
+
+export type ContentTypeRecord = {
+  id: string;
+  application_id: string;
+  code: string;
+  name: string;
+  description: string;
+  status: EntityStatus;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
 
 export type ContentLifecycleStatus =
   | "DRAFT"

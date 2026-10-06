@@ -105,6 +105,16 @@ export default async function SetupPage() {
                     needsMigration = "012_org_role_map.sql";
                     message =
                       "Member roles OK, but run migration 012 to group account roles.";
+                  } else {
+                    const probeTypes = await db
+                      .from("content_types")
+                      .select("id")
+                      .limit(1);
+                    if (probeTypes.error) {
+                      needsMigration = "013_content_types.sql";
+                      message =
+                        "Role groups OK, but run migration 013 for per-app content types.";
+                    }
                   }
                 }
               }
@@ -129,6 +139,7 @@ export default async function SetupPage() {
   const sql10 = await readMigration("010_content_list_meta.sql");
   const sql11 = await readMigration("011_member_roles.sql");
   const sql12 = await readMigration("012_org_role_map.sql");
+  const sql13 = await readMigration("013_content_types.sql");
 
   return (
     <div>
@@ -163,6 +174,7 @@ export default async function SetupPage() {
           <li>Run migration 010 for article market and submitted by.</li>
           <li>Run migration 011 for Editor, HOD, and Admin roles.</li>
           <li>Run migration 012 to group account roles such as Executive and HOD.</li>
+          <li>Run migration 013 so each app can manage its own content types.</li>
           <li>Refresh this page.</li>
         </ol>
       </Card>
@@ -182,6 +194,7 @@ export default async function SetupPage() {
             ["10", "010_content_list_meta.sql", sql10],
             ["11", "011_member_roles.sql", sql11],
             ["12", "012_org_role_map.sql", sql12],
+            ["13", "013_content_types.sql", sql13],
           ] as const
         ).map(([n, name, sql]) => (
           <Card key={name} className="overflow-hidden">

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getActor } from "@/lib/auth/actor";
 import { getApplication } from "@/lib/actions/applications";
+import { listContentTypes } from "@/lib/actions/content-types";
 import { listArticleComments } from "@/lib/actions/comments";
 import { listLanguages } from "@/lib/actions/languages";
 import { getArticle } from "@/lib/actions/press";
@@ -20,7 +21,13 @@ export default async function ArticleDetailPage({
   if (!app || app.model_type !== "CONTENT") notFound();
   const article = await getArticle(contentId);
   if (!article || article.application_id !== app.id) notFound();
-  const languages = await listLanguages();
+  const [languages, contentTypes] = await Promise.all([
+    listLanguages(),
+    listContentTypes(app.id, { includeInactive: true }),
+  ]);
+  const contentTypeName =
+    contentTypes.find((type) => type.code === article.content_type)?.name ??
+    article.content_type;
   const actor = await getActor();
   let comments: ArticleComment[] = [];
   let commentsError = "";
@@ -56,7 +63,12 @@ export default async function ArticleDetailPage({
         }
       />
       <AppSubnav application={app} />
-      <ArticleView key={article.id} article={article} languages={languages} />
+      <ArticleView
+        key={article.id}
+        article={article}
+        languages={languages}
+        contentTypeName={contentTypeName}
+      />
       <ArticleComments
         applicationId={app.id}
         contentId={article.id}

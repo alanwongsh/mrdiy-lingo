@@ -49,7 +49,7 @@ function articleSample(): string[][] {
     [
       "Festive Value Campaign",
       "en",
-      "ARTICLE",
+      "GENERAL",
       "DRAFT",
       "A short description of the article.",
       "The article body in the source language.",
@@ -101,8 +101,10 @@ function ImportFormatGuide({
             source text in that language. A blank source language becomes en.
           </li>
           <li>
-            <span className="font-medium text-slate-800">content_type</span> is
-            ARTICLE, NEWS, or ANNOUNCEMENT.{" "}
+            A blank{" "}
+            <span className="font-medium text-slate-800">content_type</span>{" "}
+            becomes General. A type this app does not have yet is created on
+            import.{" "}
             <span className="font-medium text-slate-800">status</span> is DRAFT,
             TRANSLATING, REVIEW, APPROVED, or PUBLISHED.
           </li>
@@ -181,6 +183,7 @@ export function ImportWizard({
     unchanged: number;
     errors: number;
     translated: number;
+    typesCreated: number;
   } | null>(null);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
@@ -218,6 +221,10 @@ export function ImportWizard({
           unchanged: res.unchanged,
           errors: res.errors,
           translated: res.translated,
+          typesCreated:
+            importType === "CONTENT" && "typesCreated" in res
+              ? Number(res.typesCreated)
+              : 0,
         });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Import failed");
@@ -324,6 +331,9 @@ export function ImportWizard({
               unchanged
               {receipt.translated > 0
                 ? `, ${receipt.translated} language version${receipt.translated === 1 ? "" : "s"} translated`
+                : ""}
+              {receipt.typesCreated > 0
+                ? `, ${receipt.typesCreated} type${receipt.typesCreated === 1 ? "" : "s"} created`
                 : ""}
               {receipt.errors > 0
                 ? `, ${receipt.errors} error${receipt.errors === 1 ? "" : "s"}`

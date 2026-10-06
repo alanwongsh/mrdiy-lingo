@@ -15,7 +15,7 @@ import type {
   ContentLifecycleStatus,
   ContentTranslation,
   ContentTranslationVersion,
-  ContentType,
+  ContentTypeRecord,
   Language,
   ArticleComment,
   SourceContentFields,
@@ -171,6 +171,7 @@ export function ArticleEditor({
   applicationId,
   article,
   languages,
+  contentTypes,
   actor,
   canApprove,
   comments,
@@ -179,6 +180,7 @@ export function ArticleEditor({
   applicationId: string;
   article: ArticleWithTranslations;
   languages: Language[];
+  contentTypes: ContentTypeRecord[];
   actor: { username: string; name: string } | null;
   canApprove: boolean;
   comments: ArticleComment[];
@@ -465,13 +467,22 @@ export function ArticleEditor({
             <select
               className={inputClass}
               value={contentType}
-              onChange={(e) => setContentType(e.target.value as ContentType)}
+              onChange={(e) => setContentType(e.target.value)}
             >
-              {(["ARTICLE", "NEWS", "ANNOUNCEMENT"] as const).map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
+              {contentTypes
+                .filter(
+                  (type) => type.status === "ACTIVE" || type.code === contentType
+                )
+                .map((type) => (
+                  <option key={type.id} value={type.code}>
+                    {type.status === "ACTIVE"
+                      ? type.name
+                      : `${type.name} (inactive)`}
+                  </option>
+                ))}
+              {contentTypes.some((type) => type.code === contentType) ? null : (
+                <option value={contentType}>{contentType}</option>
+              )}
             </select>
           </Field>
           <Field label="Source language">

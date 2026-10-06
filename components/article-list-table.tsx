@@ -6,7 +6,8 @@ import { useMemo, useState, useTransition } from "react";
 import { deleteArticle, deleteArticles, exportArticlesFile } from "@/lib/actions/press";
 import type { ArticleListItem } from "@/lib/actions/press";
 import { getPublishDueState } from "@/lib/publish-due";
-import type { ContentLifecycleStatus, ContentType, Language } from "@/lib/types";
+import type { ContentLifecycleStatus, Language } from "@/lib/types";
+import { IconButton, PencilIcon, TrashIcon } from "@/components/icon-button";
 import { Badge, Button, Card, statusTone } from "@/components/ui";
 import { marketName } from "@/lib/markets";
 
@@ -16,12 +17,6 @@ const STATUS_LABEL: Record<ContentLifecycleStatus, string> = {
   REVIEW: "Review",
   APPROVED: "Approved",
   PUBLISHED: "Published",
-};
-
-const TYPE_LABEL: Record<ContentType, string> = {
-  ARTICLE: "Article",
-  NEWS: "News",
-  ANNOUNCEMENT: "Announcement",
 };
 
 function excerpt(article: ArticleListItem) {
@@ -45,66 +40,6 @@ function formatWhen(value: string) {
   });
 }
 
-function IconButton({
-  label,
-  onClick,
-  href,
-  danger,
-  disabled,
-  children,
-}: {
-  label: string;
-  onClick?: () => void;
-  href?: string;
-  danger?: boolean;
-  disabled?: boolean;
-  children: React.ReactNode;
-}) {
-  const className = `inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--hub-muted-strong)] hover:bg-[var(--hub-accent-soft)] disabled:opacity-40 ${
-    danger
-      ? "hover:bg-red-50 hover:text-red-700"
-      : "hover:text-[var(--hub-accent)]"
-  }`;
-  if (href) {
-    return (
-      <Link href={href} aria-label={label} title={label} className={className}>
-        {children}
-      </Link>
-    );
-  }
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      className={className}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
-}
-
-function PencilIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z" />
-      <path strokeLinecap="round" d="M13.5 6.5l3 3" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 7V5h6v2" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M7 7l1 12h8l1-12" />
-    </svg>
-  );
-}
-
 function translationLine(article: ArticleListItem) {
   const targets = article.target_languages ?? [];
   if (targets.length === 0) return "No translations";
@@ -121,10 +56,12 @@ export function ArticleListTable({
   applicationId,
   articles,
   languages,
+  typeNames,
 }: {
   applicationId: string;
   articles: ArticleListItem[];
   languages: Language[];
+  typeNames: Record<string, string>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -375,7 +312,7 @@ export function ArticleListTable({
                     </div>
                   </td>
                   <td className="hidden text-sm text-[var(--hub-muted-strong)] md:table-cell">
-                    {TYPE_LABEL[article.content_type]}
+                    {typeNames[article.content_type] ?? article.content_type}
                   </td>
                   <td className="hidden sm:table-cell">
                     <Badge tone={statusTone(article.status)}>

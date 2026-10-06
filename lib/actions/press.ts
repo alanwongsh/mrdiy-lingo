@@ -27,6 +27,7 @@ import { emptySourceContent } from "@/lib/types";
 import { getTranslationService } from "@/lib/translation/service";
 import { normalizeSlug } from "@/lib/slug";
 import { DUE_SOON_MS, type PublishDueKind } from "@/lib/publish-due";
+import { requireContentTypeCode } from "@/lib/actions/content-types";
 import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
 import { normalizeMarket } from "@/lib/markets";
 import { buildArticleWorkbook } from "@/lib/export/articles";
@@ -351,7 +352,10 @@ export async function createArticle(input: {
     .from("content")
     .insert({
       application_id: input.application_id,
-      content_type: input.content_type ?? "ARTICLE",
+      content_type: await requireContentTypeCode(
+        input.application_id,
+        input.content_type
+      ),
       title: input.title.trim(),
       slug:
         input.slug === null ? null : normalizeSlug(input.slug, input.title),
@@ -466,7 +470,10 @@ export async function updateArticle(
     slug: (input.slug ?? "").trim()
       ? normalizeSlug(input.slug, input.title)
       : null,
-    content_type: input.content_type,
+    content_type: await requireContentTypeCode(
+      applicationId,
+      input.content_type
+    ),
     source_language: input.source_language,
     source_content: input.source_content,
     status: nextStatus,

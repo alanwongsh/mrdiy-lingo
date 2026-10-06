@@ -6,16 +6,9 @@ import type {
   Content,
   ContentLifecycleStatus,
   ContentTranslation,
-  ContentType,
   Language,
   TranslationStatus,
 } from "@/lib/types";
-
-const TYPE_LABEL: Record<ContentType, string> = {
-  ARTICLE: "Article",
-  NEWS: "News",
-  ANNOUNCEMENT: "Announcement",
-};
 
 const STATUS_LABEL: Record<ContentLifecycleStatus, string> = {
   DRAFT: "Draft",
@@ -470,9 +463,11 @@ function FieldCompare({ panes }: { panes: Pane[] }) {
 export function ArticleView({
   article,
   languages,
+  contentTypeName,
 }: {
   article: Article;
   languages: Language[];
+  contentTypeName: string;
 }) {
   const options = Array.from(
     new Set([
@@ -548,7 +543,7 @@ export function ArticleView({
   return (
     <div className="space-y-4">
       <Card className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm text-[var(--hub-muted-strong)]">
-        <span>{TYPE_LABEL[article.content_type]}</span>
+        <span>{contentTypeName}</span>
         {article.market ? (
           <>
             <span aria-hidden>·</span>

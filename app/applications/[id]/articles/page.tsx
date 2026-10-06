@@ -1,12 +1,13 @@
 import { notFound } from "next/navigation";
 import { getApplication } from "@/lib/actions/applications";
+import { listContentTypes } from "@/lib/actions/content-types";
 import { listLanguages } from "@/lib/actions/languages";
 import { listArticles } from "@/lib/actions/press";
 import { AppSubnav } from "@/components/app-subnav";
 import { ArticleListFilters } from "@/components/article-list-filters";
 import { ArticleListTable } from "@/components/article-list-table";
 import { LinkButton, PageHeader, Pagination } from "@/components/ui";
-import { PAGE_SIZE, type ContentType } from "@/lib/types";
+import { PAGE_SIZE } from "@/lib/types";
 
 function parseSourceLocales(value: string | undefined): string[] {
   if (!value?.trim()) return [];
@@ -40,20 +41,24 @@ export default async function ArticlesPage({
   const due = sp.due ?? "";
   const market = sp.market ?? "";
 
-  const [result, languages] = await Promise.all([
+  const [result, languages, contentTypes] = await Promise.all([
     listArticles({
       applicationId: app.id,
       page,
       pageSize: PAGE_SIZE,
       search: q || undefined,
       status: (status as never) || undefined,
-      contentType: (contentType as ContentType) || undefined,
+      contentType: contentType || undefined,
       sourceLanguages: sourceLocales,
       market: market || undefined,
       due: (due as never) || undefined,
     }),
     listLanguages(),
+    listContentTypes(app.id, { includeInactive: true }),
   ]);
+  const typeNames = Object.fromEntries(
+    contentTypes.map((type) => [type.code, type.name])
+  );
 
   const sourceParam = sourceLocales.join(",");
 
@@ -73,6 +78,8 @@ export default async function ArticlesPage({
       <ArticleListFilters
         applicationId={app.id}
         languages={languages}
+        contentTypes={contentTypes}
+        canEdit={app.access.can_edit}
         initial={{
           q,
           source: sourceLocales,
@@ -87,6 +94,7 @@ export default async function ArticlesPage({
         applicationId={app.id}
         articles={result.items}
         languages={languages}
+        typeNames={typeNames}
       />
 
       <Pagination

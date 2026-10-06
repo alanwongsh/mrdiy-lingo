@@ -3,9 +3,11 @@
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { getApplication } from "@/lib/actions/applications";
+import { listContentTypes } from "@/lib/actions/content-types";
 import { listLanguages } from "@/lib/actions/languages";
 import { createArticle } from "@/lib/actions/press";
-import type { ContentType, Language } from "@/lib/types";
+import { DEFAULT_CONTENT_TYPE_CODE } from "@/lib/content-types";
+import type { ContentTypeRecord, Language } from "@/lib/types";
 import {
   Button,
   Card,
@@ -22,6 +24,8 @@ export default function NewArticlePage() {
   const { id: applicationId } = useParams<{ id: string }>();
   const router = useRouter();
   const [languages, setLanguages] = useState<Language[]>([]);
+  const [contentTypes, setContentTypes] = useState<ContentTypeRecord[]>([]);
+  const [contentType, setContentType] = useState(DEFAULT_CONTENT_TYPE_CODE);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [body, setBody] = useState("");
@@ -44,7 +48,14 @@ export default function NewArticlePage() {
       if (list.some((l) => l.code === "en")) setSourceLanguage("en");
       else if (list[0]) setSourceLanguage(list[0].code);
     });
-  }, []);
+    listContentTypes(applicationId).then((types) => {
+      setContentTypes(types);
+      const general = types.find(
+        (type) => type.code === DEFAULT_CONTENT_TYPE_CODE
+      );
+      setContentType(general?.code ?? types[0]?.code ?? DEFAULT_CONTENT_TYPE_CODE);
+    });
+  }, [applicationId]);
 
   const targetOptions = useMemo(
     () => languages.filter((l) => l.code !== sourceLanguage),
@@ -81,8 +92,7 @@ export default function NewArticlePage() {
                   title,
                   slug: null,
                   source_language: sourceLanguage,
-                  content_type: (String(fd.get("content_type") ?? "ARTICLE") ||
-                    "ARTICLE") as ContentType,
+                  content_type: contentType,
                   status: "DRAFT",
                   market: market || null,
                   target_languages: targetLanguages,
@@ -117,13 +127,15 @@ export default function NewArticlePage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Content type">
               <select
-                name="content_type"
                 className={inputClass}
-                defaultValue="ARTICLE"
+                value={contentType}
+                onChange={(e) => setContentType(e.target.value)}
               >
-                <option value="ARTICLE">ARTICLE</option>
-                <option value="NEWS">NEWS</option>
-                <option value="ANNOUNCEMENT">ANNOUNCEMENT</option>
+                {contentTypes.map((type) => (
+                  <option key={type.id} value={type.code}>
+                    {type.name}
+                  </option>
+                ))}
               </select>
             </Field>
             <Field label="Source language">

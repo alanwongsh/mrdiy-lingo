@@ -1,5 +1,9 @@
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
+import {
+  DEFAULT_CONTENT_TYPE_CODE,
+  normalizeContentTypeCode,
+} from "@/lib/content-types";
 import type { SourceContentFields } from "@/lib/types";
 
 export type StringImportRow = {
@@ -166,7 +170,10 @@ export function parseArticleTranslationFile(
     result.push({
       title,
       source_language,
-      content_type: String(row[typeIdx] ?? "ARTICLE").trim() || "ARTICLE",
+      content_type:
+        normalizeContentTypeCode(
+          typeIdx >= 0 ? String(row[typeIdx] ?? "") : ""
+        ) || DEFAULT_CONTENT_TYPE_CODE,
       status: String(row[statusIdx] ?? "DRAFT").trim() || "DRAFT",
       fields,
       translations,

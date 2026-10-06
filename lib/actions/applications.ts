@@ -20,6 +20,7 @@ import {
   parseAppRole,
   roleFromApprovalFlag,
 } from "@/lib/auth/roles";
+import { ensureDefaultContentType } from "@/lib/actions/content-types";
 import { getDb } from "@/lib/db/client";
 import type {
   Application,
@@ -120,9 +121,13 @@ export async function createApplication(input: {
     .select("*")
     .single();
   if (error) throw new Error(error.message);
+  const application = data as Application;
+  if (application.model_type === "CONTENT") {
+    await ensureDefaultContentType(application.id);
+  }
   revalidatePath("/");
   revalidatePath("/applications");
-  return data as Application;
+  return application;
 }
 
 export async function updateApplication(
@@ -148,8 +153,12 @@ export async function updateApplication(
     .select("*")
     .single();
   if (error) throw new Error(error.message);
+  const application = data as Application;
+  if (application.model_type === "CONTENT") {
+    await ensureDefaultContentType(application.id);
+  }
   revalidateApplication(id);
-  return data as Application;
+  return application;
 }
 
 export async function setApplicationStatus(
