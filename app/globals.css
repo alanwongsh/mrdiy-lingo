@@ -175,6 +175,18 @@ textarea {
   padding-left: 1.25rem;
 }
 
+.html-editor-surface ul {
+  list-style: disc;
+}
+
+.html-editor-surface ol {
+  list-style: decimal;
+}
+
+.html-editor-surface li {
+  display: list-item;
+}
+
 .html-editor-surface a {
   color: var(--diy-red);
   text-decoration: underline;
