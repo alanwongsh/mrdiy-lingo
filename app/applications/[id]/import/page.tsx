@@ -19,7 +19,6 @@ export default async function ApplicationImportPage({
     <div>
       <PageHeader
         title={`${app.name} · Import`}
-        description="Validate and import without silently overwriting — unchanged rows are skipped, changes create versions. Optionally auto-translate selected languages."
       />
       <AppSubnav application={app} />
       <ImportWizard

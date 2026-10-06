@@ -47,6 +47,140 @@ async function fileToBase64(file: File): Promise<string> {
   return btoa(binary);
 }
 
+function csvCell(value: string) {
+  if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
+  return value;
+}
+
+function downloadCsv(filename: string, rows: string[][]) {
+  const csv = rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function sampleCodes(languages: Language[]) {
+  const codes = languages.map((language) => language.code.trim()).filter(Boolean);
+  const source =
+    codes.find((code) => code.toLowerCase() === "en") ?? codes[0] ?? "en";
+  const targets = codes
+    .filter((code) => code.toLowerCase() !== source.toLowerCase())
+    .slice(0, 2);
+  return { source, targets: targets.length > 0 ? targets : ["ms"] };
+}
+
+function articleSample(): string[][] {
+  return [
+    ["title", "source_language", "content_type", "status", "summary", "body"],
+    [
+      "Festive Value Campaign",
+      "en",
+      "ARTICLE",
+      "DRAFT",
+      "A short description of the article.",
+      "The article body in the source language.",
+    ],
+  ];
+}
+
+function stringSample(languages: Language[]): string[][] {
+  const { source, targets } = sampleCodes(languages);
+  return [
+    ["namespace", "key", source, ...targets],
+    ["common", "home.greeting", "Welcome", ...targets.map(() => "")],
+  ];
+}
+
+function ImportFormatGuide({
+  importType,
+  languages,
+}: {
+  importType: "STRING" | "CONTENT";
+  languages: Language[];
+}) {
+  const rows =
+    importType === "CONTENT" ? articleSample() : stringSample(languages);
+  const { source, targets } = sampleCodes(languages);
+  const filename =
+    importType === "CONTENT" ? "article-import-sample.csv" : "string-import-sample.csv";
+
+  return (
+    <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-slate-900">File format</h2>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => downloadCsv(filename, rows)}
+        >
+          Download sample CSV
+        </Button>
+      </div>
+      {importType === "CONTENT" ? (
+        <ul className="list-disc space-y-1 pl-5 text-xs leading-5 text-slate-600">
+          <li>Row 1 is the header. Each following row is one article.</li>
+          <li>
+            <span className="font-medium text-slate-800">title</span> and{" "}
+            <span className="font-medium text-slate-800">source_language</span>{" "}
+            are required. <span className="font-medium text-slate-800">summary</span>{" "}
+            and <span className="font-medium text-slate-800">body</span> are the
+            source text in that language. A blank source language becomes en.
+          </li>
+          <li>
+            <span className="font-medium text-slate-800">content_type</span> is
+            ARTICLE, NEWS, or ANNOUNCEMENT.{" "}
+            <span className="font-medium text-slate-800">status</span> is DRAFT,
+            TRANSLATING, REVIEW, APPROVED, or PUBLISHED.
+          </li>
+        </ul>
+      ) : (
+        <ul className="list-disc space-y-1 pl-5 text-xs leading-5 text-slate-600">
+          <li>Row 1 is the header. Each following row is one string.</li>
+          <li>
+            <span className="font-medium text-slate-800">namespace</span> and{" "}
+            <span className="font-medium text-slate-800">key</span> are required.
+            Every other column name is a language code, such as {source}
+            {targets.length > 0 ? ` or ${targets.join(", ")}` : ""}.
+          </li>
+          <li>
+            The {source} column is the source text. Leave a language cell blank
+            to auto-translate it from the picker below.
+          </li>
+        </ul>
+      )}
+      <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
+        <table className="min-w-full text-left text-xs">
+          <thead className="bg-slate-100 text-slate-700">
+            <tr>
+              {rows[0].map((header) => (
+                <th key={header} className="px-2 py-1.5 font-semibold whitespace-nowrap">
+                  {header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              {rows[1].map((cell, index) => (
+                <td
+                  key={`${rows[0][index]}-${index}`}
+                  className="px-2 py-1.5 whitespace-nowrap text-slate-600"
+                >
+                  {cell || "—"}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export function ImportWizard({
   applications,
   languages,
@@ -194,6 +328,8 @@ export function ImportWizard({
           </span>
         </div>
 
+        <ImportFormatGuide importType={importType} languages={languages} />
+
         <Field label="Upload Excel / CSV">
           <div className="flex flex-wrap items-center gap-3">
             <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-lg bg-[var(--hub-accent)] px-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--hub-accent-hover)]">
@@ -231,11 +367,6 @@ export function ImportWizard({
               onSelectedChange={setTranslateLanguages}
               showEditingSwitcher={false}
             />
-            <p className="mt-2 text-xs text-slate-500">
-              Selected languages become each article&apos;s target languages.
-              File columns are kept; missing selected languages are
-              auto-translated for new/updated rows.
-            </p>
           </div>
         ) : null}
 
