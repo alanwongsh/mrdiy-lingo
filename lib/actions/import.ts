@@ -263,7 +263,10 @@ export async function confirmArticleImport(input: {
   errors: number;
   translated: number;
 }> {
-  await requireAppCapability(input.applicationId, "edit");
+  const grant = await requireAppCapability(input.applicationId, "edit");
+  const importedTranslationStatus = grant.access.can_approve
+    ? "APPROVED"
+    : "MANUALLY_MODIFIED";
   const preview = await previewArticleImport(input);
   const translateLanguages = input.translateLanguages ?? [];
   let imported = 0;
@@ -314,6 +317,7 @@ export async function confirmArticleImport(input: {
             title: partial.title ?? item.title,
           },
           source_type: "IMPORT",
+          status: importedTranslationStatus,
         });
       }
 

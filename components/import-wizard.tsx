@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import {
   confirmArticleImport,
   confirmStringImport,
@@ -70,15 +71,27 @@ export function ImportWizard({
 
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
-  const [result, setResult] = useState<string>("");
+  const [receipt, setReceipt] = useState<{
+    filename: string;
+    imported: number;
+    updated: number;
+    unchanged: number;
+    errors: number;
+    translated: number;
+  } | null>(null);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
   const [translateLanguages, setTranslateLanguages] = useState<string[]>([]);
+  const doneHref = applicationId
+    ? importType === "CONTENT"
+      ? `/applications/${applicationId}/articles`
+      : `/applications/${applicationId}/translations`
+    : "";
 
   function runPreview() {
     if (!file || !applicationId) return;
     setError("");
-    setResult("");
+    setReceipt(null);
     startTransition(async () => {
       try {
         const base64 = await fileToBase64(file);
@@ -122,16 +135,27 @@ export function ImportWizard({
                 base64,
                 translateLanguages,
               });
-        const translateNote =
-          res.translated > 0
-            ? `, auto-translated ${res.translated} language version${res.translated === 1 ? "" : "s"}`
-            : translateLanguages.length > 0
-              ? ", no extra languages needed auto-translate (already in file or skipped)"
-              : "";
-        setResult(
-          `Imported ${res.imported}, updated ${res.updated}, unchanged ${res.unchanged}, errors ${res.errors}${translateNote}`
-        );
-        runPreview();
+        setReceipt({
+          filename: file.name,
+          imported: res.imported,
+          updated: res.updated,
+          unchanged: res.unchanged,
+          errors: res.errors,
+          translated: res.translated,
+        });
+        const refreshed =
+          importType === "STRING"
+            ? await previewStringImport({
+                applicationId,
+                filename: file.name,
+                base64,
+              })
+            : await previewArticleImport({
+                applicationId,
+                filename: file.name,
+                base64,
+              });
+        setPreview(refreshed as PreviewResult);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Import failed");
       }
@@ -149,6 +173,7 @@ export function ImportWizard({
               onChange={(e) => {
                 setApplicationId(e.target.value);
                 setPreview(null);
+                setReceipt(null);
               }}
             >
               {applications.map((app) => (
@@ -180,7 +205,7 @@ export function ImportWizard({
                 onChange={(e) => {
                   setFile(e.target.files?.[0] ?? null);
                   setPreview(null);
-                  setResult("");
+                  setReceipt(null);
                 }}
               />
             </label>
@@ -222,19 +247,52 @@ export function ImportWizard({
             type="button"
             variant="secondary"
             onClick={runConfirm}
-            disabled={!preview || pending}
+            disabled={!preview || pending || !!receipt}
           >
-            {pending
-              ? translateLanguages.length > 0
-                ? "Importing & translating…"
-                : "Importing…"
-              : translateLanguages.length > 0
-                ? `Confirm import + translate (${translateLanguages.length})`
-                : "Confirm import"}
+            {receipt
+              ? "Imported"
+              : pending
+                ? translateLanguages.length > 0
+                  ? "Importing & translating…"
+                  : "Importing…"
+                : translateLanguages.length > 0
+                  ? `Confirm import + translate (${translateLanguages.length})`
+                  : "Confirm import"}
           </Button>
         </div>
         {error ? <p className="text-sm text-red-700">{error}</p> : null}
-        {result ? <p className="text-sm text-emerald-800">{result}</p> : null}
+        {receipt ? (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="good">Imported</Badge>
+              <span className="text-sm font-semibold text-emerald-950">
+                {receipt.filename}
+              </span>
+            </div>
+            <p className="mt-1.5 text-sm text-emerald-900">
+              {receipt.imported} new, {receipt.updated} updated, {receipt.unchanged}{" "}
+              unchanged
+              {receipt.translated > 0
+                ? `, ${receipt.translated} language version${receipt.translated === 1 ? "" : "s"} translated`
+                : ""}
+              {receipt.errors > 0
+                ? `, ${receipt.errors} error${receipt.errors === 1 ? "" : "s"}`
+                : ""}
+              .
+            </p>
+            <p className="mt-1 text-xs text-emerald-800">
+              This file is done. Choose another file if you need to import again.
+            </p>
+            {doneHref ? (
+              <Link
+                href={doneHref}
+                className="mt-2 inline-block text-sm font-semibold text-emerald-950 underline"
+              >
+                {importType === "CONTENT" ? "View articles" : "View translations"}
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
       </Card>
 
       {preview ? (
