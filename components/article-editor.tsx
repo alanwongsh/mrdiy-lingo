@@ -41,6 +41,7 @@ import { ArticleComments } from "@/components/article-comments";
 import { HtmlEditor, type HtmlEditorHandle } from "@/components/html-editor";
 import { MARKETS } from "@/lib/markets";
 import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
+import { FilterSelect } from "./filter-select";
 
 type ArticleWithTranslations = Content & {
   translations: ContentTranslation[];
@@ -486,78 +487,50 @@ export function ArticleEditor({
     <div className="space-y-4">
       <Card className="space-y-4 p-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Content type">
-            <select
-              className={inputClass}
-              value={contentType}
-              onChange={(e) => setContentType(e.target.value)}
-            >
-              {contentTypes
-                .filter(
-                  (type) => type.status === "ACTIVE" || type.code === contentType
-                )
-                .map((type) => (
-                  <option key={type.id} value={type.code}>
-                    {type.status === "ACTIVE"
-                      ? type.name
-                      : `${type.name} (inactive)`}
-                  </option>
-                ))}
-              {contentTypes.some((type) => type.code === contentType) ? null : (
-                <option value={contentType}>{contentType}</option>
-              )}
-            </select>
-          </Field>
-          <Field label="Source language">
-            <select
-              className={inputClass}
-              value={sourceLanguage}
-              onChange={(e) => setSourceLanguage(e.target.value)}
-            >
-              {languages.map((l) => (
-                <option key={l.id} value={l.code}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Market">
-            <select
-              className={inputClass}
-              value={market}
-              onChange={(e) => setMarket(e.target.value)}
-            >
-              <option value="">No market</option>
-              {MARKETS.map((item) => (
-                <option key={item.code} value={item.code}>
-                  {item.code} · {item.name}
-                </option>
-              ))}
-              {market && !MARKETS.some((item) => item.code === market) ? (
-                <option value={market}>{market}</option>
-              ) : null}
-            </select>
-          </Field>
-          <Field label="Lifecycle status">
-            <select
-              className={inputClass}
-              value={status}
-              onChange={(e) =>
-                setStatus(e.target.value as ContentLifecycleStatus)
-              }
-            >
-              {lifecycleChoices(canApprove, article.status).map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-            {canApprove ? null : (
-              <p className="mt-1 text-xs text-[var(--hub-muted)]">
-                Approval and publishing are limited to HOD and above.
-              </p>
-            )}
-          </Field>
+          <FilterSelect
+            fullWidth
+            label="Content type"
+            value={contentType}
+            onChange={(value) => setContentType(value)}
+            options={contentTypes.map((type) => ({
+              value: type.code,
+              label: type.name,
+            }))}
+            placeholder="Select content type"
+          />
+          <FilterSelect
+            fullWidth
+            label="Source language"
+            value={sourceLanguage}
+            onChange={(value) => setSourceLanguage(value)}
+            options={languages.map((language) => ({
+              value: language.code,
+              label: language.name,
+            }))}
+            placeholder="Select source language"
+          />
+          <FilterSelect
+            fullWidth
+            label="Market"
+            value={market}
+            onChange={(value) => setMarket(value)}
+            options={MARKETS.map((market) => ({
+              value: market.code,
+              label: market.code + " · " + market.name,
+            }))}
+            placeholder="Select market"
+          />
+          <FilterSelect
+            fullWidth
+            label="Lifecycle status"
+            value={status}
+            onChange={(value) => setStatus(value)}
+            options={lifecycleChoices(canApprove, article.status).map((status) => ({
+              value: status,
+              label: status,
+            }))}
+            placeholder="Select lifecycle status"
+          />
           <Field label="Estimated publish">
             <input
               type="datetime-local"
