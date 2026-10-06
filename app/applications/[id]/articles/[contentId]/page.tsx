@@ -1,10 +1,14 @@
 import { notFound } from "next/navigation";
+import { getActor } from "@/lib/auth/actor";
 import { getApplication } from "@/lib/actions/applications";
+import { listArticleComments } from "@/lib/actions/comments";
 import { listLanguages } from "@/lib/actions/languages";
 import { getArticle } from "@/lib/actions/press";
 import { AppSubnav } from "@/components/app-subnav";
+import { ArticleComments } from "@/components/article-comments";
 import { ArticleView } from "@/components/article-view";
 import { LinkButton, PageHeader } from "@/components/ui";
+import type { ArticleComment } from "@/lib/types";
 
 export default async function ArticleDetailPage({
   params,
@@ -17,6 +21,22 @@ export default async function ArticleDetailPage({
   const article = await getArticle(contentId);
   if (!article || article.application_id !== app.id) notFound();
   const languages = await listLanguages();
+  const actor = await getActor();
+  let comments: ArticleComment[] = [];
+  let commentsError = "";
+  try {
+    comments = await listArticleComments(contentId);
+  } catch (error) {
+    commentsError = error instanceof Error ? error.message : "Comments unavailable";
+  }
+  const articleCodes = new Set(
+    [article.source_language, ...(article.target_languages ?? [])]
+      .filter(Boolean)
+      .map((code) => code.trim().toLowerCase())
+  );
+  const commentLanguages = languages.filter((language) =>
+    articleCodes.has(language.code.trim().toLowerCase())
+  );
 
   return (
     <div>
@@ -37,6 +57,15 @@ export default async function ArticleDetailPage({
       />
       <AppSubnav application={app} />
       <ArticleView key={article.id} article={article} languages={languages} />
+      <ArticleComments
+        applicationId={app.id}
+        contentId={article.id}
+        comments={comments}
+        languages={commentLanguages.length > 0 ? commentLanguages : languages}
+        activeLanguage={article.source_language}
+        actor={actor}
+        loadError={commentsError}
+      />
     </div>
   );
 }
