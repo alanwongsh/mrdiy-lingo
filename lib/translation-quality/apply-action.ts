@@ -6,8 +6,41 @@ function fieldKey(field: QualityTargetField): keyof SourceContentFields {
   return field;
 }
 
+const BLOCK_TAG =
+  /<(?:\/?(?:p|div|h[1-6]|li|ul|ol|blockquote|section|article|header|tr|table)|br)\b/i;
+
+function normalizedText(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Text after the heading (or earlier block) that the suggestion still starts with. */
+function textAfterPrefix(source: string, prefix: string) {
+  const prefixNorm = normalizedText(prefix);
+  if (!prefixNorm) return source.trim();
+  let sourceIndex = 0;
+  let prefixIndex = 0;
+  const folded = source.toLowerCase();
+  while (prefixIndex < prefixNorm.length && sourceIndex < source.length) {
+    if (/\s/.test(source[sourceIndex])) {
+      if (prefixNorm[prefixIndex] === " ") {
+        prefixIndex += 1;
+        while (sourceIndex < source.length && /\s/.test(source[sourceIndex])) sourceIndex += 1;
+      } else {
+        while (sourceIndex < source.length && /\s/.test(source[sourceIndex])) sourceIndex += 1;
+      }
+      continue;
+    }
+    if (folded[sourceIndex] !== prefixNorm[prefixIndex]) return null;
+    sourceIndex += 1;
+    prefixIndex += 1;
+  }
+  if (prefixIndex < prefixNorm.length) return null;
+  while (sourceIndex < source.length && /\s/.test(source[sourceIndex])) sourceIndex += 1;
+  return source.slice(sourceIndex);
+}
+
 function replaceAcrossTags(html: string, phrase: string, replacement: string): string | null {
-  const needle = phrase.trim().toLowerCase();
+  const needle = phrase.trim().toLowerCase().replace(/\s+/g, " ");
   if (!needle) return null;
   const segments: Array<{ start: number; end: number; text: string }> = [];
   let cursor = 0;
@@ -20,42 +53,81 @@ function replaceAcrossTags(html: string, phrase: string, replacement: string): s
     }
     const next = html.indexOf("<", cursor);
     const end = next < 0 ? html.length : next;
-    segments.push({ start: cursor, end, text: html.slice(cursor, end) });
+    if (end > cursor) segments.push({ start: cursor, end, text: html.slice(cursor, end) });
     cursor = end;
   }
-  const flat = segments.map((segment) => segment.text).join("").toLowerCase();
+  let flat = "";
+  const map: Array<{ segment: number; offset: number } | null> = [];
+  const pushChar = (segment: number | null, offset: number, char: string) => {
+    flat += char.toLowerCase();
+    map.push(segment == null ? null : { segment, offset });
+  };
+  for (let index = 0; index < segments.length; index += 1) {
+    const text = segments[index].text;
+    if (flat && !/\s$/.test(flat) && text && !/^\s/.test(text)) pushChar(null, 0, " ");
+    for (let offset = 0; offset < text.length; offset += 1) {
+      const char = text[offset];
+      if (/\s/.test(char) && /\s$/.test(flat)) continue;
+      pushChar(index, offset, /\s/.test(char) ? " " : char);
+    }
+  }
   const at = flat.indexOf(needle);
   if (at < 0) return null;
-  let consumed = 0;
-  let startSeg = -1;
-  let startOff = 0;
-  let endSeg = -1;
-  let endOff = 0;
-  for (let index = 0; index < segments.length; index += 1) {
-    const segment = segments[index];
-    const next = consumed + segment.text.length;
-    if (startSeg < 0 && at < next) {
-      startSeg = index;
-      startOff = at - consumed;
-    }
-    if (at + needle.length <= next) {
-      endSeg = index;
-      endOff = at + needle.length - consumed;
-      break;
-    }
-    consumed = next;
+  const covered = new Map<number, { from: number; to: number }>();
+  let firstSegment = -1;
+  for (let index = at; index < at + needle.length && index < map.length; index += 1) {
+    const point = map[index];
+    if (!point) continue;
+    if (firstSegment < 0) firstSegment = point.segment;
+    const current = covered.get(point.segment);
+    if (!current) covered.set(point.segment, { from: point.offset, to: point.offset + 1 });
+    else current.to = Math.max(current.to, point.offset + 1);
   }
-  if (startSeg < 0 || endSeg < 0) return null;
+  if (firstSegment < 0) return null;
+
+  const coveredIndexes = [...covered.keys()].sort((a, b) => a - b);
+  const groups: number[][] = [];
+  for (const index of coveredIndexes) {
+    const previous = groups.at(-1);
+    const last = previous?.at(-1);
+    if (
+      previous &&
+      last != null &&
+      !BLOCK_TAG.test(html.slice(segments[last].end, segments[index].start))
+    ) {
+      previous.push(index);
+    } else {
+      groups.push([index]);
+    }
+  }
+
+  let insertAt = firstSegment;
+  let insertText = replacement;
+  if (groups.length > 1) {
+    const firstText = groups[0]
+      .map((index) => {
+        const range = covered.get(index);
+        return range ? segments[index].text.slice(range.from, range.to) : "";
+      })
+      .join(" ");
+    const remainder = textAfterPrefix(replacement, firstText);
+    insertAt = groups[1][0];
+    insertText = remainder ?? replacement;
+    for (const index of groups[0]) covered.delete(index);
+  }
+
   let out = "";
   let written = 0;
   for (let index = 0; index < segments.length; index += 1) {
     const segment = segments[index];
     out += html.slice(written, segment.start);
-    if (index < startSeg || index > endSeg) out += segment.text;
-    else if (index === startSeg && index === endSeg) {
-      out += segment.text.slice(0, startOff) + replacement + segment.text.slice(endOff);
-    } else if (index === startSeg) out += segment.text.slice(0, startOff) + replacement;
-    else if (index === endSeg) out += segment.text.slice(endOff);
+    const range = covered.get(index);
+    if (!range) out += segment.text;
+    else if (index === insertAt) {
+      out += segment.text.slice(0, range.from) + insertText + segment.text.slice(range.to);
+    } else {
+      out += segment.text.slice(0, range.from) + segment.text.slice(range.to);
+    }
     written = segment.end;
   }
   return out + html.slice(written);
@@ -115,7 +187,7 @@ function applyToText(current: string, action: QualityAction): string {
     );
   }
 
-  throw new Error("This suggestion no longer matches the editor text.");
+  throw new Error("This suggestion no longer matches the translation.");
 }
 
 /** Apply one suggestion to an editor draft. This does not write to the database. */
@@ -127,7 +199,7 @@ export function applyQualityAction(
   const current = fields[key] ?? "";
   const next = applyToText(current, action);
   if (next === current) {
-    throw new Error("This suggestion no longer matches the editor text.");
+    throw new Error("This suggestion no longer matches the translation.");
   }
   return { ...fields, [key]: next };
 }

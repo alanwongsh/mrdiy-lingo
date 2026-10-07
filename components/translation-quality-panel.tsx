@@ -228,10 +228,15 @@ export function TranslationQualityPanel({
   const [versionNumber, setVersionNumber] = useState<number | null>(null);
   const [checkedDraftKey, setCheckedDraftKey] = useState<string | null>(null);
   const onLatestRunIdRef = useRef(onLatestRunId);
-  const previewRef = useRef<{ key: string; result: TranslationQualityResult } | null>(null);
+  const previewRef = useRef<{
+    key: string;
+    languageCode: string;
+    result: TranslationQualityResult;
+  } | null>(null);
   const draftKey = `${draft.title}\n${draft.summary}\n${draft.body}`;
   const draftKeyRef = useRef(draftKey);
   draftKeyRef.current = draftKey;
+  const pinnedPreview = useRef(false);
   const accepted = new Set(acceptedActionIds);
   const ignored = new Set(ignoredActionIds);
   const loading = loadedKey !== requestKey;
@@ -240,6 +245,16 @@ export function TranslationQualityPanel({
   useEffect(() => {
     onLatestRunIdRef.current = onLatestRunId;
   }, [onLatestRunId]);
+
+  const previewWatch = `${languageCode}\n${draftKey}`;
+  useEffect(() => {
+    const preview = previewRef.current;
+    const watchedLanguage = previewWatch.slice(0, previewWatch.indexOf("\n"));
+    const watchedDraft = previewWatch.slice(previewWatch.indexOf("\n") + 1);
+    if (!preview || preview.languageCode !== watchedLanguage) return;
+    if (preview.key !== watchedDraft) return;
+    onLatestRunIdRef.current(preview.result.runId);
+  }, [previewWatch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -259,13 +274,23 @@ export function TranslationQualityPanel({
         setCanAnalyze(bundle.canAnalyze);
         setVersionNumber(bundle.versionNumber);
         const preview = previewRef.current;
-        const keepPreview = preview && preview.key === draftKeyRef.current;
-        if (keepPreview) {
+        const keepPreview =
+          preview &&
+          preview.languageCode === languageCode &&
+          preview.key === draftKeyRef.current;
+        if (keepPreview && bundle.latest?.runId === preview.result.runId) {
+          previewRef.current = null;
+          setCheckedDraftKey(null);
+          setResults({ [bundle.latest.runId]: bundle.latest });
+          setSelectedId(bundle.latest.runId);
+          onLatestRunIdRef.current(bundle.latest.runId);
+        } else if (keepPreview) {
           setResults({
             [preview.result.runId]: preview.result,
             ...(bundle.latest ? { [bundle.latest.runId]: bundle.latest } : {}),
           });
           setSelectedId(preview.result.runId);
+          onLatestRunIdRef.current(preview.result.runId);
         } else if (bundle.latest) {
           setResults({ [bundle.latest.runId]: bundle.latest });
           setSelectedId(bundle.latest.runId);
@@ -353,9 +378,9 @@ export function TranslationQualityPanel({
           setCheckedDraftKey(null);
           onLatestRunIdRef.current(result.runId);
         } else {
-          previewRef.current = { key: analyzedKey, result };
+          previewRef.current = { key: analyzedKey, languageCode, result };
           setCheckedDraftKey(analyzedKey);
-          onLatestRunIdRef.current(null);
+          onLatestRunIdRef.current(result.runId);
         }
         setResults((current) => ({ ...current, [result.runId]: result }));
         setSelectedId(result.runId);
@@ -468,8 +493,8 @@ export function TranslationQualityPanel({
             : !selected
               ? "Not reviewed yet"
               : blockerCount === 0
-                ? "No blockers in this check"
-                : `${blockerCount} blocker${blockerCount === 1 ? "" : "s"} to resolve before release`}
+                ? "No blockers in this review"
+                : `${blockerCount} blocker${blockerCount === 1 ? "" : "s"} flagged in this review`}
         </p>
         {rankedScores
           .filter((score) => score.summary && typeof score.score === "number" && score.score < 100)
@@ -559,22 +584,27 @@ export function TranslationQualityPanel({
                   const action = storedAction ?? fallbackAction(finding);
                   const place = locateFinding(draft, finding);
                   const mark = findingMark(finding.severity);
-                  const canAct =
-                    Boolean(place && !place.hidden) &&
+                  const pending =
                     canApply &&
                     canReview &&
-                    action?.status === "pending" &&
-                    !accepted.has(action.id) &&
-                    !ignored.has(action.id);
+                    (!action || action.status === "pending") &&
+                    !accepted.has(action?.id ?? finding.id) &&
+                    !ignored.has(action?.id ?? finding.id);
+                  const canAct = Boolean(place && !place.hidden) && pending && Boolean(action);
+                  const canDismiss = !place && Boolean(finding.translatedText) && pending;
                   return (
                     <li
                       key={finding.id}
                       className="border-t border-[var(--hub-border)] py-3"
                       onMouseEnter={() => {
                         if (!onPreview || !place || place.hidden || !finding.translatedText) return;
+                        pinnedPreview.current = false;
                         onPreview({ field: place.field, text: finding.translatedText });
                       }}
-                      onMouseLeave={() => onPreview?.(null)}
+                      onMouseLeave={() => {
+                        if (pinnedPreview.current) return;
+                        onPreview?.(null);
+                      }}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="inline-flex items-center gap-1.5 text-[11px] font-bold tracking-wide text-slate-800 uppercase">
@@ -622,9 +652,10 @@ export function TranslationQualityPanel({
                             <Button
                               type="button"
                               variant="secondary"
-                              onClick={() =>
-                                onShow({ field: place.field, text: finding.translatedText! })
-                              }
+                              onClick={() => {
+                                pinnedPreview.current = true;
+                                onShow({ field: place.field, text: finding.translatedText! });
+                              }}
                             >
                               Show
                             </Button>
@@ -637,6 +668,16 @@ export function TranslationQualityPanel({
                           </Button>
                           <Button type="button" variant="secondary" onClick={() => onIgnore(action.id, Boolean(storedAction))}>Ignore</Button>
                           {showEditLink && canReview ? <EditTranslationLink href={editHref} /> : null}
+                        </div>
+                      ) : canDismiss ? (
+                        <div className="mt-2">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => onIgnore(storedAction?.id ?? finding.id, Boolean(storedAction))}
+                          >
+                            Ignore
+                          </Button>
                         </div>
                       ) : showEditLink && canReview ? (
                         <div className="mt-2">
@@ -777,14 +818,15 @@ export function TranslationQualityPanel({
                 {visibleFindings.map((finding) => {
                   const action = selected.actions.find((item) => item.findingId === finding.id);
                   const place = locateFinding(draft, finding);
-                  const canAct =
-                    Boolean(place && !place.hidden) &&
+                  const pending =
                     (isDraftPreview || isLatest) &&
                     canApply &&
                     canReview &&
-                    action?.status === "pending" &&
-                    !accepted.has(action.id) &&
-                    !ignored.has(action.id);
+                    (!action || action.status === "pending") &&
+                    !accepted.has(action?.id ?? finding.id) &&
+                    !ignored.has(action?.id ?? finding.id);
+                  const canAct = Boolean(place && !place.hidden) && pending && Boolean(action);
+                  const canDismiss = !place && Boolean(finding.translatedText) && pending;
                   return (
                     <li
                       key={finding.id}
@@ -851,7 +893,17 @@ export function TranslationQualityPanel({
                           >
                             Accept
                           </Button>
-                          <Button type="button" variant="secondary" onClick={() => onIgnore(action.id)}>
+                          <Button type="button" variant="secondary" onClick={() => onIgnore(action.id, true)}>
+                            Ignore
+                          </Button>
+                        </div>
+                      ) : canDismiss ? (
+                        <div className="mt-3">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => onIgnore(action?.id ?? finding.id, Boolean(action))}
+                          >
                             Ignore
                           </Button>
                         </div>

@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { escapeIlike, getDb } from "@/lib/db/client";
+import { applyQualityAction } from "@/lib/translation-quality/apply-action";
 import type {
   BoilerplatePhrase,
   QualityAction,
@@ -293,6 +295,12 @@ export function versionRunUsesTokens(run: VersionRunClaim) {
   return false;
 }
 
+export function draftTextHash(title: string, summary: string, body: string) {
+  return createHash("sha256")
+    .update(`${title.trim()}\n${summary.trim()}\n${body.trim()}`)
+    .digest("hex");
+}
+
 export async function findVersionQualityRun(versionId: string) {
   const db = await getDb();
   const { data, error } = await db
@@ -334,6 +342,7 @@ export async function claimQualityRun(input: {
     .eq("content_id", input.contentId)
     .ilike("target_language", escapeIlike(input.targetLanguage))
     .is("content_translation_version_id", null)
+    .filter("request_metadata->>draftTextHash", "is", null)
     .gte("created_at", input.versionCreatedAt)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -377,6 +386,152 @@ export async function claimQualityRun(input: {
   }
   if (error) throw new Error(qualitySchemaMessage(error));
   return { id: data.id as string, createdAt: data.created_at as string, existing: false };
+}
+
+async function discardUnattachedDraftRuns(contentId: string, targetLanguage: string) {
+  const db = await getDb();
+  const { error } = await db
+    .from("quality_runs")
+    .delete()
+    .eq("content_id", contentId)
+    .ilike("target_language", escapeIlike(targetLanguage))
+    .is("content_translation_version_id", null)
+    .not("request_metadata->>draftTextHash", "is", null);
+  if (error) throw new Error(qualitySchemaMessage(error));
+}
+
+export async function insertDraftQualityRun(input: {
+  contentId: string;
+  contentTranslationId: string | null;
+  provider: string;
+  model?: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  requestMetadata: Record<string, unknown>;
+}): Promise<{ id: string; createdAt: string }> {
+  await discardUnattachedDraftRuns(input.contentId, input.targetLanguage);
+  const db = await getDb();
+  const { data, error } = await db
+    .from("quality_runs")
+    .insert({
+      content_id: input.contentId,
+      content_translation_id: input.contentTranslationId,
+      provider: input.provider,
+      model: input.model ?? null,
+      source_language: input.sourceLanguage,
+      target_language: input.targetLanguage,
+      status: "running",
+      request_metadata: input.requestMetadata,
+    })
+    .select("id, created_at")
+    .single();
+  if (error) throw new Error(qualitySchemaMessage(error));
+  return { id: data.id as string, createdAt: data.created_at as string };
+}
+
+async function versionFields(versionId: string) {
+  const db = await getDb();
+  const { data, error } = await db
+    .from("content_translation_versions")
+    .select("translated_content")
+    .eq("id", versionId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  const content = (data.translated_content ?? {}) as {
+    title?: string;
+    summary?: string;
+    body?: string;
+  };
+  return {
+    title: content.title ?? "",
+    summary: content.summary ?? "",
+    body: content.body ?? "",
+  };
+}
+
+/** Links a review to the version just saved when that version is the analyzed text, including accepted suggestions. */
+export async function attachDraftQualityRun(input: {
+  runId: string;
+  contentId: string;
+  languageCode: string;
+  title: string;
+  summary: string;
+  body: string;
+  acceptedActionIds?: string[];
+}) {
+  const version = await latestTranslationVersion(input.contentId, input.languageCode);
+  if (!version) return false;
+  const savedHash = draftTextHash(input.title, input.summary, input.body);
+  if (draftTextHash(version.title, version.summary, version.body) !== savedHash) return false;
+
+  const db = await getDb();
+  const { data: run, error } = await db
+    .from("quality_runs")
+    .select("id, content_id, target_language, content_translation_version_id, request_metadata, status")
+    .eq("id", input.runId)
+    .maybeSingle();
+  if (error) throw new Error(qualitySchemaMessage(error));
+  if (!run || run.content_id !== input.contentId) return false;
+  if (String(run.target_language).toLowerCase() !== input.languageCode.toLowerCase()) return false;
+  if (run.status !== "completed" && run.status !== "failed") return false;
+  if (run.content_translation_version_id === version.versionId) return true;
+
+  const metadata = (run.request_metadata ?? {}) as {
+    draftTextHash?: unknown;
+    draftTitle?: unknown;
+    draftSummary?: unknown;
+    draftBody?: unknown;
+  };
+  const fromDraft =
+    typeof metadata.draftTitle === "string" ||
+    typeof metadata.draftSummary === "string" ||
+    typeof metadata.draftBody === "string";
+  const analyzed = fromDraft
+    ? {
+        title: typeof metadata.draftTitle === "string" ? metadata.draftTitle : "",
+        summary: typeof metadata.draftSummary === "string" ? metadata.draftSummary : "",
+        body: typeof metadata.draftBody === "string" ? metadata.draftBody : "",
+      }
+    : run.content_translation_version_id
+      ? await versionFields(run.content_translation_version_id)
+      : null;
+  if (!analyzed) {
+    if (metadata.draftTextHash !== savedHash) return false;
+  } else {
+    let expected = {
+      title: analyzed.title,
+      summary: analyzed.summary,
+      body: analyzed.body,
+      seo_title: "",
+      seo_description: "",
+    };
+    for (const actionId of input.acceptedActionIds ?? []) {
+      const row = await getQualityActionRow(actionId);
+      if (row.runId !== input.runId) return false;
+      try {
+        expected = applyQualityAction(expected, row.action);
+      } catch {
+        return false;
+      }
+    }
+    if (draftTextHash(expected.title, expected.summary, expected.body) !== savedHash) return false;
+  }
+
+  const existing = await findVersionQualityRun(version.versionId);
+  if (existing && existing.id !== input.runId && versionRunUsesTokens(existing)) return false;
+  if (existing && existing.id !== input.runId) await releaseVersionQualityRun(existing.id);
+
+  const { error: updateError } = await db
+    .from("quality_runs")
+    .update({
+      content_translation_id: version.translationId,
+      content_translation_version_id: version.versionId,
+    })
+    .eq("id", input.runId);
+  if (updateError?.code === "23505") return false;
+  if (updateError) throw new Error(qualitySchemaMessage(updateError));
+  return true;
 }
 
 export async function persistQualityDetails(input: {
@@ -666,24 +821,29 @@ export async function listQualityRunSummaries(
   const db = await getDb();
   const { data, error } = await db
     .from("quality_runs")
-    .select("id, provider, model, status, overall_score, source_language, target_language, created_at, completed_at, content_translation_version_id")
+    .select("id, provider, model, status, overall_score, source_language, target_language, created_at, completed_at, content_translation_version_id, request_metadata")
     .eq("content_id", contentId)
     .eq("target_language", targetLanguage)
     .order("created_at", { ascending: false })
     .limit(20);
   if (error) throw new Error(qualitySchemaMessage(error));
-  return (data ?? []).map((row) => ({
-    id: row.id as string,
-    provider: row.provider as string,
-    model: (row.model as string | null) ?? undefined,
-    status: row.status as QualityRunStatus,
-    overallScore: asNumber(row.overall_score),
-    sourceLanguage: row.source_language as string,
-    targetLanguage: row.target_language as string,
-    createdAt: row.created_at as string,
-    completedAt: (row.completed_at as string | null) ?? undefined,
-    versionId: (row.content_translation_version_id as string | null) ?? undefined,
-  }));
+  return (data ?? []).flatMap((row) => {
+    const versionId = (row.content_translation_version_id as string | null) ?? null;
+    const draftHash = (row.request_metadata as { draftTextHash?: unknown } | null)?.draftTextHash;
+    if (!versionId && typeof draftHash === "string") return [];
+    return [{
+      id: row.id as string,
+      provider: row.provider as string,
+      model: (row.model as string | null) ?? undefined,
+      status: row.status as QualityRunStatus,
+      overallScore: asNumber(row.overall_score),
+      sourceLanguage: row.source_language as string,
+      targetLanguage: row.target_language as string,
+      createdAt: row.created_at as string,
+      completedAt: (row.completed_at as string | null) ?? undefined,
+      versionId: versionId ?? undefined,
+    }];
+  });
 }
 
 export async function getQualityActionRow(actionId: string) {

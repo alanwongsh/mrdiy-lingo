@@ -124,6 +124,69 @@ function wrapFirstText(html: string, phrase: string, wrap: (matched: string) => 
   return html;
 }
 
+/** Highlight a sentence that is split by tags, such as a bold word in the middle. */
+function markAcrossTags(html: string, phrase: string) {
+  const needle = phrase.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!needle || !html) return html;
+  const segments: Array<{ start: number; end: number; text: string }> = [];
+  let cursor = 0;
+  while (cursor < html.length) {
+    if (html[cursor] === "<") {
+      const end = html.indexOf(">", cursor);
+      if (end < 0) break;
+      cursor = end + 1;
+      continue;
+    }
+    const next = html.indexOf("<", cursor);
+    const end = next < 0 ? html.length : next;
+    if (end > cursor) segments.push({ start: cursor, end, text: html.slice(cursor, end) });
+    cursor = end;
+  }
+  let flat = "";
+  const map: Array<{ segment: number; offset: number } | null> = [];
+  const pushChar = (segment: number | null, offset: number, char: string) => {
+    flat += char.toLowerCase();
+    map.push(segment == null ? null : { segment, offset });
+  };
+  for (let index = 0; index < segments.length; index += 1) {
+    const text = segments[index].text;
+    if (flat && !/\s$/.test(flat) && text && !/^\s/.test(text)) pushChar(null, 0, " ");
+    for (let offset = 0; offset < text.length; offset += 1) {
+      const char = text[offset];
+      if (/\s/.test(char) && /\s$/.test(flat)) continue;
+      pushChar(index, offset, /\s/.test(char) ? " " : char);
+    }
+  }
+  const at = flat.indexOf(needle);
+  if (at < 0) return html;
+  const covered = new Map<number, { from: number; to: number }>();
+  for (let index = at; index < at + needle.length && index < map.length; index += 1) {
+    const point = map[index];
+    if (!point) continue;
+    const current = covered.get(point.segment);
+    if (!current) covered.set(point.segment, { from: point.offset, to: point.offset + 1 });
+    else current.to = Math.max(current.to, point.offset + 1);
+  }
+  if (covered.size === 0) return html;
+  let out = "";
+  let written = 0;
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    out += html.slice(written, segment.start);
+    const range = covered.get(index);
+    if (!range) out += segment.text;
+    else {
+      const matched = segment.text.slice(range.from, range.to);
+      out +=
+        segment.text.slice(0, range.from) +
+        `<mark class="quality-locate" data-quality-change="">${matched}</mark>` +
+        segment.text.slice(range.to);
+    }
+    written = segment.end;
+  }
+  return out + html.slice(written);
+}
+
 function decorateField(value: string, marks: ReviewMark[], locateText?: string) {
   let html = sourceHtml(value);
   for (const mark of marks) {
@@ -136,11 +199,12 @@ function decorateField(value: string, marks: ReviewMark[], locateText?: string) 
     );
   }
   if (locateText) {
-    html = wrapFirstText(
+    const marked = wrapFirstText(
       html,
       locateText,
       (matched) => `<mark class="quality-locate" data-quality-change="">${escapeHtml(matched)}</mark>`
     );
+    html = marked === html ? markAcrossTags(html, locateText) : marked;
   }
   return html;
 }
@@ -788,7 +852,7 @@ export function ArticleView({
     if (stored) setIgnoredActionIds(remember);
     else setLocalHandledIds(remember);
     setSaveError("");
-    setReviewNote("Ignored. Save changes to keep that decision.");
+    setReviewNote(stored ? "Ignored. Save changes to keep that decision." : "Ignored.");
   }
 
   function saveReview() {

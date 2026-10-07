@@ -10,6 +10,7 @@ import type { ContentTranslation, SourceContentFields } from "@/lib/types";
 import { applyQualityAction } from "@/lib/translation-quality/apply-action";
 import { qualitySchemaMessage } from "@/lib/translation-quality/repository";
 import {
+  attachDraftQualityRun,
   findVersionQualityRun,
   getQualityActionRow,
   getQualityRunRecord,
@@ -227,12 +228,14 @@ export async function saveReviewedContentTranslation(input: {
   const accepted = uniqueIds(input.acceptedActionIds);
   const ignored = uniqueIds(input.ignoredActionIds);
   if (accepted.length === 0 && ignored.length === 0) {
-    return saveManualContentTranslation({
+    const saved = await saveManualContentTranslation({
       contentId: input.contentId,
       languageCode: input.languageCode,
       fields: input.fields,
       applicationId: input.applicationId,
     });
+    await keepDraftReview(input);
+    return saved;
   }
 
   const grant = await requireContentAccess(input.contentId, "edit");
@@ -283,7 +286,28 @@ export async function saveReviewedContentTranslation(input: {
   revalidatePath(
     `/applications/${input.applicationId}/articles/${input.contentId}`
   );
+  await keepDraftReview(input);
   return translation as ContentTranslation;
+}
+
+async function keepDraftReview(input: {
+  contentId: string;
+  languageCode: string;
+  fields: SourceContentFields;
+  qualityRunId?: string | null;
+  acceptedActionIds?: string[];
+}) {
+  if (!input.qualityRunId) return;
+  assertUuid(input.qualityRunId, "analysis");
+  await attachDraftQualityRun({
+    runId: input.qualityRunId,
+    contentId: input.contentId,
+    languageCode: input.languageCode,
+    title: input.fields.title,
+    summary: input.fields.summary,
+    body: input.fields.body,
+    acceptedActionIds: input.acceptedActionIds,
+  });
 }
 
 export async function listQualitySettings(applicationId: string) {

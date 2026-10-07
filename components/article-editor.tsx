@@ -255,6 +255,7 @@ export function ArticleEditor({
   const [historyError, setHistoryError] = useState("");
   const [acceptedActionIds, setAcceptedActionIds] = useState<string[]>([]);
   const [ignoredActionIds, setIgnoredActionIds] = useState<string[]>([]);
+  const [localHandledIds, setLocalHandledIds] = useState<string[]>([]);
   const [qualityRunId, setQualityRunId] = useState<string | null>(null);
   const [scorePreview, setScorePreview] = useState<{
     field: QualityTargetField;
@@ -377,6 +378,7 @@ export function ArticleEditor({
     setHistoryError("");
     setAcceptedActionIds([]);
     setIgnoredActionIds([]);
+    setLocalHandledIds([]);
     setQualityRunId(null);
   }, [translationToken, targetTranslation]);
 
@@ -539,10 +541,10 @@ export function ArticleEditor({
     return () => cancelAnimationFrame(frame);
   }, [scrollRequest, scorePreview]);
 
-  function ignoreQualityAction(actionId: string) {
-    setIgnoredActionIds((ids) =>
-      ids.includes(actionId) ? ids : [...ids, actionId]
-    );
+  function ignoreQualityAction(actionId: string, stored = true) {
+    const remember = (ids: string[]) => (ids.includes(actionId) ? ids : [...ids, actionId]);
+    if (stored) setIgnoredActionIds(remember);
+    else setLocalHandledIds(remember);
   }
 
   async function persistDraft() {
@@ -562,6 +564,7 @@ export function ArticleEditor({
     });
     setAcceptedActionIds([]);
     setIgnoredActionIds([]);
+    setLocalHandledIds([]);
     return saved;
   }
 
@@ -1027,7 +1030,7 @@ export function ArticleEditor({
             savedAt={targetTranslation?.updated_at ?? ""}
             canReview
             unsaved={isDirty}
-            acceptedActionIds={acceptedActionIds}
+            acceptedActionIds={[...acceptedActionIds, ...localHandledIds]}
             ignoredActionIds={ignoredActionIds}
             onLatestRunId={setQualityRunId}
             onAccept={acceptQualityAction}

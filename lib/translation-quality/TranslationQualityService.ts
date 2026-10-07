@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { qualityConfig } from "@/lib/translation-quality/config";
 import {
   combineQualityDraft,
@@ -9,9 +8,11 @@ import { PROMPT_VERSION } from "@/lib/translation-quality/prompts/translation-qu
 import { TranslationQualityProviderFactory } from "@/lib/translation-quality/TranslationQualityProviderFactory";
 import {
   claimQualityRun,
+  draftTextHash,
   findVersionQualityRun,
   finishQualityRun,
   getQualityRunRecord,
+  insertDraftQualityRun,
   latestTranslationVersion,
   listActiveBoilerplate,
   listActiveTerminology,
@@ -112,10 +113,57 @@ export class TranslationQualityService {
     );
     if (!sameSavedText || !version) {
       const preview = await this.score(input, categories, config, aiCategories, providerId, started);
+      const run = await insertDraftQualityRun({
+        contentId: request.contentId,
+        contentTranslationId: version?.translationId ?? null,
+        provider: aiCategories.length > 0 ? providerId : "rules",
+        model: aiCategories.length > 0 && providerId === "gemini" ? config.geminiModel : undefined,
+        sourceLanguage: request.sourceLanguage,
+        targetLanguage: request.targetLanguage,
+        requestMetadata: {
+          promptVersion: PROMPT_VERSION,
+          enabledCategories: categories.map((category) => category.code),
+          terminologyCount: terminology.length,
+          boilerplateCount: boilerplate.length,
+          draftTextHash: draftTextHash(
+            request.translatedTitle,
+            request.translatedSummary,
+            request.translatedContent
+          ),
+          draftTitle: request.translatedTitle,
+          draftSummary: request.translatedSummary,
+          draftBody: request.translatedContent,
+        },
+      });
+      try {
+        await persistQualityDetails({
+          runId: run.id,
+          categories,
+          scores: preview.result.scores,
+          findings: preview.result.findings,
+          actions: preview.result.actions,
+        });
+        await finishQualityRun({
+          runId: run.id,
+          status: preview.result.status,
+          overallScore: preview.result.overallScore,
+          responseMetadata: preview.metadata,
+          errorMessage: preview.errorMessage,
+        });
+      } catch (error) {
+        await finishQualityRun({
+          runId: run.id,
+          status: "failed",
+          overallScore: null,
+          responseMetadata: preview.metadata,
+          errorMessage: ANALYSIS_FAILED_MESSAGE,
+        }).catch(() => undefined);
+        throw error;
+      }
       return {
         ...preview.result,
-        runId: randomUUID(),
-        createdAt: new Date().toISOString(),
+        runId: run.id,
+        createdAt: run.createdAt,
         persisted: false,
       };
     }
