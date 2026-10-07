@@ -25,6 +25,9 @@ flowchart LR
     Mock[Mock provider]
     LLM[OpenAI planned]
   end
+  subgraph quality [Quality review]
+    Gemini[Google Gemini]
+  end
   Browser --> Proxy
   Joget -->|HMAC token| Proxy
   Proxy --> Next
@@ -32,6 +35,7 @@ flowchart LR
   Actions --> PG
   Actions --> MM
   Actions --> Mock
+  Actions --> Gemini
   LLM -.-> Actions
 ```
 
@@ -197,6 +201,23 @@ flowchart TB
   Lang --> CT
   CT --> CV
   Content --> Comments
+
+  subgraph quality [Quality]
+    Cats[quality_categories]
+    Terms[terminology]
+    Boiler[boilerplate_phrases]
+    Runs[quality_runs]
+    Scores[quality_scores]
+    Findings[quality_findings]
+    Actions[quality_actions]
+  end
+  CV --> Runs
+  Cats --> Scores
+  Runs --> Scores
+  Runs --> Findings
+  Findings --> Actions
+  Terms --> Runs
+  Boiler --> Runs
 ```
 
 ## 10. Export articles
@@ -214,4 +235,22 @@ flowchart TD
   Blank --> File
   Skip --> Notice[Report skipped and blank languages]
   File --> Notice
+```
+
+## 11. Quality review
+
+```mermaid
+flowchart TD
+  Open[Open a language] --> Analyze[Analyze]
+  Analyze --> Model[Gemini scores message tone structure and cross-language]
+  Analyze --> Rules[Rules score terminology and boilerplate]
+  Model --> Run[Store one quality run]
+  Rules --> Run
+  Run --> Rail[Show score and findings]
+  Rail --> Accept[Accept into the draft]
+  Rail --> Ignore[Ignore the finding]
+  Accept --> Save[Save translation and accepted actions]
+  Ignore --> Stay[Hidden until the next analysis]
+  Rail --> Again[Analyze again]
+  Again --> Analyze
 ```

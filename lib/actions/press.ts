@@ -824,11 +824,22 @@ export async function autoTranslateArticle(input: {
   }
 
   const service = getTranslationService();
-  const fields = await service.translateArticle({
-    fields: sourceFields,
-    sourceLanguage,
-    targetLanguage: input.targetLanguage,
-  });
+  const previousStatus = article.status;
+  let fields;
+  try {
+    fields = await service.translateArticle({
+      fields: sourceFields,
+      sourceLanguage,
+      targetLanguage: input.targetLanguage,
+    });
+  } catch (error) {
+    if (!input.approveTranslation && previousStatus !== "TRANSLATING") {
+      await persistArticleStatus(input.contentId, input.applicationId, previousStatus).catch(
+        () => undefined
+      );
+    }
+    throw error;
+  }
 
   if (!fields.body?.trim() && sourceFields.body?.trim()) {
     fields.body = await service.translateText({

@@ -275,11 +275,6 @@ export function QualitySettings({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold text-slate-900">Scoring</h2>
-              <p className="mt-1 max-w-2xl text-sm text-slate-500">
-                Tick the checks you want, then set how much each one counts.
-                The percentages are their share of the checks that are on.
-                Nothing is saved until you click Save scoring.
-              </p>
             </div>
             {canManage ? (
               <Button type="submit" disabled={pending || !scoringDirty}>

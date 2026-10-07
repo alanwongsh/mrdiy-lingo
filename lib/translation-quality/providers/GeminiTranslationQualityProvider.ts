@@ -1,4 +1,5 @@
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { writeServiceLog } from "@/lib/service-log";
 import { qualityConfig } from "@/lib/translation-quality/config";
 import {
   buildTranslationQualityPrompt,
@@ -95,6 +96,55 @@ function isGemini3(model: string) {
   return /^gemini-3(?:[.-]|$)/i.test(model);
 }
 
+function tokenCount(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** Gemini includes these on the response. It does not store the prompt or reply. */
+function tokenUsage(usage: {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  totalTokenCount?: number;
+  thoughtsTokenCount?: number;
+  cachedContentTokenCount?: number;
+} | null | undefined) {
+  if (!usage) return undefined;
+  const tokens = {
+    promptTokens: tokenCount(usage.promptTokenCount),
+    outputTokens: tokenCount(usage.candidatesTokenCount),
+    totalTokens: tokenCount(usage.totalTokenCount),
+    thoughtsTokens: tokenCount(usage.thoughtsTokenCount),
+    cachedTokens: tokenCount(usage.cachedContentTokenCount),
+  };
+  return Object.values(tokens).some((count) => count !== undefined) ? tokens : undefined;
+}
+
+function logGeminiCall(entry: {
+  model: string;
+  ok: boolean;
+  durationMs: number;
+  attempt: number;
+  usage?: ReturnType<typeof tokenUsage>;
+  input: string;
+  output?: string;
+  error?: string;
+}) {
+  return writeServiceLog({
+    source: "gemini",
+    ok: entry.ok,
+    message: entry.ok ? "Quality analysis" : "Quality analysis failed",
+    durationMs: entry.durationMs,
+    input: entry.input,
+    output: entry.output,
+    error: entry.error,
+    metadata: {
+      model: entry.model,
+      attempt: entry.attempt,
+      ...(entry.usage ? { usage: entry.usage } : {}),
+    },
+  });
+}
+
 async function generate(
   ai: GoogleGenAI,
   model: string,
@@ -141,13 +191,41 @@ export class GeminiTranslationQualityProvider implements TranslationQualityProvi
     const ai = new GoogleGenAI({ apiKey: config.geminiApiKey });
     const prompt = buildTranslationQualityPrompt(input);
     const schema = geminiResponseSchema(codes);
+    const call = async (attempt: number, withThinkingOff: boolean) => {
+      const started = Date.now();
+      try {
+        const response = await generate(ai, config.geminiModel, prompt, schema, withThinkingOff);
+        await logGeminiCall({
+          model: config.geminiModel,
+          ok: true,
+          durationMs: Date.now() - started,
+          attempt,
+          usage: tokenUsage(response.usageMetadata),
+          input: prompt,
+          output: response.text ?? "",
+        });
+        return response;
+      } catch (error) {
+        const message = safeErrorMessage(error, config.geminiApiKey);
+        await logGeminiCall({
+          model: config.geminiModel,
+          ok: false,
+          durationMs: Date.now() - started,
+          attempt,
+          input: prompt,
+          error: message,
+        });
+        throw new Error(message);
+      }
+    };
+
     let response;
     try {
-      response = await generate(ai, config.geminiModel, prompt, schema, true);
+      response = await call(1, true);
     } catch (error) {
-      const message = safeErrorMessage(error, config.geminiApiKey);
-      if (!/thinking|invalid argument/i.test(message)) throw new Error(message);
-      response = await generate(ai, config.geminiModel, prompt, schema, false);
+      const message = error instanceof Error ? error.message : "";
+      if (!/thinking|invalid argument/i.test(message)) throw error;
+      response = await call(2, false);
     }
 
     const text = response.text;
@@ -155,15 +233,15 @@ export class GeminiTranslationQualityProvider implements TranslationQualityProvi
       throw new Error("Gemini returned an empty quality analysis.");
     }
     const categories = validateGeminiPayload(parseModelJson(text), codes);
-    const usage = response.usageMetadata;
+    const usage = tokenUsage(response.usageMetadata);
     return {
       providerId: this.id,
       model: config.geminiModel,
       categories,
       usage: usage
         ? {
-            promptTokens: usage.promptTokenCount,
-            outputTokens: usage.candidatesTokenCount,
+            promptTokens: usage.promptTokens,
+            outputTokens: usage.outputTokens,
           }
         : undefined,
     };
