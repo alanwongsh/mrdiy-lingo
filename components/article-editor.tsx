@@ -155,6 +155,16 @@ function findTranslation(
 
 const DRAFT_STATUSES = ["DRAFT", "TRANSLATING", "REVIEW"] as const;
 
+function isLifecycleStatus(value: string): value is ContentLifecycleStatus {
+  return (
+    value === "DRAFT" ||
+    value === "TRANSLATING" ||
+    value === "REVIEW" ||
+    value === "APPROVED" ||
+    value === "PUBLISHED"
+  );
+}
+
 function lifecycleChoices(
   canApprove: boolean,
   current: ContentLifecycleStatus
@@ -524,7 +534,9 @@ export function ArticleEditor({
             fullWidth
             label="Lifecycle status"
             value={status}
-            onChange={(value) => setStatus(value)}
+            onChange={(value) => {
+              if (isLifecycleStatus(value)) setStatus(value);
+            }}
             options={lifecycleChoices(canApprove, article.status).map((status) => ({
               value: status,
               label: status,
