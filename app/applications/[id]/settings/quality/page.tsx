@@ -73,7 +73,7 @@ export default async function SettingsQualityPage({
           categories={categories}
           terminology={terms.items}
           languages={languages}
-          canManage={app.access.can_manage}
+          canManage={app.access.can_manage || app.access.can_approve}
           page={terms.page}
           pageSize={terms.pageSize}
           total={terms.total}

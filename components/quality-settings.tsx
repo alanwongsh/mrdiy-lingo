@@ -313,13 +313,17 @@ export function QualitySettings({
           </div>
           {!canManage ? (
             <p className="mt-4 text-xs text-slate-500">
-              An application admin can change scoring and words.
+              HOD and above can change scoring and words.
             </p>
           ) : null}
         </Card>
       </form>
 
       <Card className="p-3 sm:p-4">
+        <h2 className="text-base font-semibold text-slate-900">Terminology</h2>
+        <p className="mt-1 mb-4 max-w-2xl text-sm text-slate-500">
+          Preferred wording and spellings to avoid for each language pair.
+        </p>
         <form onSubmit={applyFilters}>
           <div className="flex items-center gap-2">
             <input
