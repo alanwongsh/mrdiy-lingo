@@ -2,6 +2,7 @@
 
 import {
   acknowledgeIgnoredQualityAction as acknowledgeIgnored,
+  ignoreTranslationFinding as ignoreFinding,
   analyzeTranslationQuality as analyze,
   recheckTranslationRules as recheckRules,
   createTerminologyEntry as createTerm,
@@ -98,6 +99,14 @@ export async function previewQualityAction(input: {
 
 export async function acknowledgeIgnoredQualityAction(actionId: string) {
   return acknowledgeIgnored(actionId);
+}
+
+export async function ignoreTranslationFinding(input: {
+  applicationId: string;
+  runId: string;
+  findingId: string;
+}) {
+  return ignoreFinding(input);
 }
 
 export async function saveReviewedContentTranslation(input: {

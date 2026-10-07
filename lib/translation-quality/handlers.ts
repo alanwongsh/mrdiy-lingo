@@ -14,11 +14,11 @@ import {
   findVersionQualityRun,
   getQualityActionRow,
   getQualityRunRecord,
+  markFindingIgnored,
   latestTranslationVersion,
   listQualityCategories,
   listQualityRunSummaries,
   listTerminologyPage,
-  versionRunUsesTokens,
 } from "@/lib/translation-quality/repository";
 import { getTranslationQualityService } from "@/lib/translation-quality/TranslationQualityService";
 import type {
@@ -80,7 +80,7 @@ export async function loadTranslationQuality(input: {
     ? runs.find((run) => run.id === versionRun.id) ?? null
     : null;
   const latest = versionRun ? await getQualityRunRecord(versionRun.id) : null;
-  const canAnalyze = Boolean(version) && (!versionRun || !versionRunUsesTokens(versionRun));
+  const canAnalyze = Boolean(version);
   return {
     categories,
     runs: currentSummary ? [currentSummary, ...runs.filter((run) => run.id !== currentSummary.id)] : runs,
@@ -199,6 +199,24 @@ export async function previewQualityAction(input: {
     targetField: row.action.targetField,
     text,
   };
+}
+
+/** Marks a finding ignored on its review. Analyze again starts a fresh set of findings. */
+export async function ignoreTranslationFinding(input: {
+  applicationId: string;
+  runId: string;
+  findingId: string;
+}) {
+  assertUuid(input.applicationId, "application");
+  assertUuid(input.runId, "analysis");
+  assertUuid(input.findingId, "finding");
+  const run = await getQualityRunRecord(input.runId);
+  const grant = await requireContentAccess(run.contentId, "edit");
+  if (grant.applicationId !== input.applicationId) {
+    throw new Error("Article not found.");
+  }
+  const actionId = await markFindingIgnored(input.findingId, input.runId);
+  return { findingId: input.findingId, actionId, status: "ignored" as const };
 }
 
 /** Confirms a pending suggestion can be ignored in the editor session. Persistence happens on Save. */

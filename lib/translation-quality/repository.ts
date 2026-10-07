@@ -331,7 +331,7 @@ export async function claimQualityRun(input: {
 }): Promise<{ id: string; createdAt: string; existing: boolean }> {
   const db = await getDb();
   const current = await findVersionQualityRun(input.versionId);
-  if (current && versionRunUsesTokens(current)) {
+  if (current?.status === "running" && versionRunUsesTokens(current)) {
     return { id: current.id, createdAt: current.createdAt, existing: true };
   }
   if (current) await releaseVersionQualityRun(current.id);
@@ -844,6 +844,61 @@ export async function listQualityRunSummaries(
       versionId: versionId ?? undefined,
     }];
   });
+}
+
+export async function markFindingIgnored(findingId: string, runId: string) {
+  const db = await getDb();
+  const { data: finding, error } = await db
+    .from("quality_findings")
+    .select("id, quality_run_id, title, translated_text, suggested_text, target_field, start_offset, end_offset")
+    .eq("id", findingId)
+    .eq("quality_run_id", runId)
+    .maybeSingle();
+  if (error) throw new Error(qualitySchemaMessage(error));
+  if (!finding) throw new Error("Finding was not found.");
+
+  const { data: existing, error: actionError } = await db
+    .from("quality_actions")
+    .select("id, status")
+    .eq("finding_id", findingId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (actionError) throw new Error(qualitySchemaMessage(actionError));
+  if (existing?.status === "ignored") return existing.id as string;
+  if (existing?.status === "applied") {
+    throw new Error("This suggestion was already accepted.");
+  }
+  if (existing) {
+    const { error: updateError } = await db
+      .from("quality_actions")
+      .update({ status: "ignored" })
+      .eq("id", existing.id);
+    if (updateError) throw new Error(qualitySchemaMessage(updateError));
+    return existing.id as string;
+  }
+
+  const targetField = finding.target_field === "title" || finding.target_field === "summary"
+    ? finding.target_field
+    : "content";
+  const { data: inserted, error: insertError } = await db
+    .from("quality_actions")
+    .insert({
+      quality_run_id: runId,
+      finding_id: findingId,
+      action_type: "rewrite",
+      target_field: targetField,
+      description: (finding.title as string) ?? "",
+      original_text: finding.translated_text,
+      proposed_text: finding.suggested_text,
+      start_offset: finding.start_offset,
+      end_offset: finding.end_offset,
+      status: "ignored",
+    })
+    .select("id")
+    .single();
+  if (insertError) throw new Error(qualitySchemaMessage(insertError));
+  return inserted.id as string;
 }
 
 export async function getQualityActionRow(actionId: string) {

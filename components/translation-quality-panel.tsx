@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import {
   analyzeTranslationQuality,
   getTranslationQualityRun,
+  ignoreTranslationFinding,
   loadTranslationQuality,
   recheckTranslationRules,
 } from "@/lib/actions/quality";
@@ -360,6 +361,7 @@ export function TranslationQualityPanel({
         }
         const result = loaded.result;
         const analyzedKey = `${draft.title}\n${draft.summary}\n${draft.body}`;
+        const replacedId = selectedId;
         if (result.persisted) {
           const summary: QualityRunSummary = {
             id: result.runId,
@@ -372,8 +374,11 @@ export function TranslationQualityPanel({
             createdAt: result.createdAt,
             completedAt: result.completedAt,
           };
-          setHistory((current) => [summary, ...current.filter((item) => item.id !== result.runId)]);
-          setCanAnalyze(false);
+          setHistory((current) => [
+            summary,
+            ...current.filter((item) => item.id !== result.runId && item.id !== replacedId),
+          ]);
+          setCanAnalyze(true);
           previewRef.current = null;
           setCheckedDraftKey(null);
           onLatestRunIdRef.current(result.runId);
@@ -397,6 +402,31 @@ export function TranslationQualityPanel({
         );
         setErrorKey(requestKey);
         setOpen(true);
+      }
+    });
+  }
+
+  function ignoreFinding(findingId: string) {
+    const runId = selected?.runId;
+    if (!runId) return;
+    setError("");
+    startTransition(async () => {
+      try {
+        await ignoreTranslationFinding({ applicationId, runId, findingId });
+        onIgnore(findingId, false);
+        setResults((current) => {
+          const result = current[runId];
+          if (!result) return current;
+          const actions = result.actions.some((item) => item.findingId === findingId)
+            ? result.actions.map((item) =>
+                item.findingId === findingId ? { ...item, status: "ignored" as const } : item
+              )
+            : result.actions;
+          return { ...current, [runId]: { ...result, actions } };
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not ignore that finding.");
+        setErrorKey(requestKey);
       }
     });
   }
@@ -448,6 +478,15 @@ export function TranslationQualityPanel({
   const editHref = `/applications/${applicationId}/articles/${contentId}/edit?lang=${encodeURIComponent(languageCode)}`;
   const draftLocked = checkedDraftKey !== null && checkedDraftKey === draftKey;
   const showAnalyze = unsaved ? !draftLocked : canAnalyze && !draftLocked;
+  const analyzeLabel = pending
+    ? "Analyzing…"
+    : unsaved || draftLocked
+      ? "Analyze draft"
+      : selected?.overallScore != null
+        ? "Analyze again"
+        : versionLabel
+          ? `Analyze ${versionLabel}`
+          : "Analyze";
   const scoreText =
     selected?.overallScore == null
       ? ""
@@ -459,6 +498,13 @@ export function TranslationQualityPanel({
   const blockerCount = visibleFindings.filter(
     (finding) => finding.severity === "error" || finding.severity === "critical"
   ).length;
+  const categoriesWithFindings = new Set(
+    (selected?.findings ?? []).map((finding) => finding.categoryCode)
+  );
+  const openCategories = new Set(visibleFindings.map((finding) => finding.categoryCode));
+  const summaryIsCurrent = (categoryCode: string) =>
+    visibleFindings.length > 0 &&
+    (!categoriesWithFindings.has(categoryCode) || openCategories.has(categoryCode));
 
   if (variant === "rail") {
     return (
@@ -497,7 +543,13 @@ export function TranslationQualityPanel({
                 : `${blockerCount} blocker${blockerCount === 1 ? "" : "s"} flagged in this review`}
         </p>
         {rankedScores
-          .filter((score) => score.summary && typeof score.score === "number" && score.score < 100)
+          .filter(
+            (score) =>
+              score.summary &&
+              typeof score.score === "number" &&
+              score.score < 100 &&
+              summaryIsCurrent(score.categoryCode)
+          )
           .map((score) => (
             <p key={score.categoryCode} className="mt-1 text-xs leading-relaxed text-slate-500">
               {score.categoryName}: {readableQualityError(score.summary ?? "")}
@@ -511,7 +563,7 @@ export function TranslationQualityPanel({
             disabled={!showAnalyze || !canReview || pending || loading || saving}
             onClick={analyze}
           >
-            {pending ? "Analyzing…" : unsaved || draftLocked ? "Analyze draft" : versionLabel ? `Analyze ${versionLabel}` : "Analyze"}
+            {analyzeLabel}
           </Button>
         ) : null}
         {selected?.persisted && canReview && !unsaved ? (
@@ -551,7 +603,11 @@ export function TranslationQualityPanel({
                 <li key={score.categoryCode} className="grid grid-cols-[7.25rem_1fr_1.75rem] items-center gap-2">
                   <span
                     className="truncate text-sm text-slate-800"
-                    title={score.summary ? readableQualityError(score.summary) : score.categoryName}
+                    title={
+                      score.summary && summaryIsCurrent(score.categoryCode)
+                        ? readableQualityError(score.summary)
+                        : score.categoryName
+                    }
                   >
                     {score.categoryName}
                   </span>
@@ -666,7 +722,7 @@ export function TranslationQualityPanel({
                           >
                             Accept
                           </Button>
-                          <Button type="button" variant="secondary" onClick={() => onIgnore(action.id, Boolean(storedAction))}>Ignore</Button>
+                          <Button type="button" variant="secondary" onClick={() => ignoreFinding(finding.id)}>Ignore</Button>
                           {showEditLink && canReview ? <EditTranslationLink href={editHref} /> : null}
                         </div>
                       ) : canDismiss ? (
@@ -674,7 +730,7 @@ export function TranslationQualityPanel({
                           <Button
                             type="button"
                             variant="secondary"
-                            onClick={() => onIgnore(storedAction?.id ?? finding.id, Boolean(storedAction))}
+                            onClick={() => ignoreFinding(finding.id)}
                           >
                             Ignore
                           </Button>
@@ -718,7 +774,7 @@ export function TranslationQualityPanel({
             disabled={!showAnalyze || !canReview || pending || loading}
             onClick={analyze}
           >
-            {pending ? "Analyzing…" : unsaved || draftLocked ? "Analyze draft" : versionLabel ? `Analyze ${versionLabel}` : "Analyze"}
+            {analyzeLabel}
           </Button>
         ) : !scoreText ? (
           <button
@@ -893,7 +949,7 @@ export function TranslationQualityPanel({
                           >
                             Accept
                           </Button>
-                          <Button type="button" variant="secondary" onClick={() => onIgnore(action.id, true)}>
+                          <Button type="button" variant="secondary" onClick={() => ignoreFinding(finding.id)}>
                             Ignore
                           </Button>
                         </div>
@@ -902,7 +958,7 @@ export function TranslationQualityPanel({
                           <Button
                             type="button"
                             variant="secondary"
-                            onClick={() => onIgnore(action?.id ?? finding.id, Boolean(action))}
+                            onClick={() => ignoreFinding(finding.id)}
                           >
                             Ignore
                           </Button>

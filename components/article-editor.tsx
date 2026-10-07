@@ -560,7 +560,7 @@ export function ArticleEditor({
       applicationId,
       qualityRunId,
       acceptedActionIds: qualityRunId ? acceptedActionIds : [],
-      ignoredActionIds: qualityRunId ? ignoredActionIds : [],
+      ignoredActionIds: [],
     });
     setAcceptedActionIds([]);
     setIgnoredActionIds([]);

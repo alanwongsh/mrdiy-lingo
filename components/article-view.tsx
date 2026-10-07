@@ -852,7 +852,7 @@ export function ArticleView({
     if (stored) setIgnoredActionIds(remember);
     else setLocalHandledIds(remember);
     setSaveError("");
-    setReviewNote(stored ? "Ignored. Save changes to keep that decision." : "Ignored.");
+    setReviewNote("Ignored. Analyze again if you want this finding back.");
   }
 
   function saveReview() {
@@ -871,7 +871,7 @@ export function ArticleView({
           },
           qualityRunId,
           acceptedActionIds: qualityRunId ? acceptedActionIds : [],
-          ignoredActionIds: qualityRunId ? ignoredActionIds : [],
+          ignoredActionIds: [],
         });
         router.refresh();
       } catch (err) {
