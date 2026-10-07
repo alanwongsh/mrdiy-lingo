@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import type { ProviderQualityResult } from "@/lib/translation-quality/providers/provider";
 import type { RuleEvaluationResult } from "@/lib/translation-quality/rules/types";
 import { overallScore, severityForScore } from "@/lib/translation-quality/scoring/ScoreCalculator";
+import { htmlToText } from "@/lib/translation-quality/text";
 import type {
   QualityAction,
   QualityCategoryConfig,
@@ -46,20 +47,31 @@ function uniqueFields(fields: QualityTargetField[]): QualityTargetField[] {
   return result;
 }
 
+function fieldContains(text: string, quote: string) {
+  const needle = quote.trim().toLowerCase();
+  if (!needle) return false;
+  return (
+    text.toLowerCase().includes(needle) ||
+    htmlToText(text).toLowerCase().includes(needle)
+  );
+}
+
 function locateQuote(
   fields: TranslatedFields,
   quote: string | undefined,
   preferred?: QualityTargetField
 ): { field: QualityTargetField; index: number } | null {
-  if (!quote) return null;
+  const needle = quote?.trim();
+  if (!needle) return null;
   const order = uniqueFields(
     preferred
       ? [preferred, "content", "title", "summary"]
       : ["content", "title", "summary"]
   );
   for (const field of order) {
-    const index = fieldValue(fields, field).indexOf(quote);
-    if (index >= 0) return { field, index };
+    if (!fieldContains(fieldValue(fields, field), needle)) continue;
+    const index = fieldValue(fields, field).toLowerCase().indexOf(needle.toLowerCase());
+    return { field, index: index >= 0 ? index : 0 };
   }
   return null;
 }
@@ -134,6 +146,7 @@ export function normalizeGeminiResult(
     for (const finding of returned.findings) {
       const id = randomUUID();
       const quote = finding.translatedText;
+      if (quote?.trim() && !locateQuote(fields, quote, finding.targetField)) continue;
       const located = locateQuote(fields, quote, finding.targetField);
       const targetField = located?.field ?? finding.targetField;
       const range = offsetsFor(fields, targetField, quote);
@@ -234,8 +247,8 @@ function actionForFinding(
   const type = actionType ?? (original && proposed ? "replace" : undefined);
   if (!type) return null;
   const text = fieldValue(fields, targetField);
-  if ((type === "replace" || type === "rewrite" || type === "delete") && original) {
-    if (!text.includes(original)) return null;
+    if ((type === "replace" || type === "rewrite" || type === "delete") && original) {
+    if (!fieldContains(text, original)) return null;
     if ((type === "replace" || type === "rewrite") && (!proposed || proposed === original)) {
       return null;
     }

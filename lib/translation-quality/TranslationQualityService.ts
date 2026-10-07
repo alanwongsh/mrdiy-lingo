@@ -9,6 +9,7 @@ import { PROMPT_VERSION } from "@/lib/translation-quality/prompts/translation-qu
 import { TranslationQualityProviderFactory } from "@/lib/translation-quality/TranslationQualityProviderFactory";
 import {
   claimQualityRun,
+  findVersionQualityRun,
   finishQualityRun,
   getQualityRunRecord,
   latestTranslationVersion,
@@ -16,7 +17,9 @@ import {
   listActiveTerminology,
   listQualityCategories,
   persistQualityDetails,
+  replaceRuleCheck,
 } from "@/lib/translation-quality/repository";
+import { overallScore } from "@/lib/translation-quality/scoring/ScoreCalculator";
 import { BoilerplateRule } from "@/lib/translation-quality/rules/BoilerplateRule";
 import { RuleEngine } from "@/lib/translation-quality/rules/RuleEngine";
 import { TerminologyRule } from "@/lib/translation-quality/rules/TerminologyRule";
@@ -268,6 +271,69 @@ export class TranslationQualityService {
       persisted: false,
     };
     return { result, metadata, errorMessage };
+  }
+
+  /** Re-run terminology and boilerplate on the saved version. Does not call the model. */
+  async recheckRules(request: {
+    contentId: string;
+    sourceLanguage: string;
+    targetLanguage: string;
+    sourceTitle: string;
+    sourceSummary: string;
+    sourceContent: string;
+  }): Promise<TranslationQualityResult> {
+    const version = await latestTranslationVersion(request.contentId, request.targetLanguage);
+    if (!version) throw new Error("Save a translation before rechecking wording.");
+    const run = await findVersionQualityRun(version.versionId);
+    if (!run || run.status !== "completed") {
+      throw new Error("Analyze this version before rechecking wording.");
+    }
+    const categories = await listQualityCategories(false);
+    const [terminology, boilerplate] = await Promise.all([
+      listActiveTerminology(),
+      listActiveBoilerplate(),
+    ]);
+    const input: TranslationQualityInput = {
+      sourceLanguage: request.sourceLanguage,
+      targetLanguage: request.targetLanguage,
+      sourceTitle: request.sourceTitle,
+      sourceSummary: request.sourceSummary,
+      sourceContent: request.sourceContent,
+      translatedTitle: version.title,
+      translatedSummary: version.summary,
+      translatedContent: version.body,
+      terminology,
+      boilerplate,
+      enabledCategories: categories.filter((category) => category.enabled),
+    };
+    const fields = {
+      translatedTitle: version.title,
+      translatedSummary: version.summary,
+      translatedContent: version.body,
+    };
+    const rulePiece = normalizeRuleResults(
+      await this.rules.evaluate(input),
+      categories,
+      fields
+    );
+    const existing = await getQualityRunRecord(run.id);
+    const ruleCodes = [
+      ...categories.filter((category) => category.categoryType === "rule").map((category) => category.code),
+      ...existing.scores
+        .filter((score) => score.categoryType === "rule")
+        .map((score) => score.categoryCode),
+    ];
+    const aiScores = existing.scores.filter((score) => score.categoryType !== "rule");
+    await replaceRuleCheck({
+      runId: run.id,
+      ruleCodes,
+      categories,
+      scores: rulePiece.scores,
+      findings: rulePiece.findings,
+      actions: rulePiece.actions,
+      overallScore: overallScore([...aiScores, ...rulePiece.scores], categories),
+    });
+    return getQualityRunRecord(run.id);
   }
 }
 

@@ -12,10 +12,13 @@ import type { ArticleComment } from "@/lib/types";
 
 export default async function ArticleEditPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string; contentId: string }>;
+  searchParams: Promise<{ lang?: string }>;
 }) {
   const { id, contentId } = await params;
+  const { lang } = await searchParams;
   const app = await getApplication(id);
   if (!app || app.model_type !== "CONTENT") notFound();
   const article = await getArticle(contentId);
@@ -53,6 +56,7 @@ export default async function ArticleEditPage({
         canApprove={app.access.can_approve}
         comments={comments}
         commentsError={commentsError}
+        initialLanguage={lang}
       />
     </div>
   );

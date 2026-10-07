@@ -55,7 +55,7 @@ JOGET_EMBED_SECRET=...          # shared with Joget; signs the iframe user
 # Translation quality. The key stays on the server.
 # QUALITY_PROVIDER=gemini
 # GEMINI_API_KEY=
-# GEMINI_MODEL=gemini-2.5-flash-lite
+# GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
 Apply SQL in order (Supabase SQL Editor or `/setup`):

@@ -1,16 +1,20 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
   analyzeTranslationQuality,
   getTranslationQualityRun,
   loadTranslationQuality,
+  recheckTranslationRules,
 } from "@/lib/actions/quality";
 import { Badge, Button, Card } from "@/components/ui";
+import { htmlToText, readableQualityError, termHitContext } from "@/lib/translation-quality/text";
 import type { SourceContentFields } from "@/lib/types";
 import type {
   QualityAction,
   QualityCategoryConfig,
+  QualityFinding,
   QualityRunSummary,
   QualityScore,
   TranslationQualityResult,
@@ -29,6 +33,80 @@ function scoreTone(score: QualityScore): "good" | "warn" | "bad" | "neutral" {
   if (score.severity === "excellent" || score.severity === "good") return "good";
   if (score.severity === "warning") return "warn";
   return "bad";
+}
+
+function barClass(score: number | null) {
+  if (score == null) return "bg-slate-300";
+  if (score >= 75) return "bg-emerald-500";
+  if (score >= 60) return "bg-yellow-400";
+  return "bg-red-500";
+}
+
+function fallbackAction(finding: QualityFinding): QualityAction | null {
+  if (!finding.targetField || !finding.translatedText || !finding.suggestedText) return null;
+  if (finding.translatedText === finding.suggestedText) return null;
+  return {
+    id: finding.id,
+    findingId: finding.id,
+    actionType: "replace",
+    description: finding.title,
+    originalText: finding.translatedText,
+    proposedText: finding.suggestedText,
+    targetField: finding.targetField,
+    status: "pending",
+  };
+}
+
+function findingMark(severity: QualityFinding["severity"]) {
+  if (severity === "critical" || severity === "error") {
+    return { label: "Blocker", dot: "bg-red-600" };
+  }
+  if (severity === "warning") return { label: "Check", dot: "bg-amber-500" };
+  return { label: "Note", dot: "bg-sky-500" };
+}
+
+function fieldText(draft: SourceContentFields, field: QualityFinding["targetField"]) {
+  if (field === "title") return draft.title;
+  if (field === "summary") return draft.summary;
+  return draft.body;
+}
+
+function locateFinding(
+  draft: SourceContentFields,
+  finding: QualityFinding
+): { field: QualityAction["targetField"]; hidden: boolean; inLink: boolean; snippet: string } | null {
+  const needle = (finding.translatedText ?? "").trim();
+  if (!needle) return null;
+  const preferred = finding.targetField ? [finding.targetField] : [];
+  const fields = [...preferred, "content", "summary", "title"] as const;
+  const seen = new Set<string>();
+  for (const field of fields) {
+    if (seen.has(field)) continue;
+    seen.add(field);
+    const raw = fieldText(draft, field);
+    const plain = htmlToText(raw);
+    if (!plain.toLowerCase().includes(needle.toLowerCase()) && !raw.toLowerCase().includes(needle.toLowerCase())) {
+      continue;
+    }
+    const index = raw.toLowerCase().indexOf(needle.toLowerCase());
+    if (index >= 0) {
+      const place = termHitContext(raw, index, needle.length);
+      return { field, ...place };
+    }
+    return { field, hidden: false, inLink: false, snippet: "" };
+  }
+  return null;
+}
+
+function EditTranslationLink({ href }: { href: string }) {
+  return (
+    <Link
+      href={href}
+      className="inline-flex h-9 items-center justify-center rounded-lg border border-[var(--hub-border-strong)] bg-white px-3.5 text-sm font-semibold text-slate-800 shadow-sm hover:border-[var(--hub-accent)] hover:bg-[var(--hub-accent-soft)] hover:text-[var(--hub-accent)]"
+    >
+      Edit
+    </Link>
+  );
 }
 
 function fieldLabel(field: QualityAction["targetField"]) {
@@ -59,7 +137,7 @@ function ScoreGroup({
               </span>
               {score.summary ? (
                 <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">
-                  {score.summary}
+                  {readableQualityError(score.summary)}
                 </span>
               ) : null}
             </span>
@@ -90,11 +168,19 @@ export function TranslationQualityPanel({
   canApply = true,
   unsaved,
   showName = false,
+  variant = "inline",
+  languageChoices,
+  onLanguageChange,
+  saving = false,
+  onSave,
   acceptedActionIds,
   ignoredActionIds,
   onLatestRunId,
   onAccept,
   onIgnore,
+  onPreview,
+  onShow,
+  showEditLink = false,
 }: {
   applicationId: string;
   contentId: string;
@@ -110,11 +196,23 @@ export function TranslationQualityPanel({
   unsaved: boolean;
   /** Show the language name beside the score. Used on the article page. */
   showName?: boolean;
+  /** Rail sits beside the article: score, bars, and findings. */
+  variant?: "inline" | "rail";
+  languageChoices?: { code: string; label: string }[];
+  onLanguageChange?: (code: string) => void;
+  saving?: boolean;
+  onSave?: () => void;
   acceptedActionIds: string[];
   ignoredActionIds: string[];
   onLatestRunId: (runId: string | null) => void;
-  onAccept: (action: QualityAction) => void;
-  onIgnore: (actionId: string) => void;
+  onAccept: (action: QualityAction, stored?: boolean) => void;
+  onIgnore: (actionId: string, stored?: boolean) => void;
+  /** Hover a finding to highlight that sentence in the article. */
+  onPreview?: (target: { field: QualityAction["targetField"]; text: string } | null) => void;
+  /** Jump to the highlighted sentence. Hover only highlights. */
+  onShow?: (target: { field: QualityAction["targetField"]; text: string }) => void;
+  /** Link to the editor. Hidden when this panel is already on the edit page. */
+  showEditLink?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const requestKey = `${contentId}:${languageCode}:${savedAt}`;
@@ -278,15 +376,51 @@ export function TranslationQualityPanel({
     });
   }
 
+  function recheck() {
+    setError("");
+    startTransition(async () => {
+      try {
+        const loaded = await recheckTranslationRules({
+          applicationId,
+          contentId,
+          sourceLanguage,
+          targetLanguage: languageCode,
+          sourceTitle: source.title,
+          sourceSummary: source.summary,
+          sourceContent: source.body,
+        });
+        if (!loaded.result) {
+          setError(loaded.error || "Could not recheck wording.");
+          setErrorKey(requestKey);
+          return;
+        }
+        const result = loaded.result;
+        setResults((current) => ({ ...current, [result.runId]: result }));
+        setSelectedId(result.runId);
+        setHistory((current) =>
+          current.map((item) =>
+            item.id === result.runId ? { ...item, overallScore: result.overallScore } : item
+          )
+        );
+        setOpen(true);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not recheck wording.");
+        setErrorKey(requestKey);
+      }
+    });
+  }
+
   const visibleFindings = (selected?.findings ?? []).filter((finding) => {
+    if (accepted.has(finding.id) || ignored.has(finding.id)) return false;
     const action = selected?.actions.find((item) => item.findingId === finding.id);
     if (!action) return true;
-    if (action.status !== "pending") return !isLatest;
-    if (!isLatest) return true;
-    return !accepted.has(action.id) && !ignored.has(action.id);
+    if (accepted.has(action.id) || ignored.has(action.id)) return false;
+    if (action.status !== "pending") return !isLatest && !isDraftPreview;
+    return true;
   });
 
   const versionLabel = versionNumber ? `v${versionNumber}` : "";
+  const editHref = `/applications/${applicationId}/articles/${contentId}/edit?lang=${encodeURIComponent(languageCode)}`;
   const draftLocked = checkedDraftKey !== null && checkedDraftKey === draftKey;
   const showAnalyze = unsaved ? !draftLocked : canAnalyze && !draftLocked;
   const scoreText =
@@ -295,6 +429,230 @@ export function TranslationQualityPanel({
       : selected.persisted === false
         ? `Draft ${selected.overallScore}`
         : `${versionLabel ? `${versionLabel} · ` : ""}${selected.overallScore}`;
+  const rankedScores = [...(selected?.scores ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
+  const failedCheck = rankedScores.find((score) => score.score == null && score.summary);
+  const blockerCount = visibleFindings.filter(
+    (finding) => finding.severity === "error" || finding.severity === "critical"
+  ).length;
+
+  if (variant === "rail") {
+    return (
+      <Card className="p-4 xl:sticky xl:top-4 xl:max-h-[calc(100dvh-2rem)] xl:overflow-y-auto">
+        {languageChoices && languageChoices.length > 1 ? (
+          <label className="mb-3 block text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            Review
+            <select
+              className="mt-1 h-9 w-full rounded-lg border border-[var(--hub-border-strong)] bg-white px-2 text-sm font-medium text-slate-900 normal-case"
+              value={languageCode}
+              onChange={(event) => onLanguageChange?.(event.target.value)}
+            >
+              {languageChoices.map((choice) => (
+                <option key={choice.code} value={choice.code}>
+                  {choice.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <div className="flex items-end justify-between gap-3">
+          <p className="text-5xl leading-none font-bold tabular-nums text-slate-950">
+            {loading ? "…" : selected?.overallScore == null ? "—" : selected.overallScore}
+          </p>
+          <Badge tone={selected?.overallScore == null ? "neutral" : selected.overallScore >= 75 ? "good" : selected.overallScore >= 60 ? "warn" : "bad"}>
+            {selected?.persisted === false ? "Draft" : "Review"}
+          </Badge>
+        </div>
+        <p className="mt-3 text-sm font-medium text-slate-800">
+          {loading
+            ? "Loading the review…"
+            : !selected
+              ? "Not reviewed yet"
+              : blockerCount === 0
+                ? "No blockers in this check"
+                : `${blockerCount} blocker${blockerCount === 1 ? "" : "s"} to resolve before release`}
+        </p>
+        {rankedScores
+          .filter((score) => score.summary && typeof score.score === "number" && score.score < 100)
+          .map((score) => (
+            <p key={score.categoryCode} className="mt-1 text-xs leading-relaxed text-slate-500">
+              {score.categoryName}: {readableQualityError(score.summary ?? "")}
+            </p>
+          ))}
+        {showAnalyze || draftLocked ? (
+          <Button
+            type="button"
+            className="mt-3 w-full"
+            variant="secondary"
+            disabled={!showAnalyze || !canReview || pending || loading || saving}
+            onClick={analyze}
+          >
+            {pending ? "Analyzing…" : unsaved || draftLocked ? "Analyze draft" : versionLabel ? `Analyze ${versionLabel}` : "Analyze"}
+          </Button>
+        ) : null}
+        {selected?.persisted && canReview && !unsaved ? (
+          <>
+            <Button
+              type="button"
+              className="mt-3 w-full"
+              variant="secondary"
+              disabled={pending || loading || saving}
+              onClick={recheck}
+            >
+              {pending ? "Checking…" : "Recheck wording"}
+            </Button>
+            <p className="mt-2 text-xs text-slate-500">
+              Updates terminology and boilerplate. It does not call the model again.
+            </p>
+          </>
+        ) : null}
+        {onSave && unsaved ? (
+          <Button type="button" className="mt-3 w-full" disabled={saving} onClick={onSave}>
+            {saving ? "Saving…" : "Save changes"}
+          </Button>
+        ) : null}
+        {draftLocked ? (
+          <p className="mt-2 text-xs text-slate-500">
+            Change the text to analyze again. This draft check is not kept in history.
+          </p>
+        ) : null}
+        {visibleError ? <p className="mt-2 text-sm text-red-700">{visibleError}</p> : null}
+        {selected ? (
+          <>
+            <h3 className="mt-5 text-[11px] font-bold tracking-[0.14em] text-slate-500 uppercase">
+              Dimensions
+            </h3>
+            <ul className="mt-3 space-y-2.5">
+              {rankedScores.map((score) => (
+                <li key={score.categoryCode} className="grid grid-cols-[7.25rem_1fr_1.75rem] items-center gap-2">
+                  <span
+                    className="truncate text-sm text-slate-800"
+                    title={score.summary ? readableQualityError(score.summary) : score.categoryName}
+                  >
+                    {score.categoryName}
+                  </span>
+                  <span className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                    <span
+                      className={`block h-full rounded-full ${barClass(score.score)}`}
+                      style={{ width: `${score.score ?? 0}%` }}
+                    />
+                  </span>
+                  <span className="text-right text-sm font-medium tabular-nums text-slate-800">
+                    {score.score ?? "—"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {failedCheck?.summary ? (
+              <p className="mt-3 text-xs leading-relaxed text-red-700">
+                {readableQualityError(failedCheck.summary)}
+              </p>
+            ) : null}
+            <h3 className="mt-5 text-[11px] font-bold tracking-[0.14em] text-slate-500 uppercase">
+              Findings {visibleFindings.length}
+            </h3>
+            {visibleFindings.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-500">No open findings.</p>
+            ) : (
+              <ul className="mt-1">
+                {visibleFindings.map((finding) => {
+                  const storedAction = selected.actions.find((item) => item.findingId === finding.id);
+                  const action = storedAction ?? fallbackAction(finding);
+                  const place = locateFinding(draft, finding);
+                  const mark = findingMark(finding.severity);
+                  const canAct =
+                    Boolean(place && !place.hidden) &&
+                    canApply &&
+                    canReview &&
+                    action?.status === "pending" &&
+                    !accepted.has(action.id) &&
+                    !ignored.has(action.id);
+                  return (
+                    <li
+                      key={finding.id}
+                      className="border-t border-[var(--hub-border)] py-3"
+                      onMouseEnter={() => {
+                        if (!onPreview || !place || place.hidden || !finding.translatedText) return;
+                        onPreview({ field: place.field, text: finding.translatedText });
+                      }}
+                      onMouseLeave={() => onPreview?.(null)}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold tracking-wide text-slate-800 uppercase">
+                          <span className={`h-2 w-2 rounded-full ${mark.dot}`} />
+                          {mark.label}
+                        </span>
+                        <span className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
+                          {finding.categoryCode}
+                        </span>
+                      </div>
+                      <p className="mt-1.5 text-sm font-semibold text-slate-950">{finding.title}</p>
+                      {finding.explanation ? (
+                        <p className="mt-1 text-sm leading-relaxed text-slate-600">{finding.explanation}</p>
+                      ) : null}
+                      {finding.translatedText ? (
+                        <p className="mt-2 text-xs leading-relaxed text-slate-700">
+                          <span className="font-semibold text-slate-500">In this text: </span>
+                          {finding.translatedText}
+                        </p>
+                      ) : null}
+                      {finding.suggestedText && !place?.hidden ? (
+                        <p className="mt-1 text-xs leading-relaxed text-slate-700">
+                          <span className="font-semibold text-slate-500">Suggested: </span>
+                          {finding.suggestedText}
+                        </p>
+                      ) : null}
+                      {place?.hidden && place.snippet ? (
+                        <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                          <span className="font-semibold text-slate-500">
+                            {place.inLink ? "Inside a link: " : "Inside formatting: "}
+                          </span>
+                          {place.snippet}
+                          {" This is not article wording, so Accept leaves it unchanged."}
+                        </p>
+                      ) : !place && finding.translatedText ? (
+                        <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                          This wording is no longer in the translation, so it can’t be highlighted or accepted.
+                        </p>
+                      ) : finding.translatedText ? (
+                        <p className="mt-2 text-xs text-slate-500">Hover highlights it. Show jumps to that text.</p>
+                      ) : null}
+                      {canAct && action && place ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {onShow && finding.translatedText ? (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              onClick={() =>
+                                onShow({ field: place.field, text: finding.translatedText! })
+                              }
+                            >
+                              Show
+                            </Button>
+                          ) : null}
+                          <Button
+                            type="button"
+                            onClick={() => onAccept({ ...action, targetField: place.field }, Boolean(storedAction))}
+                          >
+                            Accept
+                          </Button>
+                          <Button type="button" variant="secondary" onClick={() => onIgnore(action.id, Boolean(storedAction))}>Ignore</Button>
+                          {showEditLink && canReview ? <EditTranslationLink href={editHref} /> : null}
+                        </div>
+                      ) : showEditLink && canReview ? (
+                        <div className="mt-2">
+                          <EditTranslationLink href={editHref} />
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </>
+        ) : null}
+      </Card>
+    );
+  }
 
   return (
     <div className="min-w-0">
@@ -418,7 +776,9 @@ export function TranslationQualityPanel({
               <ul className="mt-3 space-y-3">
                 {visibleFindings.map((finding) => {
                   const action = selected.actions.find((item) => item.findingId === finding.id);
+                  const place = locateFinding(draft, finding);
                   const canAct =
+                    Boolean(place && !place.hidden) &&
                     (isDraftPreview || isLatest) &&
                     canApply &&
                     canReview &&
@@ -462,17 +822,33 @@ export function TranslationQualityPanel({
                               {finding.translatedText}
                             </span>
                           ) : null}
-                          {finding.translatedText && finding.suggestedText ? " → " : null}
-                          {finding.suggestedText ? (
+                          {finding.translatedText && finding.suggestedText && !place?.hidden ? " → " : null}
+                          {finding.suggestedText && !place?.hidden ? (
                             <span className="rounded bg-white px-1.5 py-0.5 font-medium">
                               {finding.suggestedText}
                             </span>
                           ) : null}
                         </p>
                       ) : null}
-                      {canAct && action ? (
+                      {place?.hidden && place.snippet ? (
+                        <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                          <span className="font-semibold text-slate-500">
+                            {place.inLink ? "Inside a link: " : "Inside formatting: "}
+                          </span>
+                          {place.snippet}
+                          {" This is not article wording, so Accept leaves it unchanged."}
+                        </p>
+                      ) : !place && finding.translatedText ? (
+                        <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                          This wording is no longer in the translation, so it can’t be highlighted or accepted.
+                        </p>
+                      ) : null}
+                      {canAct && action && place ? (
                         <div className="mt-3 flex gap-2">
-                          <Button type="button" onClick={() => onAccept(action)}>
+                          <Button
+                            type="button"
+                            onClick={() => onAccept({ ...action, targetField: place.field })}
+                          >
                             Accept
                           </Button>
                           <Button type="button" variant="secondary" onClick={() => onIgnore(action.id)}>

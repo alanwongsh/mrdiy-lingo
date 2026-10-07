@@ -278,11 +278,14 @@ function mapVersionRun(row: {
 }
 
 export function versionRunUsesTokens(run: VersionRunClaim) {
-  if (run.status === "completed") return true;
   const usage = run.responseMetadata?.usage as
     | { promptTokens?: number; outputTokens?: number }
     | undefined;
   if ((usage?.promptTokens ?? 0) > 0 || (usage?.outputTokens ?? 0) > 0) return true;
+  if (run.status === "completed") {
+    const errors = run.responseMetadata?.categoryErrors;
+    return !(Array.isArray(errors) && errors.length > 0);
+  }
   if (run.status === "running") {
     const age = Date.now() - new Date(run.createdAt).getTime();
     return age < 15 * 60 * 1000;
@@ -448,6 +451,45 @@ export async function persistQualityDetails(input: {
     );
     if (error) throw new Error(qualitySchemaMessage(error));
   }
+}
+
+export async function replaceRuleCheck(input: {
+  runId: string;
+  ruleCodes: string[];
+  categories: QualityCategoryConfig[];
+  scores: QualityScore[];
+  findings: QualityFinding[];
+  actions: QualityAction[];
+  overallScore: number | null;
+}) {
+  const db = await getDb();
+  const codes = [...new Set(input.ruleCodes)];
+  if (codes.length > 0) {
+    const { error: findingError } = await db
+      .from("quality_findings")
+      .delete()
+      .eq("quality_run_id", input.runId)
+      .in("category_code", codes);
+    if (findingError) throw new Error(qualitySchemaMessage(findingError));
+    const { error: scoreError } = await db
+      .from("quality_scores")
+      .delete()
+      .eq("quality_run_id", input.runId)
+      .in("category_code", codes);
+    if (scoreError) throw new Error(qualitySchemaMessage(scoreError));
+  }
+  await persistQualityDetails({
+    runId: input.runId,
+    categories: input.categories,
+    scores: input.scores,
+    findings: input.findings,
+    actions: input.actions,
+  });
+  const { error } = await db
+    .from("quality_runs")
+    .update({ overall_score: input.overallScore })
+    .eq("id", input.runId);
+  if (error) throw new Error(qualitySchemaMessage(error));
 }
 
 export async function finishQualityRun(input: {

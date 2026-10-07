@@ -10,10 +10,18 @@ import {
 import { HtmlContent } from "@/components/html-editor";
 import { Badge, Card, Field, inputClass } from "@/components/ui";
 
-function DiffText({ tokens }: { tokens: DiffToken[] }) {
+export function DiffText({
+  tokens,
+  markChanges = false,
+}: {
+  tokens: DiffToken[];
+  markChanges?: boolean;
+}) {
+  const firstChange = markChanges ? tokens.findIndex((token) => token.type !== "equal") : -1;
   return (
     <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-900">
       {tokens.map((token, index) => {
+        const marker = index === firstChange ? { "data-quality-change": "" } : undefined;
         if (token.type === "equal") {
           return <span key={index}>{token.text}</span>;
         }
@@ -21,7 +29,8 @@ function DiffText({ tokens }: { tokens: DiffToken[] }) {
           return (
             <span
               key={index}
-              className="rounded-sm bg-red-100 px-0.5 text-red-800 line-through decoration-red-400"
+              {...marker}
+              className="scroll-mt-24 rounded-sm bg-red-100 px-0.5 text-red-800 line-through decoration-red-400"
             >
               {token.text}
             </span>
@@ -30,7 +39,8 @@ function DiffText({ tokens }: { tokens: DiffToken[] }) {
         return (
           <span
             key={index}
-            className="rounded-sm bg-emerald-100 px-0.5 font-medium text-emerald-900"
+            {...marker}
+            className="scroll-mt-24 rounded-sm bg-emerald-100 px-0.5 font-medium text-emerald-900"
           >
             {token.text}
           </span>

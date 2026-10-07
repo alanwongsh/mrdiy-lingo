@@ -9,6 +9,7 @@ import {
   findTerm,
   htmlToText,
   languageCompatible,
+  termHitContext,
 } from "@/lib/translation-quality/text";
 
 const FIELDS: Array<{ field: QualityTargetField; text: (input: TranslationQualityInput) => string }> = [
@@ -22,6 +23,12 @@ function sourceText(input: TranslationQualityInput): string {
     .map((value) => htmlToText(value ?? ""))
     .filter(Boolean)
     .join("\n");
+}
+
+function visibleTerm(text: string, phrase: string) {
+  return findTerm(text, phrase).filter(
+    (hit) => !termHitContext(text, hit.index, hit.matched.length).hidden
+  );
 }
 
 function sourceHasTerm(source: string, term: string): boolean {
@@ -72,7 +79,7 @@ export class TerminologyRule implements TranslationQualityRule {
       const inSource = sourceHasTerm(source, entry.term);
       const forbiddenHits = FIELDS.flatMap((field) =>
         forbidden.flatMap((phrase) =>
-          findTerm(field.text(input), phrase).map((hit) => ({
+          visibleTerm(field.text(input), phrase).map((hit) => ({
             field: field.field,
             hit,
             phrase,
@@ -87,7 +94,7 @@ export class TerminologyRule implements TranslationQualityRule {
         return true;
       });
       const preferredHits = preferred
-        ? FIELDS.flatMap((field) => findTerm(field.text(input), preferred))
+        ? FIELDS.flatMap((field) => visibleTerm(field.text(input), preferred))
         : [];
       if (!inSource && forbiddenHits.length === 0 && preferredHits.length === 0) continue;
 
@@ -136,7 +143,7 @@ export class TerminologyRule implements TranslationQualityRule {
     const summary =
       issueNames.length === 0
         ? "Preferred terminology is used consistently."
-        : `${issueNames.length} ${issueNames.length === 1 ? "term needs" : "terms need"} attention: ${issueNames.join(", ")}.`;
+        : `${issueNames.length} ${issueNames.length === 1 ? "term needs" : "terms need"} attention: ${issueNames.join(", ")}. Each term with a forbidden spelling costs 11 points.`;
 
     return { categoryCode: this.code, score, summary, findings };
   }

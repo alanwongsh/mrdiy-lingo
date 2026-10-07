@@ -44,7 +44,7 @@ import { FilterSelect } from "./filter-select";
 import { TranslationQualityPanel } from "@/components/translation-quality-panel";
 import { saveReviewedContentTranslation } from "@/lib/actions/quality";
 import { applyQualityAction } from "@/lib/translation-quality/apply-action";
-import type { QualityAction } from "@/lib/translation-quality/types";
+import type { QualityAction, QualityTargetField } from "@/lib/translation-quality/types";
 
 type ArticleWithTranslations = Content & {
   translations: ContentTranslation[];
@@ -190,6 +190,7 @@ export function ArticleEditor({
   canApprove,
   comments,
   commentsError,
+  initialLanguage,
 }: {
   applicationId: string;
   article: ArticleWithTranslations;
@@ -199,6 +200,7 @@ export function ArticleEditor({
   canApprove: boolean;
   comments: ArticleComment[];
   commentsError?: string;
+  initialLanguage?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -221,7 +223,10 @@ export function ArticleEditor({
     languages,
     article.source_language
   );
-  const initialLang = initialTargets[0] ?? "";
+  const initialLang =
+    initialTargets.find((code) => languageKey(code) === languageKey(initialLanguage ?? "")) ??
+    initialTargets[0] ??
+    "";
   const [targetLanguages, setTargetLanguages] = useState<string[]>(initialTargets);
   const allTargets = useMemo(
     () =>
@@ -251,6 +256,13 @@ export function ArticleEditor({
   const [acceptedActionIds, setAcceptedActionIds] = useState<string[]>([]);
   const [ignoredActionIds, setIgnoredActionIds] = useState<string[]>([]);
   const [qualityRunId, setQualityRunId] = useState<string | null>(null);
+  const [scorePreview, setScorePreview] = useState<{
+    field: QualityTargetField;
+    text: string;
+  } | null>(null);
+  const [scrollRequest, setScrollRequest] = useState(0);
+  const titleRef = useRef<HTMLInputElement>(null);
+  const summaryRef = useRef<HTMLTextAreaElement>(null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const sourceBodyRef = useRef<HtmlEditorHandle>(null);
@@ -483,6 +495,9 @@ export function ArticleEditor({
       draftRef.current = next;
       setDraft(next);
       if (action.targetField === "content") setBodyEpoch((n) => n + 1);
+      if (action.proposedText) {
+        setScorePreview({ field: action.targetField, text: action.proposedText });
+      }
       setAcceptedActionIds((ids) =>
         ids.includes(action.id) ? ids : [...ids, action.id]
       );
@@ -495,6 +510,34 @@ export function ArticleEditor({
       );
     }
   }
+
+  function showScorePreview(target: { field: QualityTargetField; text: string }) {
+    setScorePreview(target);
+    setScrollRequest((current) => current + 1);
+  }
+
+  useEffect(() => {
+    if (!scrollRequest || !scorePreview) return;
+    const phrase = scorePreview.text.trim();
+    const frame = requestAnimationFrame(() => {
+      if (scorePreview.field === "content") {
+        document.querySelector(".quality-locate")?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+        return;
+      }
+      const el = scorePreview.field === "title" ? titleRef.current : summaryRef.current;
+      if (!el) return;
+      const at = el.value.toLowerCase().indexOf(phrase.toLowerCase());
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (at >= 0) {
+        el.focus();
+        el.setSelectionRange(at, at + phrase.length);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [scrollRequest, scorePreview]);
 
   function ignoreQualityAction(actionId: string) {
     setIgnoredActionIds((ids) =>
@@ -730,7 +773,7 @@ export function ArticleEditor({
 
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="space-y-4">
         <Card className="overflow-hidden">
           <div className="border-b border-[var(--hub-border)] bg-slate-50 px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -799,6 +842,7 @@ export function ArticleEditor({
           </div>
         </Card>
 
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <Card className="overflow-hidden border-[var(--diy-red)]/20">
           <div className="border-b border-[var(--hub-border)] bg-[var(--diy-red-soft)] px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -823,27 +867,6 @@ export function ArticleEditor({
               {editingCode ? (
                 <Badge tone={statusTone(langStatus)}>{langStatus}</Badge>
               ) : null}
-              {editingCode ? (
-                <div className="w-full basis-full">
-                <TranslationQualityPanel
-                  applicationId={applicationId}
-                  contentId={article.id}
-                  languageCode={editingCode}
-                  languageName={targetMeta?.name ?? editingCode}
-                  sourceLanguage={sourceLanguage}
-                  source={source}
-                  draft={draft}
-                  savedAt={targetTranslation?.updated_at ?? ""}
-                  canReview
-                  unsaved={isDirty}
-                  acceptedActionIds={acceptedActionIds}
-                  ignoredActionIds={ignoredActionIds}
-                  onLatestRunId={setQualityRunId}
-                  onAccept={acceptQualityAction}
-                  onIgnore={ignoreQualityAction}
-                />
-                </div>
-              ) : null}
             </div>
           </div>
           <div className="space-y-3 p-4" hidden={!editingOpen}>
@@ -855,7 +878,8 @@ export function ArticleEditor({
             <>
             <Field label="Title" action={copyField("target-title", draft.title, "Title")}>
               <input
-                className={inputClass}
+                ref={titleRef}
+                className={`${inputClass} ${scorePreview?.field === "title" ? "ring-2 ring-amber-400" : ""}`}
                 value={draft.title}
                 disabled={isTranslating}
                 onChange={(e) =>
@@ -870,7 +894,8 @@ export function ArticleEditor({
               action={copyField("target-description", draft.summary, "Description")}
             >
               <textarea
-                className={textareaClass}
+                ref={summaryRef}
+                className={`${textareaClass} ${scorePreview?.field === "summary" ? "ring-2 ring-amber-400" : ""}`}
                 rows={3}
                 value={draft.summary}
                 disabled={isTranslating}
@@ -884,6 +909,7 @@ export function ArticleEditor({
             <Field label="Body" action={copyField("target-body", draft.body, "Body")}>
               <HtmlEditor
                 revision={`target-${article.id}-${editingCode}-${bodyEpoch}`}
+                highlight={scorePreview?.field === "content" ? scorePreview.text : ""}
                 value={draft.body}
                 disabled={isTranslating}
                 onChange={(html) => setDraft((d) => ({ ...d, body: html }))}
@@ -988,6 +1014,29 @@ export function ArticleEditor({
             )}
           </div>
         </Card>
+        {editingCode ? (
+          <TranslationQualityPanel
+            variant="rail"
+            applicationId={applicationId}
+            contentId={article.id}
+            languageCode={editingCode}
+            languageName={targetMeta?.name ?? editingCode}
+            sourceLanguage={sourceLanguage}
+            source={source}
+            draft={draft}
+            savedAt={targetTranslation?.updated_at ?? ""}
+            canReview
+            unsaved={isDirty}
+            acceptedActionIds={acceptedActionIds}
+            ignoredActionIds={ignoredActionIds}
+            onLatestRunId={setQualityRunId}
+            onAccept={acceptQualityAction}
+            onIgnore={ignoreQualityAction}
+            onPreview={setScorePreview}
+            onShow={showScorePreview}
+          />
+        ) : null}
+        </div>
       </div>
 
       <ArticleComments

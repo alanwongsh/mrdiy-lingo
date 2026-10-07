@@ -37,6 +37,70 @@ export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const WEB_ADDRESS =
+  /^(?:https?:\/\/|\/\/|www\.)|(?:^|[^A-Za-z0-9])(?:[A-Za-z0-9-]+\.)+(?:com|net|org|edu|gov|io|co|my|sg|id|th|vn|ph|uk|au|nz|cn|hk|tw|jp|kr)(?:[./?#]|$)/i;
+
+function looksLikeWebAddress(token: string): boolean {
+  const value = token.replace(/[),.;]+$/g, "");
+  return value.includes("://") || WEB_ADDRESS.test(value);
+}
+
+function visibleWindow(html: string, index: number, length: number): string {
+  const windowStart = Math.max(0, index - 48);
+  const windowEnd = Math.min(html.length, index + Math.max(length, 1) + 48);
+  let slice = html.slice(windowStart, windowEnd);
+  if (windowStart > 0) {
+    const before = html.slice(0, windowStart);
+    const lastLt = before.lastIndexOf("<");
+    const lastGt = before.lastIndexOf(">");
+    if (lastLt > lastGt) {
+      const close = slice.indexOf(">");
+      slice = close === -1 ? "" : slice.slice(close + 1);
+    }
+  }
+  const snippet = slice.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+  return `${windowStart > 0 ? "…" : ""}${snippet}${windowEnd < html.length ? "…" : ""}`.slice(0, 180);
+}
+
+/** A terminology hit inside a tag or web address should not be rewritten. */
+export function termHitContext(
+  html: string,
+  index: number,
+  length: number
+): { hidden: boolean; inLink: boolean; snippet: string } {
+  if (!html || index < 0 || index >= html.length) {
+    return { hidden: false, inLink: false, snippet: "" };
+  }
+  const before = html.slice(0, index);
+  const lastLt = before.lastIndexOf("<");
+  const lastGt = before.lastIndexOf(">");
+  if (lastLt > lastGt) {
+    const end = html.indexOf(">", index);
+    const tag = html.slice(lastLt, end === -1 ? html.length : end + 1);
+    const address = tag.match(/\b(?:href|src)\s*=\s*["']([^"']+)["']/i)?.[1] ?? "";
+    const inLink = Boolean(address) || /\b(?:href|src)\s*=/i.test(tag);
+    const snippet = (address || tag).replace(/\s+/g, " ").trim().slice(0, 160);
+    return { hidden: true, inLink, snippet };
+  }
+  let start = index;
+  let end = Math.min(html.length, index + Math.max(length, 1));
+  while (start > 0 && !/\s/.test(html[start - 1] ?? "") && html[start - 1] !== ">") {
+    start -= 1;
+  }
+  while (end < html.length && !/\s/.test(html[end] ?? "") && html[end] !== "<") {
+    end += 1;
+  }
+  const token = html.slice(start, end);
+  if (looksLikeWebAddress(token)) {
+    return { hidden: true, inLink: true, snippet: token.slice(0, 160) };
+  }
+  return {
+    hidden: false,
+    inLink: false,
+    snippet: visibleWindow(html, index, length),
+  };
+}
+
 export function findTerm(
   haystack: string,
   needle: string
@@ -104,13 +168,31 @@ export function paragraphs(value: string): string[] {
     .filter(Boolean);
 }
 
+export function readableQualityError(value: string): string {
+  const trimmed = value.trim();
+  let message = trimmed;
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed) as { error?: { message?: string }; message?: string };
+      const inner = parsed.error?.message || parsed.message;
+      if (typeof inner === "string" && inner.trim()) message = inner.trim();
+    } catch {
+      message = trimmed;
+    }
+  }
+  if (/is no longer available/i.test(message)) {
+    return "The quality model is no longer available. Analyze again to use the current model.";
+  }
+  return message.slice(0, 240);
+}
+
 export function safeErrorMessage(error: unknown, secret = ""): string {
   const message =
     error instanceof Error && error.message
       ? error.message
       : "Quality analysis failed.";
   const redacted = secret ? message.split(secret).join("[redacted]") : message;
-  return redacted.slice(0, 500);
+  return readableQualityError(redacted);
 }
 
 export function languageCompatible(entry: string, article: string): boolean {

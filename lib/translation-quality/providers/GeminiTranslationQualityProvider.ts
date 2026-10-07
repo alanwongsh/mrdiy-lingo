@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { qualityConfig } from "@/lib/translation-quality/config";
 import {
   buildTranslationQualityPrompt,
@@ -91,6 +91,10 @@ export function validateGeminiPayload(
   return categories;
 }
 
+function isGemini3(model: string) {
+  return /^gemini-3(?:[.-]|$)/i.test(model);
+}
+
 async function generate(
   ai: GoogleGenAI,
   model: string,
@@ -98,15 +102,22 @@ async function generate(
   schema: ReturnType<typeof geminiResponseSchema>,
   withThinkingOff: boolean
 ) {
+  const gemini3 = isGemini3(model);
   return ai.models.generateContent({
     model,
     contents: prompt,
     config: {
-      temperature: 0.2,
       maxOutputTokens: 4096,
       responseMimeType: "application/json",
       responseJsonSchema: schema,
-      ...(withThinkingOff ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+      ...(gemini3
+        ? withThinkingOff
+          ? { thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } }
+          : {}
+        : {
+            temperature: 0.2,
+            ...(withThinkingOff ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+          }),
     },
   });
 }
@@ -135,7 +146,7 @@ export class GeminiTranslationQualityProvider implements TranslationQualityProvi
       response = await generate(ai, config.geminiModel, prompt, schema, true);
     } catch (error) {
       const message = safeErrorMessage(error, config.geminiApiKey);
-      if (!/thinking/i.test(message)) throw new Error(message);
+      if (!/thinking|invalid argument/i.test(message)) throw new Error(message);
       response = await generate(ai, config.geminiModel, prompt, schema, false);
     }
 

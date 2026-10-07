@@ -133,6 +133,33 @@ export async function analyzeTranslationQuality(input: {
   });
 }
 
+export async function recheckTranslationRules(input: {
+  applicationId: string;
+  contentId: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  sourceTitle: string;
+  sourceSummary: string;
+  sourceContent: string;
+}) {
+  assertUuid(input.applicationId, "application");
+  assertUuid(input.contentId, "article");
+  const sourceLanguage = assertLanguage(input.sourceLanguage, "source language");
+  const targetLanguage = assertLanguage(input.targetLanguage, "target language");
+  const grant = await requireContentAccess(input.contentId, "edit");
+  if (grant.applicationId !== input.applicationId) {
+    throw new Error("Article not found.");
+  }
+  return getTranslationQualityService().recheckRules({
+    contentId: input.contentId,
+    sourceLanguage,
+    targetLanguage,
+    sourceTitle: bounded(input.sourceTitle ?? "", 2000, "Source title"),
+    sourceSummary: bounded(input.sourceSummary ?? "", 8000, "Source description"),
+    sourceContent: bounded(input.sourceContent ?? "", 100000, "Source body"),
+  });
+}
+
 export async function getTranslationQualityRun(runId: string) {
   assertUuid(runId, "analysis");
   const run = await getQualityRunRecord(runId);

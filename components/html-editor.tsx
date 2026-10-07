@@ -7,6 +7,10 @@ import {
   useRef,
 } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
+import { Extension } from "@tiptap/core";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import type { Node as ProseNode } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Underline from "@tiptap/extension-underline";
@@ -59,6 +63,69 @@ function normalizeEditorHtml(html: string) {
   return trimmed;
 }
 
+const locatePluginKey = new PluginKey("qualityLocate");
+
+function findTextRange(
+  doc: ProseNode,
+  phrase: string
+): { from: number; to: number } | null {
+  const needle = phrase.trim().toLowerCase();
+  if (!needle) return null;
+  let flat = "";
+  const positions: number[] = [];
+  doc.descendants((node, pos) => {
+    if (!node.isText || !node.text) {
+      if (node.isBlock && flat.length > 0 && !flat.endsWith("\n")) {
+        flat += "\n";
+        positions.push(-1);
+      }
+      return;
+    }
+    for (let index = 0; index < node.text.length; index += 1) {
+      flat += node.text[index].toLowerCase();
+      positions.push(pos + index);
+    }
+  });
+  const at = flat.indexOf(needle);
+  if (at < 0) return null;
+  let from = -1;
+  let to = -1;
+  for (let index = at; index < at + needle.length && index < positions.length; index += 1) {
+    const position = positions[index];
+    if (position < 0) continue;
+    if (from < 0) from = position;
+    to = position + 1;
+  }
+  if (from < 0 || to <= from) return null;
+  return { from, to };
+}
+
+const QualityLocate = Extension.create<{ getPhrase: () => string }>({
+  name: "qualityLocate",
+  addProseMirrorPlugins() {
+    const getPhrase = this.options.getPhrase;
+    return [
+      new Plugin({
+        key: locatePluginKey,
+        props: {
+          decorations(state) {
+            const phrase = getPhrase();
+            const range = phrase ? findTextRange(state.doc, phrase) : null;
+            if (!range) return null;
+            try {
+              return DecorationSet.create(state.doc, [
+                Decoration.inline(range.from, range.to, { class: "quality-locate" }),
+              ]);
+            } catch {
+              return null;
+            }
+          },
+        },
+      }),
+    ];
+  },
+});
+
 export type HtmlEditorHandle = {
   getHTML: () => string;
 };
@@ -73,6 +140,8 @@ export const HtmlEditor = forwardRef<
     disabled?: boolean;
     placeholder?: string;
     minHeightClass?: string;
+    /** Phrase to highlight inside the body without changing the saved HTML. */
+    highlight?: string;
   }
 >(function HtmlEditor(
   {
@@ -82,11 +151,14 @@ export const HtmlEditor = forwardRef<
     disabled,
     placeholder,
     minHeightClass = "min-h-[12rem]",
+    highlight = "",
   },
   ref
 ) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const highlightRef = useRef(highlight);
+  highlightRef.current = highlight;
 
   const lastEmittedRef = useRef(normalizeEditorHtml(value || ""));
   // Seed as already-applied so the first effect does not setContent and steal focus.
@@ -109,6 +181,7 @@ export const HtmlEditor = forwardRef<
       Placeholder.configure({
         placeholder: placeholder ?? "Write…",
       }),
+      QualityLocate.configure({ getPhrase: () => highlightRef.current }),
     ],
     // Seed once — after that only `revision` pushes external content in.
     content: value || "",
@@ -147,6 +220,11 @@ export const HtmlEditor = forwardRef<
     if (!editor) return;
     editor.setEditable(!disabled);
   }, [editor, disabled]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    editor.view.dispatch(editor.state.tr);
+  }, [editor, highlight]);
 
   // Apply external content only when revision changes — never while syncing
   // every keystroke via `value` (that steals the caret).

@@ -3,6 +3,7 @@
 import {
   acknowledgeIgnoredQualityAction as acknowledgeIgnored,
   analyzeTranslationQuality as analyze,
+  recheckTranslationRules as recheckRules,
   createTerminologyEntry as createTerm,
   getTranslationQualityFindings as findings,
   getTranslationQualityRun as run,
@@ -55,6 +56,25 @@ export async function analyzeTranslationQuality(input: {
         error instanceof Error
           ? error.message
           : "Quality analysis failed. Please try again.",
+    };
+  }
+}
+
+export async function recheckTranslationRules(input: {
+  applicationId: string;
+  contentId: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  sourceTitle: string;
+  sourceSummary: string;
+  sourceContent: string;
+}) {
+  try {
+    return { result: await recheckRules(input), error: "" };
+  } catch (error) {
+    return {
+      result: null,
+      error: error instanceof Error ? error.message : "Could not recheck wording.",
     };
   }
 }
