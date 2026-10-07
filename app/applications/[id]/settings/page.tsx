@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-export default async function ContentTypesRedirect({
+export default async function SettingsIndexPage({
   params,
 }: {
   params: Promise<{ id: string }>;

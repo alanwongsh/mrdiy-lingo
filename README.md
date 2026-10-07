@@ -21,7 +21,7 @@ Sign-in comes from Joget (an embed token). Lingo stores a user row for access an
 | **Applications** | `STRING` (product keys) or `CONTENT` (press articles) |
 | **Languages** | CRUD + activate/deactivate |
 | **Product** | Namespaces, keys, per-language translations, versions, auto-translate, approve |
-| **Press** | Articles with title/description/HTML body, schedule/publish dates, per-article `source_language` + `target_languages`, TipTap editor, language chips, auto-translate, approve, history, article comments, copy title/description/body, Excel export of selected rows, bulk delete |
+| **Press** | Articles with title/description/HTML body, schedule/publish dates, per-article `source_language` + `target_languages`, TipTap editor, language chips, auto-translate, approve, history, article comments, copy title/description/body, Excel export of selected rows, bulk delete, translation quality review (Gemini scores plus terminology and boilerplate rules) |
 | **Import** | Excel/CSV validate → preview (New/Updated/Unchanged) → confirm; optional auto-translate targets |
 | **Dashboard** | Coverage / lifecycle stats |
 | **Setup** | In-app migration checklist (`/setup`) |
@@ -52,6 +52,10 @@ JOGET_EMBED_SECRET=...          # shared with Joget; signs the iframe user
 # EMBED_ALLOW_DEV=true
 # Optional behind corporate SSL:
 # SUPABASE_INSECURE_SSL=true
+# Translation quality. The key stays on the server.
+# QUALITY_PROVIDER=gemini
+# GEMINI_API_KEY=
+# GEMINI_MODEL=gemini-2.5-flash-lite
 ```
 
 Apply SQL in order (Supabase SQL Editor or `/setup`):

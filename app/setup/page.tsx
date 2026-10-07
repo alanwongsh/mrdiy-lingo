@@ -114,6 +114,28 @@ export default async function SetupPage() {
                       needsMigration = "013_content_types.sql";
                       message =
                         "Role groups OK, but run migration 013 for per-app content types.";
+                    } else {
+                      const probeQuality = await db
+                        .from("quality_categories")
+                        .select("id")
+                        .limit(1);
+                      if (probeQuality.error) {
+                        needsMigration = "014_translation_quality.sql";
+                        message =
+                          "Content types OK, but run migration 014 for translation quality.";
+                      } else {
+                        const probeVersion = await db
+                          .from("quality_runs")
+                          .select("content_translation_version_id")
+                          .limit(1);
+                        if (probeVersion.error) {
+                          needsMigration = "015_quality_run_version.sql";
+                          message =
+                            "Quality tables OK, but run migration 015 so each translation version is analyzed once.";
+                        } else {
+                          message = "Tables are reachable.";
+                        }
+                      }
                     }
                   }
                 }
@@ -140,6 +162,8 @@ export default async function SetupPage() {
   const sql11 = await readMigration("011_member_roles.sql");
   const sql12 = await readMigration("012_org_role_map.sql");
   const sql13 = await readMigration("013_content_types.sql");
+  const sql14 = await readMigration("014_translation_quality.sql");
+  const sql15 = await readMigration("015_quality_run_version.sql");
 
   return (
     <div>
@@ -175,6 +199,8 @@ export default async function SetupPage() {
           <li>Run migration 011 for Editor, HOD, and Admin roles.</li>
           <li>Run migration 012 to group account roles such as Executive and HOD.</li>
           <li>Run migration 013 so each app can manage its own content types.</li>
+          <li>Run migration 014 for translation quality, terminology, and boilerplate.</li>
+          <li>Run migration 015 so each saved translation version is analyzed once.</li>
           <li>Refresh this page.</li>
         </ol>
       </Card>
@@ -195,6 +221,8 @@ export default async function SetupPage() {
             ["11", "011_member_roles.sql", sql11],
             ["12", "012_org_role_map.sql", sql12],
             ["13", "013_content_types.sql", sql13],
+            ["14", "014_translation_quality.sql", sql14],
+            ["15", "015_quality_run_version.sql", sql15],
           ] as const
         ).map(([n, name, sql]) => (
           <Card key={name} className="overflow-hidden">

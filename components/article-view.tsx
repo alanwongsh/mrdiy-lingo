@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useId, useRef, useState } from "react";
+import { TranslationQualityPanel } from "@/components/translation-quality-panel";
 import { Badge, Card, inputClass, statusTone } from "@/components/ui";
 import type {
   Content,
@@ -464,10 +465,14 @@ export function ArticleView({
   article,
   languages,
   contentTypeName,
+  applicationId,
+  canReview,
 }: {
   article: Article;
   languages: Language[];
   contentTypeName: string;
+  applicationId: string;
+  canReview: boolean;
 }) {
   const options = Array.from(
     new Set([
@@ -565,6 +570,43 @@ export function ArticleView({
             })}
           </span>
         ) : null}
+        <div className="flex w-full flex-wrap gap-3">
+          {options
+            .filter((code) => code !== article.source_language)
+            .map((code) => {
+              const translation = article.translations.find(
+                (row) => row.language_code.toLowerCase() === code.toLowerCase()
+              );
+              return (
+                <TranslationQualityPanel
+                  key={`${code}:${translation?.updated_at ?? ""}`}
+                  showName
+                  applicationId={applicationId}
+                  contentId={article.id}
+                  languageCode={code}
+                  languageName={languageName(languages, code)}
+                  sourceLanguage={article.source_language}
+                  source={article.source_content}
+                  draft={{
+                    title: translation?.title ?? "",
+                    summary: translation?.summary ?? "",
+                    body: translation?.body ?? "",
+                    seo_title: translation?.seo_title ?? "",
+                    seo_description: translation?.seo_description ?? "",
+                  }}
+                  savedAt={translation?.updated_at ?? ""}
+                  canReview={canReview}
+                  canApply={false}
+                  unsaved={false}
+                  acceptedActionIds={[]}
+                  ignoredActionIds={[]}
+                  onLatestRunId={() => undefined}
+                  onAccept={() => undefined}
+                  onIgnore={() => undefined}
+                />
+              );
+            })}
+        </div>
       </Card>
 
       <Card className="overflow-visible">

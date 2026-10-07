@@ -26,6 +26,7 @@ function revalidateContentTypes(applicationId: string) {
   revalidatePath(`/applications/${applicationId}`);
   revalidatePath(`/applications/${applicationId}/articles`);
   revalidatePath(`/applications/${applicationId}/types`);
+  revalidatePath(`/applications/${applicationId}/settings/types`);
 }
 
 async function findContentType(applicationId: string, code: string) {

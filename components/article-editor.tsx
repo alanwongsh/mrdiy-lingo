@@ -6,7 +6,6 @@ import {
   autoTranslateArticleLanguages,
   deleteContentTranslationVersion,
   listContentTranslationVersions,
-  saveManualContentTranslation,
   setContentTranslationStatus,
   updateArticle,
 } from "@/lib/actions/press";
@@ -42,6 +41,10 @@ import { HtmlEditor, type HtmlEditorHandle } from "@/components/html-editor";
 import { MARKETS } from "@/lib/markets";
 import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
 import { FilterSelect } from "./filter-select";
+import { TranslationQualityPanel } from "@/components/translation-quality-panel";
+import { saveReviewedContentTranslation } from "@/lib/actions/quality";
+import { applyQualityAction } from "@/lib/translation-quality/apply-action";
+import type { QualityAction } from "@/lib/translation-quality/types";
 
 type ArticleWithTranslations = Content & {
   translations: ContentTranslation[];
@@ -245,6 +248,11 @@ export function ArticleEditor({
   const [error, setError] = useState("");
   const [copied, setCopied] = useState("");
   const [historyError, setHistoryError] = useState("");
+  const [acceptedActionIds, setAcceptedActionIds] = useState<string[]>([]);
+  const [ignoredActionIds, setIgnoredActionIds] = useState<string[]>([]);
+  const [qualityRunId, setQualityRunId] = useState<string | null>(null);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   const sourceBodyRef = useRef<HtmlEditorHandle>(null);
   const historyRef = useRef<HTMLDivElement>(null);
 
@@ -355,6 +363,9 @@ export function ArticleEditor({
     setShowHistory(false);
     setVersions([]);
     setHistoryError("");
+    setAcceptedActionIds([]);
+    setIgnoredActionIds([]);
+    setQualityRunId(null);
   }, [translationToken, targetTranslation]);
 
   useEffect(() => {
@@ -464,6 +475,51 @@ export function ArticleEditor({
         setError(err instanceof Error ? err.message : "Save failed");
       }
     });
+  }
+
+  function acceptQualityAction(action: QualityAction) {
+    try {
+      const next = applyQualityAction(draftRef.current, action);
+      draftRef.current = next;
+      setDraft(next);
+      if (action.targetField === "content") setBodyEpoch((n) => n + 1);
+      setAcceptedActionIds((ids) =>
+        ids.includes(action.id) ? ids : [...ids, action.id]
+      );
+      setError("");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not apply the suggestion."
+      );
+    }
+  }
+
+  function ignoreQualityAction(actionId: string) {
+    setIgnoredActionIds((ids) =>
+      ids.includes(actionId) ? ids : [...ids, actionId]
+    );
+  }
+
+  async function persistDraft() {
+    if (!editingCode) return;
+    const saved = await saveReviewedContentTranslation({
+      contentId: article.id,
+      languageCode: editingCode,
+      fields: {
+        ...draft,
+        seo_title: draft.seo_title || draft.title,
+        seo_description: draft.seo_description || draft.summary,
+      },
+      applicationId,
+      qualityRunId,
+      acceptedActionIds: qualityRunId ? acceptedActionIds : [],
+      ignoredActionIds: qualityRunId ? ignoredActionIds : [],
+    });
+    setAcceptedActionIds([]);
+    setIgnoredActionIds([]);
+    return saved;
   }
 
   function saveSource() {
@@ -767,6 +823,27 @@ export function ArticleEditor({
               {editingCode ? (
                 <Badge tone={statusTone(langStatus)}>{langStatus}</Badge>
               ) : null}
+              {editingCode ? (
+                <div className="w-full basis-full">
+                <TranslationQualityPanel
+                  applicationId={applicationId}
+                  contentId={article.id}
+                  languageCode={editingCode}
+                  languageName={targetMeta?.name ?? editingCode}
+                  sourceLanguage={sourceLanguage}
+                  source={source}
+                  draft={draft}
+                  savedAt={targetTranslation?.updated_at ?? ""}
+                  canReview
+                  unsaved={isDirty}
+                  acceptedActionIds={acceptedActionIds}
+                  ignoredActionIds={ignoredActionIds}
+                  onLatestRunId={setQualityRunId}
+                  onAccept={acceptQualityAction}
+                  onIgnore={ignoreQualityAction}
+                />
+                </div>
+              ) : null}
             </div>
           </div>
           <div className="space-y-3 p-4" hidden={!editingOpen}>
@@ -815,37 +892,32 @@ export function ArticleEditor({
             </Field>
             <div className="flex flex-wrap items-center gap-2 pt-1">
               {isDirty ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={pending || isTranslating || !draft.title.trim()}
-                  onClick={() =>
-                    startTransition(async () => {
-                      setError("");
-                      try {
-                        await saveManualContentTranslation({
-                          contentId: article.id,
-                          languageCode: editingCode,
-                          fields: {
-                            ...draft,
-                            seo_title: draft.seo_title || draft.title,
-                            seo_description:
-                              draft.seo_description || draft.summary,
-                          },
-                          applicationId,
-                        });
-                        router.refresh();
-                        if (showHistory) loadHistory();
-                      } catch (err) {
-                        setError(
-                          err instanceof Error ? err.message : "Save failed"
-                        );
-                      }
-                    })
-                  }
-                >
-                  Save changes
-                </Button>
+                <>
+                  <span className="text-xs font-semibold text-amber-800">
+                    Unsaved changes
+                  </span>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={pending || isTranslating || !draft.title.trim()}
+                    onClick={() =>
+                      startTransition(async () => {
+                        setError("");
+                        try {
+                          await persistDraft();
+                          router.refresh();
+                          if (showHistory) loadHistory();
+                        } catch (err) {
+                          setError(
+                            err instanceof Error ? err.message : "Save failed"
+                          );
+                        }
+                      })
+                    }
+                  >
+                    Save changes
+                  </Button>
+                </>
               ) : hasSavedContent ? (
                 <span className="text-xs font-medium text-emerald-700">
                   Saved
@@ -870,20 +942,13 @@ export function ArticleEditor({
                         const changed =
                           draft.title !== current.title ||
                           draft.summary !== current.summary ||
-                          draft.body !== current.body;
+                          draft.body !== current.body ||
+                          acceptedActionIds.length > 0 ||
+                          ignoredActionIds.length > 0;
                         let contentTranslationId = targetTranslation?.id;
                         if (!contentTranslationId || changed) {
-                          const saved = await saveManualContentTranslation({
-                            contentId: article.id,
-                            languageCode: editingCode,
-                            fields: {
-                              ...draft,
-                              seo_title: draft.seo_title || draft.title,
-                              seo_description:
-                                draft.seo_description || draft.summary,
-                            },
-                            applicationId,
-                          });
+                          const saved = await persistDraft();
+                          if (!saved) throw new Error("Save the translation before approving it.");
                           contentTranslationId = saved.id;
                         }
                         await setContentTranslationStatus({

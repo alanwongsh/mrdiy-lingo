@@ -68,6 +68,8 @@ export default async function ArticleDetailPage({
         article={article}
         languages={languages}
         contentTypeName={contentTypeName}
+        applicationId={app.id}
+        canReview={app.access.can_edit}
       />
       <ArticleComments
         applicationId={app.id}
