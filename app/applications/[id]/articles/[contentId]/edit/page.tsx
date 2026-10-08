@@ -4,6 +4,7 @@ import { getApplication } from "@/lib/actions/applications";
 import { listContentTypes } from "@/lib/actions/content-types";
 import { listArticleComments } from "@/lib/actions/comments";
 import { listLanguages } from "@/lib/actions/languages";
+import { getArticlePublish } from "@/lib/actions/publish";
 import { getArticle } from "@/lib/actions/press";
 import { AppSubnav } from "@/components/app-subnav";
 import { ArticleEditor } from "@/components/article-editor";
@@ -23,9 +24,10 @@ export default async function ArticleEditPage({
   if (!app || app.model_type !== "CONTENT") notFound();
   const article = await getArticle(contentId);
   if (!article || article.application_id !== app.id) notFound();
-  const [languages, contentTypes] = await Promise.all([
+  const [languages, contentTypes, publish] = await Promise.all([
     listLanguages(),
     listContentTypes(app.id, { includeInactive: true }),
+    getArticlePublish(contentId),
   ]);
   const actor = await getActor();
   let comments: ArticleComment[] = [];
@@ -57,6 +59,11 @@ export default async function ArticleEditPage({
         comments={comments}
         commentsError={commentsError}
         initialLanguage={lang}
+        publishVendors={publish.vendors}
+        publishTargets={publish.targets}
+        publications={publish.publications}
+        publishReady={publish.ready}
+        publishNotice={publish.notice}
       />
     </div>
   );

@@ -6,12 +6,15 @@ import { saveReviewedContentTranslation } from "@/lib/actions/quality";
 import { applyQualityAction } from "@/lib/translation-quality/apply-action";
 import type { QualityAction, QualityTargetField } from "@/lib/translation-quality/types";
 import { TranslationQualityPanel } from "@/components/translation-quality-panel";
+import { PublishLanguagePicker } from "@/components/article-publish-panel";
 import { Badge, Card, inputClass, statusTone } from "@/components/ui";
 import type {
   Content,
   ContentLifecycleStatus,
+  ContentPublication,
   ContentTranslation,
   Language,
+  PublishVendorChoice,
   SourceContentFields,
   TranslationStatus,
 } from "@/lib/types";
@@ -211,6 +214,18 @@ function decorateField(value: string, marks: ReviewMark[], locateText?: string) 
 
 function isLayout(value: string | null): value is ViewLayout {
   return LAYOUTS.some((layout) => layout.id === value);
+}
+
+function formatStamp(iso: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kuala_Lumpur",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(iso));
 }
 
 function languageName(languages: Language[], code: string) {
@@ -655,12 +670,18 @@ export function ArticleView({
   contentTypeName,
   applicationId,
   canReview,
+  publishVendors,
+  publishTargets,
+  publications,
 }: {
   article: Article;
   languages: Language[];
   contentTypeName: string;
   applicationId: string;
   canReview: boolean;
+  publishVendors: PublishVendorChoice[];
+  publishTargets: { language_code: string; vendor_id: string }[];
+  publications: ContentPublication[];
 }) {
   const options = Array.from(
     new Set([
@@ -897,16 +918,23 @@ export function ArticleView({
         {article.scheduled_publish_at ? (
           <span>
             Due{" "}
-            {new Date(article.scheduled_publish_at).toLocaleString(undefined, {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-              hour: "numeric",
-              minute: "2-digit",
-            })}
+            {formatStamp(article.scheduled_publish_at)}
           </span>
         ) : null}
       </Card>
+
+      <PublishLanguagePicker
+        applicationId={applicationId}
+        languages={languages}
+        sourceLanguage={article.source_language}
+        languageCodes={article.target_languages ?? []}
+        vendors={publishVendors}
+        selected={publishTargets}
+        publications={publications}
+        ready
+        readOnly
+        onChange={() => {}}
+      />
 
       <Card className="overflow-visible">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--hub-border)] px-4 py-3">

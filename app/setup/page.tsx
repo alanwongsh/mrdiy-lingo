@@ -133,7 +133,27 @@ export default async function SetupPage() {
                           message =
                             "Quality tables OK, but run migration 015 so each translation version is analyzed once.";
                         } else {
-                          message = "Tables are reachable.";
+                          const probePublishVendors = await db
+                            .from("publish_vendors")
+                            .select("id")
+                            .limit(1);
+                          if (probePublishVendors.error) {
+                            needsMigration = "016_publish_vendors.sql";
+                            message =
+                              "Quality versions OK, but run migration 016 for publish vendors.";
+                          } else {
+                            const probeLanguageTargets = await db
+                              .from("content_publish_targets")
+                              .select("language_code")
+                              .limit(1);
+                            if (probeLanguageTargets.error) {
+                              needsMigration = "017_publish_language_targets.sql";
+                              message =
+                                "Publish vendors OK, but run migration 017 so each language can go to its own provider.";
+                            } else {
+                              message = "Tables are reachable.";
+                            }
+                          }
                         }
                       }
                     }
@@ -164,6 +184,8 @@ export default async function SetupPage() {
   const sql13 = await readMigration("013_content_types.sql");
   const sql14 = await readMigration("014_translation_quality.sql");
   const sql15 = await readMigration("015_quality_run_version.sql");
+  const sql16 = await readMigration("016_publish_vendors.sql");
+  const sql17 = await readMigration("017_publish_language_targets.sql");
 
   return (
     <div>
@@ -201,6 +223,8 @@ export default async function SetupPage() {
           <li>Run migration 013 so each app can manage its own content types.</li>
           <li>Run migration 014 for translation quality, terminology, and boilerplate.</li>
           <li>Run migration 015 so each saved translation version is analyzed once.</li>
+          <li>Run migration 016 for per-app publish vendors.</li>
+          <li>Run migration 017 so each article language can go to its own provider.</li>
           <li>Refresh this page.</li>
         </ol>
       </Card>
@@ -223,6 +247,8 @@ export default async function SetupPage() {
             ["13", "013_content_types.sql", sql13],
             ["14", "014_translation_quality.sql", sql14],
             ["15", "015_quality_run_version.sql", sql15],
+            ["16", "016_publish_vendors.sql", sql16],
+            ["17", "017_publish_language_targets.sql", sql17],
           ] as const
         ).map(([n, name, sql]) => (
           <Card key={name} className="overflow-hidden">

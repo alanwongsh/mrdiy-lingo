@@ -14,7 +14,7 @@ export function SettingsChrome({
     <div>
       <PageHeader
         title="Settings"
-        description="Article types, and the checks used when a translation is reviewed."
+        description="Article types, publish vendors, and the checks used when a translation is reviewed."
       />
       <AppSubnav application={application} />
       <SettingsTabs applicationId={application.id} />

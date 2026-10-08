@@ -12,11 +12,14 @@ import {
 import type {
   Content,
   ContentLifecycleStatus,
+  ContentPublication,
   ContentTranslation,
   ContentTranslationVersion,
   ContentTypeRecord,
   Language,
   ArticleComment,
+  PublishLanguageTarget,
+  PublishVendorChoice,
   SourceContentFields,
   TranslationStatus,
 } from "@/lib/types";
@@ -40,6 +43,7 @@ import { ArticleComments } from "@/components/article-comments";
 import { HtmlEditor, type HtmlEditorHandle } from "@/components/html-editor";
 import { MARKETS } from "@/lib/markets";
 import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
+import { PublishLanguagePicker } from "@/components/article-publish-panel";
 import { FilterSelect } from "./filter-select";
 import { TranslationQualityPanel } from "@/components/translation-quality-panel";
 import { saveReviewedContentTranslation } from "@/lib/actions/quality";
@@ -124,6 +128,18 @@ function writeClipboard(text: string): Promise<void> {
   return Promise.reject(new Error("Could not copy."));
 }
 
+function formatStamp(iso: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kuala_Lumpur",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(iso));
+}
+
 function fromLocalInput(value: string): string | null {
   if (!value.trim()) return null;
   const d = new Date(value);
@@ -191,6 +207,11 @@ export function ArticleEditor({
   comments,
   commentsError,
   initialLanguage,
+  publishVendors,
+  publishTargets,
+  publications,
+  publishReady,
+  publishNotice,
 }: {
   applicationId: string;
   article: ArticleWithTranslations;
@@ -201,6 +222,11 @@ export function ArticleEditor({
   comments: ArticleComment[];
   commentsError?: string;
   initialLanguage?: string;
+  publishVendors: PublishVendorChoice[];
+  publishTargets: PublishLanguageTarget[];
+  publications: ContentPublication[];
+  publishReady: boolean;
+  publishNotice?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -215,6 +241,7 @@ export function ArticleEditor({
   const [scheduledPublishAt, setScheduledPublishAt] = useState(
     toLocalInput(article.scheduled_publish_at)
   );
+  const [languageVendors, setLanguageVendors] = useState(publishTargets);
   const [source, setSource] = useState(article.source_content);
   const [sourceLanguage, setSourceLanguage] = useState(article.source_language);
   const [market, setMarket] = useState(article.market ?? "");
@@ -333,6 +360,7 @@ export function ArticleEditor({
     setStatus(article.status);
     setContentType(article.content_type);
     setScheduledPublishAt(toLocalInput(article.scheduled_publish_at));
+    setLanguageVendors(publishTargets);
     setSource(article.source_content);
     setSourceLanguage(article.source_language);
     setMarket(article.market ?? "");
@@ -347,7 +375,7 @@ export function ArticleEditor({
       if (match) return match;
       return resolved[0] ?? "";
     });
-  }, [article, languages]);
+  }, [article, languages, publishTargets]);
 
   useEffect(() => {
     setTargetLanguages((prev) => {
@@ -469,6 +497,29 @@ export function ArticleEditor({
     });
   }
 
+  function assignedProviders() {
+    const allowed = new Set(
+      [sourceLanguage, ...targetLanguages].map((code) => languageKey(code))
+    );
+    const rows = languageVendors.filter((row) => allowed.has(languageKey(row.language_code)));
+    for (const publication of publications) {
+      if (publication.status !== "PUBLISHED") continue;
+      if (!allowed.has(languageKey(publication.language_code))) continue;
+      const exists = rows.some(
+        (row) =>
+          row.vendor_id === publication.vendor_id &&
+          languageKey(row.language_code) === languageKey(publication.language_code)
+      );
+      if (!exists) {
+        rows.push({
+          language_code: publication.language_code,
+          vendor_id: publication.vendor_id,
+        });
+      }
+    }
+    return rows;
+  }
+
   function saveSettings() {
     startTransition(async () => {
       setError("");
@@ -483,6 +534,7 @@ export function ArticleEditor({
           scheduled_publish_at: fromLocalInput(scheduledPublishAt),
           target_languages: targetLanguages,
           market: market || null,
+          ...(publishReady ? { publish_targets: assignedProviders() } : {}),
         });
         router.refresh();
       } catch (err) {
@@ -587,6 +639,7 @@ export function ArticleEditor({
           scheduled_publish_at: fromLocalInput(scheduledPublishAt),
           target_languages: targetLanguages,
           market: market || null,
+          ...(publishReady ? { publish_targets: assignedProviders() } : {}),
         });
         router.refresh();
       } catch (err) {
@@ -653,14 +706,26 @@ export function ArticleEditor({
               onChange={(e) => setScheduledPublishAt(e.target.value)}
             />
           </Field>
+          <div className="sm:col-span-2 lg:col-span-4">
+            <PublishLanguagePicker
+              applicationId={applicationId}
+              languages={languages}
+              sourceLanguage={sourceLanguage}
+              languageCodes={targetLanguages}
+              vendors={publishVendors}
+              selected={languageVendors}
+              publications={publications}
+              ready={publishReady}
+              notice={publishNotice}
+              onChange={setLanguageVendors}
+            />
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
           <span>
             Published:{" "}
             <strong className="font-semibold text-slate-900">
-              {article.published_at
-                ? new Date(article.published_at).toLocaleString()
-                : "—"}
+              {article.published_at ? formatStamp(article.published_at) : "—"}
             </strong>
           </span>
           {/* <span className="text-slate-300">·</span>

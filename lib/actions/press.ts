@@ -31,6 +31,7 @@ import { requireContentTypeCode } from "@/lib/actions/content-types";
 import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
 import { normalizeMarket } from "@/lib/markets";
 import { buildArticleWorkbook } from "@/lib/export/articles";
+import { replaceArticlePublishTargets } from "@/lib/publish/store";
 
 function asSourceContent(value: unknown): SourceContentFields {
   const v = (value ?? {}) as Partial<SourceContentFields>;
@@ -401,6 +402,8 @@ export async function updateArticle(
     scheduled_publish_at?: string | null;
     target_languages?: string[];
     market?: string | null;
+    /** Language and provider pairs. Omitted values leave the selection unchanged. */
+    publish_targets?: { language_code: string; vendor_id: string }[];
     /** Adding a language must not clear other approvals or drop the article to review. */
     keepApprovals?: boolean;
   }
@@ -502,6 +505,12 @@ export async function updateArticle(
     ) {
       await persistArticleStatus(id, applicationId, "APPROVED");
     }
+  }
+  if (input.publish_targets !== undefined) {
+    await replaceArticlePublishTargets(id, applicationId, input.publish_targets, [
+      input.source_language,
+      ...nextTargets,
+    ]);
   }
   revalidatePath(`/applications/${applicationId}`);
   revalidatePath(`/applications/${applicationId}/articles/${id}`);

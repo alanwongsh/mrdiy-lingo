@@ -8,6 +8,7 @@ export function SettingsTabs({ applicationId }: { applicationId: string }) {
   const base = `/applications/${applicationId}/settings`;
   const tabs = [
     { href: `${base}/types`, label: "Types" },
+    { href: `${base}/publish`, label: "Publish" },
     { href: `${base}/quality`, label: "Quality" },
   ];
 
