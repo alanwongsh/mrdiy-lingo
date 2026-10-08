@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ContentPublication, PublishLanguageTarget, PublishVendorChoice } from "@/lib/types";
 import { languageKey } from "@/lib/target-languages";
-import { Badge } from "@/components/ui";
+import { Badge, Button } from "@/components/ui";
 
 function hostLabel(url: string | null) {
   if (!url) return "";
@@ -32,6 +32,8 @@ export function PublishLanguagePicker({
   ready,
   notice,
   readOnly = false,
+  publishing = false,
+  onPublish,
   onChange,
 }: {
   applicationId: string;
@@ -44,6 +46,8 @@ export function PublishLanguagePicker({
   ready: boolean;
   notice?: string;
   readOnly?: boolean;
+  publishing?: boolean;
+  onPublish?: () => void;
   onChange: (targets: PublishLanguageTarget[]) => void;
 }) {
   if (!ready) {
@@ -61,6 +65,9 @@ export function PublishLanguagePicker({
       publications.some((row) => row.vendor_id === vendor.id)
   );
   if (readOnly && selected.length === 0 && publications.length === 0) return null;
+  const waiting = selected.some(
+    (row) => publicationStatus(publications, row.language_code, row.vendor_id) !== "PUBLISHED"
+  );
 
   function publicationFor(languageCode: string, vendorId: string) {
     const key = pairKey(languageCode, vendorId);
@@ -161,12 +168,25 @@ export function PublishLanguagePicker({
         </ul>
       )}
       {readOnly ? null : (
-        <p className="text-xs text-[var(--hub-muted)]">
-          Tick every provider that should receive that language. A published provider stays ticked. The source language is sent when the article is approved. A translation is sent when that language is approved.
-        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          {onPublish ? (
+            <Button type="button" disabled={publishing || !waiting} onClick={onPublish}>
+              {publishing ? "Publishing…" : "Publish now"}
+            </Button>
+          ) : null}
+        </div>
       )}
     </fieldset>
   );
+}
+
+function publicationStatus(
+  publications: ContentPublication[],
+  languageCode: string,
+  vendorId: string
+) {
+  return publications.find((row) => pairKey(row.language_code, row.vendor_id) === pairKey(languageCode, vendorId))
+    ?.status;
 }
 
 function uniqueLanguages(sourceLanguage: string, languageCodes: string[]) {

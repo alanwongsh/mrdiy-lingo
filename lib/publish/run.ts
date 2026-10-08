@@ -123,88 +123,15 @@ export async function runDuePublications(applicationId?: string): Promise<Publis
     const articleTranslations = ((translations ?? []) as TranslationRow[]).filter(
       (row) => row.content_id === article.id
     );
-    const activeTargets = assignmentsFor(articleTargets, article.application_id, vendorsById);
-    const unfinished = activeTargets.filter((target) => {
-      const existing = findPublication(publications, article.id, target.vendor.id, target.languageCode);
-      return existing?.status !== "PUBLISHED";
-    });
-    if (activeTargets.length > 0 && unfinished.length === 0) {
-      if (article.status === "APPROVED") {
-        await markArticlePublished(article.id);
-        touchedApps.add(article.application_id);
-      }
-      continue;
-    }
-    result.due += 1;
-    if (article.status !== "APPROVED" && article.status !== "PUBLISHED") {
-      result.skipped += 1;
-      note(result, `${article.title}: the article is not approved.`);
-      continue;
-    }
-    if (activeTargets.length === 0) {
-      result.skipped += 1;
-      note(result, `${article.title}: no active provider is selected.`);
-      continue;
-    }
-
-    let deliveredAll = true;
-    for (const target of activeTargets) {
-      const vendor = target.vendor;
-      const existing = findPublication(publications, article.id, vendor.id, target.languageCode);
-      if (existing?.status === "PUBLISHED") continue;
-      const block = languageBlock(article, articleTranslations, target.languageCode);
-      if (block) {
-        deliveredAll = false;
-        result.skipped += 1;
-        note(result, `${article.title}: ${block}`);
-        continue;
-      }
-      if (existing?.status === "PENDING" && publicationInFlight(existing.attempted_at ?? null)) {
-        deliveredAll = false;
-        result.skipped += 1;
-        note(result, `${article.title}: ${target.languageCode} to ${vendor.name} is already publishing.`);
-        continue;
-      }
-
-      const publicationId = await claimPublication(
-        article.id,
-        vendor.id,
-        target.languageCode,
-        existing?.id
-      );
-      const delivery = await deliverToVendor({
-        id: vendor.id,
-        name: vendor.name,
-        typeCode: vendor.type_code,
-        config: vendor.config,
-        article: toPublishArticle(article, articleTranslations, target.languageCode, publicationId),
-      });
-      touchedApps.add(article.application_id);
-      if (delivery.ok) {
-        await savePublication(publicationId, {
-          status: "PUBLISHED",
-          external_url: delivery.externalUrl,
-          error_message: null,
-          published_at: new Date().toISOString(),
-        });
-        result.delivered += 1;
-      } else {
-        await savePublication(publicationId, {
-          status: "FAILED",
-          external_url: null,
-          error_message: delivery.error,
-          published_at: null,
-        });
-        result.failed += 1;
-        deliveredAll = false;
-        note(result, `${article.title}: ${target.languageCode} to ${vendor.name} failed. ${delivery.error}`);
-      }
-    }
-
-    if (deliveredAll && article.status === "APPROVED") {
-      await markArticlePublished(article.id);
-      touchedApps.add(article.application_id);
-    }
+    await publishArticleTargets(
+      article,
+      articleTargets,
+      articleTranslations,
+      publications,
+      vendorsById,
+      result,
+      touchedApps
+    );
   }
 
   for (const id of touchedApps) {
@@ -221,6 +148,163 @@ export async function runDuePublications(applicationId?: string): Promise<Publis
     );
   }
   return result;
+}
+
+/** Sends one article's ticked languages now. The estimated time is not required. */
+export async function publishContentNow(contentId: string): Promise<PublishRunResult> {
+  const result: PublishRunResult = { due: 0, delivered: 0, failed: 0, skipped: 0, notes: [] };
+  const db = await getDb();
+  const { data, error } = await db
+    .from("content")
+    .select(
+      "id, application_id, title, slug, content_type, source_language, source_content, market, status, scheduled_publish_at, target_languages"
+    )
+    .eq("id", contentId)
+    .single();
+  if (error) throw new Error(error.message);
+  const article = data as DueArticle;
+
+  const { data: targetRows, error: targetsError } = await db
+    .from("content_publish_targets")
+    .select("vendor_id, language_code")
+    .eq("content_id", contentId);
+  if (targetsError) throwPublishError(targetsError);
+  const articleTargets = (targetRows ?? []) as { vendor_id: string; language_code: string }[];
+
+  const [{ data: translations, error: translationsError }, { data: publications, error: publicationsError }] =
+    await Promise.all([
+      db
+        .from("content_translations")
+        .select("content_id, language_code, title, summary, body, seo_title, seo_description, status")
+        .eq("content_id", contentId),
+      db
+        .from("content_publications")
+        .select("id, content_id, vendor_id, language_code, status, external_url, attempted_at")
+        .eq("content_id", contentId),
+    ]);
+  if (translationsError) throw new Error(translationsError.message);
+  if (publicationsError) throwPublishError(publicationsError);
+
+  const vendorIds = [...new Set(articleTargets.map((row) => String(row.vendor_id)))];
+  const vendorsById = new Map<string, VendorRecord>();
+  if (vendorIds.length > 0) {
+    const { data: vendors, error: vendorsError } = await db
+      .from("publish_vendors")
+      .select("id, application_id, name, type_code, config, status")
+      .in("id", vendorIds);
+    if (vendorsError) throwPublishError(vendorsError);
+    for (const vendor of (vendors ?? []) as VendorRecord[]) vendorsById.set(vendor.id, vendor);
+  }
+
+  const touchedApps = new Set<string>();
+  await publishArticleTargets(
+    article,
+    articleTargets,
+    (translations ?? []) as TranslationRow[],
+    publications,
+    vendorsById,
+    result,
+    touchedApps
+  );
+  for (const id of touchedApps) {
+    revalidatePath(`/applications/${id}`);
+    revalidatePath(`/applications/${id}/articles`);
+    revalidatePath(`/applications/${id}/articles/${contentId}`);
+  }
+  return result;
+}
+
+async function publishArticleTargets(
+  article: DueArticle,
+  articleTargets: { vendor_id: string; language_code: string }[],
+  articleTranslations: TranslationRow[],
+  publications: Parameters<typeof findPublication>[0],
+  vendorsById: Map<string, VendorRecord>,
+  result: PublishRunResult,
+  touchedApps: Set<string>
+) {
+  const activeTargets = assignmentsFor(articleTargets, article.application_id, vendorsById);
+  const unfinished = activeTargets.filter((target) => {
+    const existing = findPublication(publications, article.id, target.vendor.id, target.languageCode);
+    return existing?.status !== "PUBLISHED";
+  });
+  if (activeTargets.length > 0 && unfinished.length === 0) {
+    if (article.status === "APPROVED") {
+      await markArticlePublished(article.id);
+      touchedApps.add(article.application_id);
+    }
+    return;
+  }
+  result.due += 1;
+  if (article.status !== "APPROVED" && article.status !== "PUBLISHED") {
+    result.skipped += 1;
+    note(result, `${article.title}: the article is not approved.`);
+    return;
+  }
+  if (activeTargets.length === 0) {
+    result.skipped += 1;
+    note(result, `${article.title}: no active provider is selected.`);
+    return;
+  }
+
+  let deliveredAll = true;
+  for (const target of activeTargets) {
+    const vendor = target.vendor;
+    const existing = findPublication(publications, article.id, vendor.id, target.languageCode);
+    if (existing?.status === "PUBLISHED") continue;
+    const block = languageBlock(article, articleTranslations, target.languageCode);
+    if (block) {
+      deliveredAll = false;
+      result.skipped += 1;
+      note(result, `${article.title}: ${block}`);
+      continue;
+    }
+    if (existing?.status === "PENDING" && publicationInFlight(existing.attempted_at ?? null)) {
+      deliveredAll = false;
+      result.skipped += 1;
+      note(result, `${article.title}: ${target.languageCode} to ${vendor.name} is already publishing.`);
+      continue;
+    }
+
+    const publicationId = await claimPublication(
+      article.id,
+      vendor.id,
+      target.languageCode,
+      existing?.id
+    );
+    const delivery = await deliverToVendor({
+      id: vendor.id,
+      name: vendor.name,
+      typeCode: vendor.type_code,
+      config: vendor.config,
+      article: toPublishArticle(article, articleTranslations, target.languageCode, publicationId),
+    });
+    touchedApps.add(article.application_id);
+    if (delivery.ok) {
+      await savePublication(publicationId, {
+        status: "PUBLISHED",
+        external_url: delivery.externalUrl,
+        error_message: null,
+        published_at: new Date().toISOString(),
+      });
+      result.delivered += 1;
+    } else {
+      await savePublication(publicationId, {
+        status: "FAILED",
+        external_url: null,
+        error_message: delivery.error,
+        published_at: null,
+      });
+      result.failed += 1;
+      deliveredAll = false;
+      note(result, `${article.title}: ${target.languageCode} to ${vendor.name} failed. ${delivery.error}`);
+    }
+  }
+
+  if (deliveredAll && article.status === "APPROVED") {
+    await markArticlePublished(article.id);
+    touchedApps.add(article.application_id);
+  }
 }
 
 type VendorRecord = {

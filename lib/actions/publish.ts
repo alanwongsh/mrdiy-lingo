@@ -6,11 +6,13 @@ import { getDb } from "@/lib/db/client";
 import { publishSchemaError, throwPublishError } from "@/lib/publish/errors";
 import { readConfig } from "@/lib/publish/integrations/integration";
 import { getPublishIntegration, listPublishIntegrations } from "@/lib/publish/integrations/registry";
+import { publishContentNow, type PublishRunResult } from "@/lib/publish/run";
 import {
   listPublicationRows,
   listPublishTargets,
   listVendorRows,
   normalizeVendorName,
+  replaceArticlePublishTargets,
   type VendorRow,
 } from "@/lib/publish/store";
 import type {
@@ -189,6 +191,33 @@ export async function savePublishVendor(input: {
 
   revalidatePath(`/applications/${input.applicationId}/settings/publish`);
   revalidatePath(`/applications/${input.applicationId}/articles`);
+}
+
+export async function publishArticleNow(
+  contentId: string,
+  applicationId: string,
+  targets: PublishLanguageTarget[]
+): Promise<PublishRunResult> {
+  const grant = await requireContentAccess(contentId, "edit");
+  if (grant.applicationId !== applicationId) throw new Error("Article not found.");
+  const db = await getDb();
+  const { data, error } = await db
+    .from("content")
+    .select("source_language, target_languages, status")
+    .eq("id", contentId)
+    .single();
+  if (error) throw new Error(error.message);
+  if (data.status !== "APPROVED" && data.status !== "PUBLISHED") {
+    throw new Error("Approve the article before publishing.");
+  }
+  await replaceArticlePublishTargets(contentId, applicationId, targets, [
+    String(data.source_language ?? ""),
+    ...((data.target_languages ?? []) as string[]),
+  ]);
+  const result = await publishContentNow(contentId);
+  revalidatePath(`/applications/${applicationId}`);
+  revalidatePath(`/applications/${applicationId}/articles/${contentId}`);
+  return result;
 }
 
 export async function deletePublishVendor(id: string, applicationId: string): Promise<void> {

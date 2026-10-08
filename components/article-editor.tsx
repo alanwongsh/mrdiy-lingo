@@ -44,6 +44,7 @@ import { HtmlEditor, type HtmlEditorHandle } from "@/components/html-editor";
 import { MARKETS } from "@/lib/markets";
 import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
 import { PublishLanguagePicker } from "@/components/article-publish-panel";
+import { publishArticleNow } from "@/lib/actions/publish";
 import { FilterSelect } from "./filter-select";
 import { TranslationQualityPanel } from "@/components/translation-quality-panel";
 import { saveReviewedContentTranslation } from "@/lib/actions/quality";
@@ -520,6 +521,19 @@ export function ArticleEditor({
     return rows;
   }
 
+  function publishNow() {
+    startTransition(async () => {
+      setError("");
+      try {
+        const result = await publishArticleNow(article.id, applicationId, assignedProviders());
+        if (result.notes.length > 0) setError(result.notes.join(" "));
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Publish failed");
+      }
+    });
+  }
+
   function saveSettings() {
     startTransition(async () => {
       setError("");
@@ -717,6 +731,8 @@ export function ArticleEditor({
               publications={publications}
               ready={publishReady}
               notice={publishNotice}
+              publishing={pending}
+              onPublish={publishNow}
               onChange={setLanguageVendors}
             />
           </div>
