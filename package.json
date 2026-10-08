@@ -6,7 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:seed": "node --env-file=.env.local scripts/db-seed.mjs",
+    "db:reset": "node --env-file=.env.local scripts/db-reset.mjs",
+    "db:migrate": "node --env-file=.env.local scripts/db-migrate.mjs",
+    "db:generate": "node --env-file=.env.local scripts/db-generate.mjs",
+    "token:mint": "node --env-file=.env.local scripts/mint-embed-token.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.27.0",
@@ -32,6 +37,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
+    "postgres": "^3.4.9",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
