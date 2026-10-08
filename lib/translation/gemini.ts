@@ -46,8 +46,30 @@ function plainReply(text: string) {
   return (fenced?.[1] ?? trimmed).trim();
 }
 
-function tagNames(html: string) {
-  return [...html.matchAll(/<\/?([a-zA-Z0-9]+)/g)].map((match) => match[1].toLowerCase()).join(",");
+/** Swap tags for stable markers so the model translates words and cannot rewrite markup. */
+function shieldHtml(html: string) {
+  const tags: string[] = [];
+  const text = html.replace(/<[^>]+>/g, (tag) => {
+    const token = `{{t${tags.length}}}`;
+    tags.push(tag);
+    return token;
+  });
+  return { text, tags };
+}
+
+function normalizeTokens(value: string) {
+  return value.replace(/\{\{\s*t\s*(\d+)\s*\}\}/gi, (_, index: string) => `{{t${Number(index)}}}`);
+}
+
+function tokenOrder(value: string) {
+  return [...value.matchAll(/\{\{t(\d+)\}\}/g)].map((match) => match[1]).join(",");
+}
+
+function restoreHtml(translated: string, tags: string[]) {
+  const normalized = normalizeTokens(translated);
+  const expected = tags.map((_, index) => String(index)).join(",");
+  if (tokenOrder(normalized) !== expected) return null;
+  return normalized.replace(/\{\{t(\d+)\}\}/g, (_, index: string) => tags[Number(index)] ?? "");
 }
 
 const ARTICLE_SCHEMA = {
@@ -63,13 +85,24 @@ const ARTICLE_SCHEMA = {
   },
 };
 
-function articlePrompt(input: TranslateArticleInput) {
+const PARTS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["parts"],
+  properties: {
+    parts: { type: "array", items: { type: "string" } },
+  },
+};
+
+function articlePrompt(input: TranslateArticleInput, tokens: boolean) {
   const fields = input.fields;
   return [
     `Translate this article from ${input.sourceLanguage} to ${input.targetLanguage}.`,
     "Return JSON with the keys title, summary, body, seo_title, and seo_description.",
     "Translate only the visible words. If a field is empty, return an empty string for that key.",
-    "In body, keep every HTML tag, attribute, and URL unchanged. Do not add or remove tags.",
+    tokens
+      ? "In body, markers such as {{t0}} stand for HTML tags. Copy every marker exactly, in the same order. Do not add, remove, or translate a marker."
+      : "In body, keep every HTML tag, attribute, and URL unchanged. Do not add or remove tags.",
     "Keep brand marks such as MR.DIY, numbers, and web addresses unchanged.",
     "",
     `title:\n${fields.title}`,
@@ -130,7 +163,8 @@ async function generate(
   apiKey: string,
   prompt: string,
   withThinking: boolean,
-  json: boolean
+  json: boolean,
+  schema: Record<string, unknown> = ARTICLE_SCHEMA
 ) {
   const ai = new GoogleGenAI({ apiKey });
   const gemini3 = isGemini3(model);
@@ -139,9 +173,7 @@ async function generate(
     contents: prompt,
     config: {
       maxOutputTokens: json ? 16384 : 8192,
-      ...(json
-        ? { responseMimeType: "application/json", responseJsonSchema: ARTICLE_SCHEMA }
-        : {}),
+      ...(json ? { responseMimeType: "application/json", responseJsonSchema: schema } : {}),
       ...(gemini3
         ? withThinking
           ? { thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } }
@@ -179,19 +211,69 @@ export class GeminiTranslationProvider implements TranslationProvider {
     ) {
       return source;
     }
-    const output = await this.request(articlePrompt(input), true);
-    const fields = articleFields(output, source);
-    if (
-      source.body.trim() &&
-      /<[a-z!/?]/i.test(source.body) &&
-      tagNames(source.body) !== tagNames(fields.body)
-    ) {
-      throw new Error("Gemini changed the HTML tags, so the translation was not saved.");
+    const shielded = /<[a-z!/?]/i.test(source.body) ? shieldHtml(source.body) : null;
+    const promptFields = shielded ? { ...source, body: shielded.text } : source;
+    const output = await this.request(
+      articlePrompt({ ...input, fields: promptFields }, Boolean(shielded?.tags.length)),
+      true
+    );
+    const fields = articleFields(output, promptFields);
+    if (shielded?.tags.length) {
+      fields.body = restoreHtml(fields.body, shielded.tags) ?? (await this.translateBodyParts(source.body, input));
     }
     return fields;
   }
 
-  private async request(prompt: string, json: boolean): Promise<string> {
+  /** Translate visible text and stitch the original tags back in one extra call. */
+  private async translateBodyParts(html: string, input: TranslateArticleInput): Promise<string> {
+    const parts = html.split(/(<[^>]+>)/g);
+    const nodes: { index: number; leading: string; core: string; trailing: string }[] = [];
+    parts.forEach((part, index) => {
+      if (!part || part.startsWith("<")) return;
+      const leading = part.match(/^\s*/)?.[0] ?? "";
+      const trailing = part.match(/\s*$/)?.[0] ?? "";
+      const core = part.slice(leading.length, part.length - trailing.length);
+      if (!core || !/[\p{L}\p{N}]/u.test(core)) return;
+      nodes.push({ index, leading, core, trailing });
+    });
+    if (nodes.length === 0) return html;
+
+    const output = await this.request(
+      [
+        `Translate each part from ${input.sourceLanguage} to ${input.targetLanguage}.`,
+        'Return JSON {"parts":[...]} with the same number of strings, in the same order.',
+        "Do not add HTML tags.",
+        "Keep brand marks such as MR.DIY, numbers, and web addresses unchanged.",
+        "",
+        ...nodes.map((node, index) => `${index}: ${node.core}`),
+      ].join("\n"),
+      true,
+      PARTS_SCHEMA
+    );
+    let translated: unknown[] | null = null;
+    try {
+      const parsed = JSON.parse(plainReply(output)) as { parts?: unknown };
+      translated = Array.isArray(parsed.parts) ? parsed.parts : null;
+    } catch {
+      translated = null;
+    }
+    if (!translated || translated.length !== nodes.length || translated.some((part) => typeof part !== "string")) {
+      throw new Error("Gemini changed the HTML tags, so the translation was not saved.");
+    }
+    const next = [...parts];
+    nodes.forEach((node, index) => {
+      const value = translated?.[index];
+      const text = typeof value === "string" && value.trim() ? value : node.core;
+      next[node.index] = `${node.leading}${text}${node.trailing}`;
+    });
+    return next.join("");
+  }
+
+  private async request(
+    prompt: string,
+    json: boolean,
+    schema: Record<string, unknown> = ARTICLE_SCHEMA
+  ): Promise<string> {
     const config = qualityConfig();
     if (!config.geminiApiKey) {
       throw new Error("GEMINI_API_KEY is not configured.");
@@ -204,7 +286,8 @@ export class GeminiTranslationProvider implements TranslationProvider {
           config.geminiApiKey,
           prompt,
           withThinking,
-          json
+          json,
+          schema
         );
         const output = plainReply(response.text ?? "");
         if (!output) throw new Error("Gemini returned an empty translation.");

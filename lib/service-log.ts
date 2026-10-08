@@ -31,12 +31,15 @@ export type ServiceLog = {
   metadata: Record<string, unknown>;
 };
 
-/** Daily files under logs/. SERVICE_LOG_RETENTION_DAYS defaults to 7. */
+/**
+ * Daily files under logs/. SERVICE_LOG_RETENTION_DAYS defaults to 7.
+ * Vercel can only write under /tmp, and that disk disappears with the instance.
+ */
 export function serviceLogConfig() {
   const parsed = Number(process.env.SERVICE_LOG_RETENTION_DAYS ?? "7");
   const retentionDays = Number.isFinite(parsed) ? Math.floor(parsed) : 7;
   return {
-    directory: path.join(process.cwd(), "logs"),
+    directory: process.env.VERCEL ? path.join("/tmp", "lingo-logs") : path.join(process.cwd(), "logs"),
     retentionDays: Math.min(365, Math.max(1, retentionDays)),
   };
 }
