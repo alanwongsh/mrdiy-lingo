@@ -321,6 +321,51 @@ export class TranslationQualityService {
     return { result, metadata, errorMessage };
   }
 
+  /** Score an unsaved translation. Nothing is written to the article. */
+  async preview(
+    request: Omit<AnalyzeArticleInput, "contentId">
+  ): Promise<TranslationQualityResult> {
+    const started = Date.now();
+    const categories = await listQualityCategories(true);
+    if (categories.length === 0) {
+      throw new Error("No quality categories are enabled.");
+    }
+    const [terminology, boilerplate] = await Promise.all([
+      listActiveTerminology(),
+      listActiveBoilerplate(),
+    ]);
+    const input: TranslationQualityInput = {
+      sourceLanguage: request.sourceLanguage,
+      targetLanguage: request.targetLanguage,
+      sourceTitle: request.sourceTitle,
+      sourceSummary: request.sourceSummary,
+      sourceContent: request.sourceContent,
+      translatedTitle: request.translatedTitle,
+      translatedSummary: request.translatedSummary,
+      translatedContent: request.translatedContent,
+      terminology,
+      boilerplate,
+      enabledCategories: categories,
+    };
+    const config = qualityConfig();
+    const aiCategories = categories.filter((category) => category.categoryType === "ai");
+    const providerId = config.provider;
+    const scored = await this.score(
+      input,
+      categories,
+      config,
+      aiCategories,
+      providerId,
+      started
+    );
+    return {
+      ...scored.result,
+      runId: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      persisted: false,
+    };
+  }
+
   /** Re-run terminology and boilerplate on the saved version. Does not call the model. */
   async recheckRules(request: {
     contentId: string;

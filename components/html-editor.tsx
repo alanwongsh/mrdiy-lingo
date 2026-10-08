@@ -6,12 +6,13 @@ import {
   useImperativeHandle,
   useRef,
 } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Node as ProseNode } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
+import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Underline from "@tiptap/extension-underline";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -53,6 +54,98 @@ function ToolbarButton({
       {label}
     </button>
   );
+}
+
+const MAX_IMAGE_BYTES = 500_000;
+
+/** Accept http(s), site-relative, and data-image sources. Reject script URLs. */
+function imageSrcFromPrompt(raw: string): string | null {
+  const value = raw.trim();
+  if (!value || /^javascript:/i.test(value)) return null;
+  if (value.startsWith("data:image/")) {
+    return value.includes(",") ? value : null;
+  }
+  if (value.startsWith("/") || value.startsWith("./") || value.startsWith("../")) {
+    return value;
+  }
+  try {
+    const url = new URL(value);
+    if (url.protocol === "http:" || url.protocol === "https:") return url.href;
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function readImageFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const src = typeof reader.result === "string" ? reader.result : "";
+      if (src.startsWith("data:image/")) resolve(src);
+      else reject(new Error("Could not read that image."));
+    };
+    reader.onerror = () => reject(new Error("Could not read that image."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function imageFilesFrom(data: DataTransfer | null): File[] {
+  if (!data) return [];
+  const fromFiles = Array.from(data.files).filter((file) =>
+    file.type.startsWith("image/")
+  );
+  if (fromFiles.length) return fromFiles;
+  const fromItems: File[] = [];
+  for (const item of Array.from(data.items)) {
+    if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+    const file = item.getAsFile();
+    if (file) fromItems.push(file);
+  }
+  return fromItems;
+}
+
+function insertImages(
+  editor: Editor | null,
+  view: EditorView,
+  srcs: string[],
+  pos?: number
+) {
+  if (!editor || editor.isDestroyed || !srcs.length) return;
+  const content = srcs.map((src) => ({ type: "image", attrs: { src } }));
+  const chain = editor.chain().focus();
+  if (pos == null) {
+    chain.insertContent(content).run();
+    return;
+  }
+  const at = Math.max(0, Math.min(pos, view.state.doc.content.size));
+  chain.insertContentAt(at, content).run();
+}
+
+async function placeImageFiles(
+  editor: Editor | null,
+  view: EditorView,
+  files: File[],
+  pos?: number
+) {
+  if (!editor || editor.isDestroyed || !files.length) return;
+  const srcs: string[] = [];
+  let skippedLarge = false;
+  for (const file of files) {
+    if (file.size > MAX_IMAGE_BYTES) {
+      skippedLarge = true;
+      continue;
+    }
+    try {
+      srcs.push(await readImageFile(file));
+    } catch {
+      window.alert("Could not read that image.");
+    }
+  }
+  if (skippedLarge) {
+    window.alert("That image is too large. Use an image URL instead.");
+  }
+  insertImages(editor, view, srcs, pos);
 }
 
 function normalizeEditorHtml(html: string) {
@@ -164,6 +257,7 @@ export const HtmlEditor = forwardRef<
   // Seed as already-applied so the first effect does not setContent and steal focus.
   const appliedRevisionRef = useRef<string | number | null>(revision);
   const applyingExternalRef = useRef(false);
+  const editorRef = useRef<Editor | null>(null);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -172,6 +266,9 @@ export const HtmlEditor = forwardRef<
         heading: { levels: [2, 3] },
       }),
       Underline,
+      Image.configure({
+        allowBase64: true,
+      }),
       Link.configure({
         openOnClick: false,
         HTMLAttributes: {
@@ -194,6 +291,45 @@ export const HtmlEditor = forwardRef<
         autocorrect: "off",
         autocomplete: "off",
       },
+      handlePaste: (view, event) => {
+        if (!view.editable) return false;
+        const html = event.clipboardData?.getData("text/html") ?? "";
+        if (/<img[\s>/]/i.test(html)) return false;
+        const files = imageFilesFrom(event.clipboardData);
+        if (!files.length) return false;
+        event.preventDefault();
+        void placeImageFiles(editorRef.current, view, files);
+        return true;
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        if (moved || !view.editable) return false;
+        const html = event.dataTransfer?.getData("text/html") ?? "";
+        if (/<img[\s>/]/i.test(html)) return false;
+        const uri = (event.dataTransfer?.getData("text/uri-list") ?? "")
+          .split("\n")
+          .map((line) => line.trim())
+          .find((line) => line && !line.startsWith("#"));
+        const droppedUrl = uri ? imageSrcFromPrompt(uri) : null;
+        const files = imageFilesFrom(event.dataTransfer);
+        if (!droppedUrl && !files.length) return false;
+        event.preventDefault();
+        const coords = view.posAtCoords({
+          left: event.clientX,
+          top: event.clientY,
+        });
+        if (droppedUrl) {
+          insertImages(editorRef.current, view, [droppedUrl], coords?.pos);
+          return true;
+        }
+        void placeImageFiles(editorRef.current, view, files, coords?.pos);
+        return true;
+      },
+    },
+    onCreate: ({ editor: current }) => {
+      editorRef.current = current;
+    },
+    onDestroy: () => {
+      editorRef.current = null;
     },
     onUpdate: ({ editor: current }) => {
       if (applyingExternalRef.current) return;
@@ -335,6 +471,33 @@ export const HtmlEditor = forwardRef<
               .extendMarkRange("link")
               .setLink({ href: url })
               .run();
+          }}
+        />
+        <ToolbarButton
+          label="Image"
+          title="Image"
+          active={editor.isActive("image")}
+          disabled={disabled}
+          onClick={() => {
+            const current = editor.getAttributes("image").src as
+              | string
+              | undefined;
+            const seed =
+              editor.isActive("image") && current && !current.startsWith("data:")
+                ? current
+                : "https://";
+            const entered = window.prompt("Image URL", seed);
+            if (entered == null) return;
+            const src = imageSrcFromPrompt(entered);
+            if (!src) {
+              window.alert("Enter an http(s) image URL.");
+              return;
+            }
+            if (editor.isActive("image")) {
+              editor.chain().focus().updateAttributes("image", { src }).run();
+              return;
+            }
+            editor.chain().focus().setImage({ src }).run();
           }}
         />
         <ToolbarButton

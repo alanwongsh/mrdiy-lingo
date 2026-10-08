@@ -134,6 +134,43 @@ export async function analyzeTranslationQuality(input: {
   });
 }
 
+/** Analyze a translation that has not been saved as an article yet. */
+export async function previewTranslationQuality(input: {
+  applicationId: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  sourceTitle: string;
+  sourceSummary: string;
+  sourceContent: string;
+  translatedTitle: string;
+  translatedSummary: string;
+  translatedContent: string;
+}) {
+  assertUuid(input.applicationId, "application");
+  const sourceLanguage = assertLanguage(input.sourceLanguage, "source language");
+  const targetLanguage = assertLanguage(input.targetLanguage, "target language");
+  if (sourceLanguage.toLowerCase() === targetLanguage.toLowerCase()) {
+    throw new Error("Choose a target language that differs from the source.");
+  }
+  await requireAppCapability(input.applicationId, "edit");
+  const translatedTitle = bounded(input.translatedTitle ?? "", 2000, "Title");
+  const translatedSummary = bounded(input.translatedSummary ?? "", 8000, "Description");
+  const translatedContent = bounded(input.translatedContent ?? "", 100000, "Body");
+  if (!translatedTitle.trim() && !translatedSummary.trim() && !translatedContent.trim()) {
+    throw new Error("Add a translation before analyzing it.");
+  }
+  return getTranslationQualityService().preview({
+    sourceLanguage,
+    targetLanguage,
+    sourceTitle: bounded(input.sourceTitle ?? "", 2000, "Source title"),
+    sourceSummary: bounded(input.sourceSummary ?? "", 8000, "Source description"),
+    sourceContent: bounded(input.sourceContent ?? "", 100000, "Source body"),
+    translatedTitle,
+    translatedSummary,
+    translatedContent,
+  });
+}
+
 export async function recheckTranslationRules(input: {
   applicationId: string;
   contentId: string;

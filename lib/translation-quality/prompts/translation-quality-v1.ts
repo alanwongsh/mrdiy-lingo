@@ -3,12 +3,8 @@ import { htmlToText } from "@/lib/translation-quality/text";
 
 export const PROMPT_VERSION = "translation-quality-v1";
 
-const FIELD_LIMIT = 6000;
-
-function bounded(value: string | undefined): string {
-  const text = htmlToText(value ?? "");
-  if (text.length <= FIELD_LIMIT) return text || "(empty)";
-  return `${text.slice(0, FIELD_LIMIT)}\n[truncated]`;
+function articleText(value: string | undefined): string {
+  return htmlToText(value ?? "") || "(empty)";
 }
 
 export function buildTranslationQualityPrompt(
@@ -20,7 +16,6 @@ export function buildTranslationQualityPrompt(
     .join("\n");
 
   const terms = (input.terminology ?? [])
-    .slice(0, 30)
     .map((entry) => {
       const preferred = entry.preferredTranslation || entry.term;
       return `- ${entry.term} → ${preferred}`;
@@ -59,23 +54,30 @@ When you suggest a change, set suggestedText to the replacement plain text and t
 Use actionType replace when suggestedText should replace translatedText.
 Leave findings empty when a category has no concrete issue.
 
+When a passage is untranslated, mixed with the source language, or still contains a leftover language tag such as [zh-Hans]:
+- Put those rewrites in cross_language.
+- Add one finding for every distinct broken paragraph or sentence, from the start of the article through the final paragraph. Do not stop after the first example, do not skip the closing sentence, and do not collapse many broken passages into one finding.
+- Quote the whole broken passage in translatedText. Do not shrink it to a few words inside the passage.
+- Set suggestedText to the full corrected passage in the target language.
+- Other categories should score the problem, but should not repeat the same passage.
+
 Source title:
-${bounded(input.sourceTitle)}
+${articleText(input.sourceTitle)}
 
 Source summary:
-${bounded(input.sourceSummary)}
+${articleText(input.sourceSummary)}
 
 Source article:
-${bounded(input.sourceContent)}
+${articleText(input.sourceContent)}
 
 Translated title:
-${bounded(input.translatedTitle)}
+${articleText(input.translatedTitle)}
 
 Translated summary:
-${bounded(input.translatedSummary)}
+${articleText(input.translatedSummary)}
 
 Translated article:
-${bounded(input.translatedContent)}
+${articleText(input.translatedContent)}
 
 Return only the requested structured JSON.`;
 }
@@ -98,7 +100,6 @@ export function geminiResponseSchema(categoryCodes: string[]) {
             summary: { type: "string" },
             findings: {
               type: "array",
-              maxItems: 6,
               items: {
                 type: "object",
                 additionalProperties: false,

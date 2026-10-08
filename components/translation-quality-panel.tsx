@@ -6,7 +6,9 @@ import {
   analyzeTranslationQuality,
   getTranslationQualityRun,
   ignoreTranslationFinding,
+  listQualitySettings,
   loadTranslationQuality,
+  previewTranslationQuality,
   recheckTranslationRules,
 } from "@/lib/actions/quality";
 import { Badge, Button, Card } from "@/components/ui";
@@ -182,6 +184,7 @@ export function TranslationQualityPanel({
   onPreview,
   onShow,
   showEditLink = false,
+  sessionOnly = false,
 }: {
   applicationId: string;
   contentId: string;
@@ -214,9 +217,13 @@ export function TranslationQualityPanel({
   onShow?: (target: { field: QualityAction["targetField"]; text: string }) => void;
   /** Link to the editor. Hidden when this panel is already on the edit page. */
   showEditLink?: boolean;
+  /** Score the text in memory. Used on the new-draft page before an article exists. */
+  sessionOnly?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
-  const requestKey = `${contentId}:${languageCode}:${savedAt}`;
+  const requestKey = sessionOnly
+    ? `session:${languageCode}`
+    : `${contentId}:${languageCode}:${savedAt}`;
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [errorKey, setErrorKey] = useState("");
@@ -258,6 +265,7 @@ export function TranslationQualityPanel({
   }, [previewWatch]);
 
   useEffect(() => {
+    if (sessionOnly) return;
     let cancelled = false;
     const key = requestKey;
     loadTranslationQuality({ contentId, languageCode })
@@ -315,7 +323,32 @@ export function TranslationQualityPanel({
     return () => {
       cancelled = true;
     };
-  }, [contentId, languageCode, requestKey, savedAt]);
+  }, [contentId, languageCode, requestKey, savedAt, sessionOnly]);
+
+  useEffect(() => {
+    if (!sessionOnly) return;
+    let cancelled = false;
+    const key = requestKey;
+    listQualitySettings(applicationId)
+      .then((settings) => {
+        if (cancelled) return;
+        setCategories(settings.categories);
+        setCanAnalyze(true);
+        setHistory([]);
+        setError("");
+        setErrorKey(key);
+        setLoadedKey(key);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Could not load quality review.");
+        setErrorKey(key);
+        setLoadedKey(key);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [applicationId, requestKey, sessionOnly]);
 
   const selected = loading || !selectedId ? undefined : results[selectedId];
   const latestId = history[0]?.id ?? null;
@@ -342,18 +375,30 @@ export function TranslationQualityPanel({
     setError("");
     startTransition(async () => {
       try {
-        const loaded = await analyzeTranslationQuality({
-          applicationId,
-          contentId,
-          sourceLanguage,
-          targetLanguage: languageCode,
-          sourceTitle: source.title,
-          sourceSummary: source.summary,
-          sourceContent: source.body,
-          translatedTitle: draft.title,
-          translatedSummary: draft.summary,
-          translatedContent: draft.body,
-        });
+        const loaded = sessionOnly
+          ? await previewTranslationQuality({
+              applicationId,
+              sourceLanguage,
+              targetLanguage: languageCode,
+              sourceTitle: source.title,
+              sourceSummary: source.summary,
+              sourceContent: source.body,
+              translatedTitle: draft.title,
+              translatedSummary: draft.summary,
+              translatedContent: draft.body,
+            })
+          : await analyzeTranslationQuality({
+              applicationId,
+              contentId,
+              sourceLanguage,
+              targetLanguage: languageCode,
+              sourceTitle: source.title,
+              sourceSummary: source.summary,
+              sourceContent: source.body,
+              translatedTitle: draft.title,
+              translatedSummary: draft.summary,
+              translatedContent: draft.body,
+            });
         if (!loaded.result) {
           setError(loaded.error || "Quality analysis failed. Please try again.");
           setErrorKey(requestKey);
@@ -409,6 +454,20 @@ export function TranslationQualityPanel({
   function ignoreFinding(findingId: string) {
     const runId = selected?.runId;
     if (!runId) return;
+    if (sessionOnly) {
+      onIgnore(findingId, false);
+      setResults((current) => {
+        const result = current[runId];
+        if (!result) return current;
+        const actions = result.actions.some((item) => item.findingId === findingId)
+          ? result.actions.map((item) =>
+              item.findingId === findingId ? { ...item, status: "ignored" as const } : item
+            )
+          : result.actions;
+        return { ...current, [runId]: { ...result, actions } };
+      });
+      return;
+    }
     setError("");
     startTransition(async () => {
       try {
@@ -647,7 +706,6 @@ export function TranslationQualityPanel({
                     !accepted.has(action?.id ?? finding.id) &&
                     !ignored.has(action?.id ?? finding.id);
                   const canAct = Boolean(place && !place.hidden) && pending && Boolean(action);
-                  const canDismiss = !place && Boolean(finding.translatedText) && pending;
                   return (
                     <li
                       key={finding.id}
@@ -681,7 +739,7 @@ export function TranslationQualityPanel({
                           {finding.translatedText}
                         </p>
                       ) : null}
-                      {finding.suggestedText && !place?.hidden ? (
+                      {finding.translatedText && finding.suggestedText && !place?.hidden ? (
                         <p className="mt-1 text-xs leading-relaxed text-slate-700">
                           <span className="font-semibold text-slate-500">Suggested: </span>
                           {finding.suggestedText}
@@ -699,8 +757,6 @@ export function TranslationQualityPanel({
                         <p className="mt-2 text-xs leading-relaxed text-slate-500">
                           This wording is no longer in the translation, so it can’t be highlighted or accepted.
                         </p>
-                      ) : finding.translatedText ? (
-                        <p className="mt-2 text-xs text-slate-500">Hover highlights it. Show jumps to that text.</p>
                       ) : null}
                       {canAct && action && place ? (
                         <div className="mt-2 flex flex-wrap gap-2">
@@ -725,8 +781,8 @@ export function TranslationQualityPanel({
                           <Button type="button" variant="secondary" onClick={() => ignoreFinding(finding.id)}>Ignore</Button>
                           {showEditLink && canReview ? <EditTranslationLink href={editHref} /> : null}
                         </div>
-                      ) : canDismiss ? (
-                        <div className="mt-2">
+                      ) : pending && canReview ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
                           <Button
                             type="button"
                             variant="secondary"
@@ -734,6 +790,7 @@ export function TranslationQualityPanel({
                           >
                             Ignore
                           </Button>
+                          {showEditLink ? <EditTranslationLink href={editHref} /> : null}
                         </div>
                       ) : showEditLink && canReview ? (
                         <div className="mt-2">
@@ -882,7 +939,6 @@ export function TranslationQualityPanel({
                     !accepted.has(action?.id ?? finding.id) &&
                     !ignored.has(action?.id ?? finding.id);
                   const canAct = Boolean(place && !place.hidden) && pending && Boolean(action);
-                  const canDismiss = !place && Boolean(finding.translatedText) && pending;
                   return (
                     <li
                       key={finding.id}
@@ -921,7 +977,7 @@ export function TranslationQualityPanel({
                             </span>
                           ) : null}
                           {finding.translatedText && finding.suggestedText && !place?.hidden ? " → " : null}
-                          {finding.suggestedText && !place?.hidden ? (
+                          {finding.translatedText && finding.suggestedText && !place?.hidden ? (
                             <span className="rounded bg-white px-1.5 py-0.5 font-medium">
                               {finding.suggestedText}
                             </span>
@@ -953,8 +1009,8 @@ export function TranslationQualityPanel({
                             Ignore
                           </Button>
                         </div>
-                      ) : canDismiss ? (
-                        <div className="mt-3">
+                      ) : pending && canReview ? (
+                        <div className="mt-3 flex gap-2">
                           <Button
                             type="button"
                             variant="secondary"

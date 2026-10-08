@@ -6,6 +6,7 @@ import type {
 } from "@/lib/translation-quality/types";
 import {
   clampScore,
+  escapeRegExp,
   findTerm,
   htmlToText,
   languageCompatible,
@@ -31,9 +32,39 @@ function visibleTerm(text: string, phrase: string) {
   );
 }
 
+function termPlain(value: string): string {
+  return htmlToText(value)
+    .replace(/[\u200b\u200c\u200d\ufeff]/g, "")
+    .replace(/[\u00a0\u2000-\u200a\u202f\u205f\u3000]/g, " ");
+}
+
+/** A multi-word name still counts when tags or line breaks leave the words touching. */
+function containsTerm(text: string, term: string): boolean {
+  const plain = termPlain(text);
+  if (findTerm(plain, term).length > 0) return true;
+  const parts = term.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return false;
+  const pattern = parts.map((part) => escapeRegExp(part)).join("\\s*");
+  return new RegExp(`(?:^|[^A-Za-z0-9])${pattern}(?=$|[^A-Za-z0-9])`, "i").test(plain);
+}
+
+/** MR.DIYrangkaian still contains the brand MR.DIY. */
+function leadingBrandPresent(text: string, term: string): boolean {
+  const head = term.trim().split(/\s+/)[0] ?? "";
+  if (head.length < 3) return false;
+  return new RegExp(`(?:^|[^A-Za-z0-9])${escapeRegExp(head)}`, "i").test(termPlain(text));
+}
+
+function hasPreferred(text: string, entry: TerminologyEntry, preferred: string): boolean {
+  if (containsTerm(text, preferred)) return true;
+  const keepAsWritten = preferred.toLowerCase() === entry.term.trim().toLowerCase();
+  const brand = entry.category.trim().toLowerCase() === "brand";
+  return keepAsWritten && brand && leadingBrandPresent(text, preferred);
+}
+
 function sourceHasTerm(source: string, term: string): boolean {
-  if (findTerm(source, term).length > 0) return true;
-  if (/^[A-Za-z]+$/.test(term) && findTerm(source, `${term}s`).length > 0) return true;
+  if (containsTerm(source, term)) return true;
+  if (/^[A-Za-z]+$/.test(term) && findTerm(termPlain(source), `${term}s`).length > 0) return true;
   return false;
 }
 
@@ -94,7 +125,7 @@ export class TerminologyRule implements TranslationQualityRule {
         return true;
       });
       const preferredHits = preferred
-        ? FIELDS.flatMap((field) => visibleTerm(field.text(input), preferred))
+        ? FIELDS.filter((field) => hasPreferred(field.text(input), entry, preferred))
         : [];
       if (!inSource && forbiddenHits.length === 0 && preferredHits.length === 0) continue;
 

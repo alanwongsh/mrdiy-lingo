@@ -22,6 +22,12 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+function plainQuote(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const text = value.replace(/<[^>]+>/g, "").trim();
+  return text || undefined;
+}
+
 function parseModelJson(text: string): unknown {
   const trimmed = text.trim();
   try {
@@ -55,7 +61,7 @@ export function validateGeminiPayload(
     if (!Number.isFinite(score)) continue;
     const findings: ProviderFinding[] = [];
     const rawFindings = Array.isArray(row.findings) ? row.findings : [];
-    for (const finding of rawFindings.slice(0, 6)) {
+    for (const finding of rawFindings) {
       const parsed = asRecord(finding);
       if (!parsed) continue;
       const severity = clip(parsed.severity, 20);
@@ -69,9 +75,9 @@ export function validateGeminiPayload(
         severity: severity as ProviderFinding["severity"],
         title,
         explanation,
-        sourceText: clip(parsed.sourceText, 500),
-        translatedText: clip(parsed.translatedText, 500)?.replace(/<[^>]+>/g, ""),
-        suggestedText: clip(parsed.suggestedText, 500)?.replace(/<[^>]+>/g, ""),
+        sourceText: plainQuote(parsed.sourceText),
+        translatedText: plainQuote(parsed.translatedText),
+        suggestedText: plainQuote(parsed.suggestedText),
         targetField: targetField as ProviderFinding["targetField"],
         actionType:
           actionType && ACTIONS.has(actionType)
@@ -157,7 +163,7 @@ async function generate(
     model,
     contents: prompt,
     config: {
-      maxOutputTokens: 4096,
+      maxOutputTokens: 65536,
       responseMimeType: "application/json",
       responseJsonSchema: schema,
       ...(gemini3

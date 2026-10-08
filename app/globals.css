@@ -197,6 +197,19 @@ textarea {
   font-weight: 700;
 }
 
+.html-editor-surface img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0.75em 0;
+  border-radius: 0.5rem;
+}
+
+.tiptap img.ProseMirror-selectednode {
+  outline: 2px solid var(--diy-red);
+  outline-offset: 2px;
+}
+
 .quality-diff-remove,
 .quality-diff-add,
 .quality-locate {
