@@ -1,6 +1,6 @@
 /**
- * db:migrate — applies all SQL migration files in supabase/migrations/ in order.
- * Safe to re-run; migrations use "create if not exists" / "on conflict do nothing".
+ * db:migrate — applies SQL migration files in supabase/migrations/ in order.
+ * Tracks applied migrations in a _migrations table so each file runs only once.
  *
  * Usage:
  *   npm run db:migrate
@@ -26,6 +26,14 @@ const sql = postgres(connectionString, {
 });
 
 async function migrate() {
+  // Create tracking table if it doesn't exist
+  await sql.unsafe(`
+    create table if not exists _migrations (
+      filename text primary key,
+      applied_at timestamptz not null default now()
+    );
+  `);
+
   const migrationsDir = join(__dirname, "../supabase/migrations");
   const files = readdirSync(migrationsDir)
     .filter((f) => f.endsWith(".sql"))
@@ -37,12 +45,25 @@ async function migrate() {
     return;
   }
 
-  console.log(`📦  Found ${files.length} migration file(s)\n`);
+  // Fetch already-applied migrations
+  const applied = await sql`select filename from _migrations`;
+  const appliedSet = new Set(applied.map((r) => r.filename));
 
-  for (const file of files) {
+  const pending = files.filter((f) => !appliedSet.has(f));
+
+  if (pending.length === 0) {
+    console.log("✅  Nothing to apply — all migrations are up to date.");
+    await sql.end();
+    return;
+  }
+
+  console.log(`📦  ${pending.length} pending migration(s)\n`);
+
+  for (const file of pending) {
     console.log(`📄  Applying: ${file}`);
     const migrationSql = readFileSync(join(migrationsDir, file), "utf8");
     await sql.unsafe(migrationSql);
+    await sql`insert into _migrations (filename) values (${file})`;
     console.log(`   ✔  Done`);
   }
 

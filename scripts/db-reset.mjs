@@ -1,22 +1,18 @@
 /**
- * db:reset — drops all Lingo tables, re-applies every migration in order,
- * then seeds the database.
+ * db:reset — drops everything in the public schema. That's it.
+ *
+ * After this, run manually:
+ *   npm run db:migrate   ← rebuild all tables
+ *   npm run db:seed      ← load default data
  *
  * ⚠  DESTRUCTIVE — local / staging use only. Never run against production.
  *
  * Usage:
  *   npm run db:reset
- *   # or with confirm flag inline:
  *   LINGO_RESET_CONFIRM=yes npm run db:reset
  */
 
 import postgres from "postgres";
-import { readFileSync, readdirSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
-import { execSync } from "child_process";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 if (process.env.LINGO_RESET_CONFIRM !== "yes") {
   console.error(
@@ -39,47 +35,13 @@ const sql = postgres(connectionString, {
   onnotice: () => {},
 });
 
-const DROP_SQL = `
-  drop table if exists article_comments             cascade;
-  drop table if exists application_members          cascade;
-  drop table if exists content_translation_versions cascade;
-  drop table if exists content_translations         cascade;
-  drop table if exists content                      cascade;
-  drop table if exists translation_versions         cascade;
-  drop table if exists translations                 cascade;
-  drop table if exists translation_keys             cascade;
-  drop table if exists namespaces                   cascade;
-  drop table if exists applications                 cascade;
-  drop table if exists languages                    cascade;
-  drop table if exists hub_users                    cascade;
-  drop function if exists uuidv7()                  cascade;
-  drop function if exists set_updated_at()          cascade;
-`;
-
 async function reset() {
-  const migrationsDir = join(__dirname, "../supabase/migrations");
-  const files = readdirSync(migrationsDir)
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
-
-  console.log("🗑   Dropping all Lingo tables...");
-  await sql.unsafe(DROP_SQL);
-  console.log("   ✔  Dropped\n");
-
-  for (const file of files) {
-    console.log(`📄  Applying migration: ${file}`);
-    const migrationSql = readFileSync(join(migrationsDir, file), "utf8");
-    await sql.unsafe(migrationSql);
-    console.log(`   ✔  Done`);
-  }
-
-  console.log("\n🌱  Running seed...");
-  execSync("npm run db:seed", {
-    stdio: "inherit",
-    cwd: join(__dirname, ".."),
-  });
-
-  console.log("\n✅  Reset complete.");
+  console.log("🗑   Dropping everything in public schema...");
+  await sql.unsafe(`drop schema public cascade; create schema public;`);
+  console.log("   ✔  Done\n");
+  console.log("Next steps:");
+  console.log("  npm run db:migrate");
+  console.log("  npm run db:seed");
   await sql.end();
 }
 

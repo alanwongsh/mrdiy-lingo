@@ -12,7 +12,7 @@ Centralized multilingual content hub for MR.DIY internal apps (Next.js App Route
 - TipTap 3 for article HTML body
 - PapaParse / SheetJS for CSV/XLSX import
 
-Sign-in comes from Joget (an embed token) or from email and password. Lingo stores a user row for access and traces.
+Sign-in comes from Joget (an embed token). Lingo stores a user row for access and traces. It does not own passwords.
 
 ## Features (current)
 
@@ -21,12 +21,9 @@ Sign-in comes from Joget (an embed token) or from email and password. Lingo stor
 | **Applications** | `STRING` (product keys) or `CONTENT` (press articles) |
 | **Languages** | CRUD + activate/deactivate |
 | **Product** | Namespaces, keys, per-language translations, versions, auto-translate, approve |
-| **Press** | Articles with title/description/HTML body, schedule/publish dates, per-article `source_language` + `target_languages`, TipTap editor, language chips, auto-translate, approve, history, article comments, copy title/description/body, Excel export of selected rows, bulk delete, translation quality review (Gemini scores plus terminology and boilerplate rules) |
-| **Quality** | Weighted score across message, tone, structure, cross-language, terminology, and boilerplate. Findings suggest wording. Accept stays in the draft until Save. HOD and above edit weights and terminology |
+| **Press** | Articles with title/description/HTML body, schedule/publish dates, per-article `source_language` + `target_languages`, TipTap editor, language chips, auto-translate, approve, history, article comments, copy title/description/body, Excel export of selected rows, bulk delete |
 | **Import** | Excel/CSV validate → preview (New/Updated/Unchanged) → confirm; optional auto-translate targets |
 | **Dashboard** | Coverage / lifecycle stats |
-| **Roles** | Superadmin groups account titles into Editor or HOD and above |
-| **Logs** | Superadmin view of daily service-call files (input, output, tokens). Kept for `SERVICE_LOG_RETENTION_DAYS` (default 7) |
 | **Setup** | In-app migration checklist (`/setup`) |
 
 ### Brand
@@ -38,50 +35,16 @@ Sign-in comes from Joget (an embed token) or from email and password. Lingo stor
 
 ```bash
 npm install
+cp .env.example .env.local   # then fill in your values
 ```
 
-`.env.local`:
+Fill in `.env.local` — at minimum you need `DATABASE_URL`, `NEXT_PRIVATE_SUPABASE_URL`, `NEXT_PRIVATE_SUPABASE_PUBLISHABLE_KEY`, and `JOGET_EMBED_SECRET`. See `.env.example` for all options.
+
+Then set up the database and start the app:
 
 ```bash
-NEXT_PRIVATE_SUPABASE_URL=...
-NEXT_PRIVATE_SUPABASE_PUBLISHABLE_KEY=...
-TRANSLATION_PROVIDER=mymemory   # or mock, or gemini (uses GEMINI_API_KEY)
-JOGET_EMBED_SECRET=...          # shared with Joget; signs the iframe user
-# Comma-separated Joget usernames, emails, or employee IDs that are Lingo superadmins.
-# LINGO_SUPERADMINS=ahmad,lee@example.com
-# Optional: origins allowed to iframe this app (space-separated). Default *
-# JOGET_FRAME_ANCESTORS=https://joget.example.com
-# Local stand-in for Joget. Never enable in production.
-# EMBED_ALLOW_DEV=true
-# Optional behind corporate SSL:
-# SUPABASE_INSECURE_SSL=true
-# Translation quality. The key stays on the server.
-# QUALITY_PROVIDER=gemini
-# GEMINI_API_KEY=
-# GEMINI_MODEL=gemini-3.5-flash-lite
-# How many daily service-log files to keep. Default 7.
-# SERVICE_LOG_RETENTION_DAYS=7
-```
-
-Apply SQL in order (Supabase SQL Editor or `/setup`):
-
-1. `supabase/migrations/001_translation_hub.sql` — core schema
-2. `supabase/migrations/002_version_approval.sql` — only if upgrading older DBs with version approval columns
-3. `supabase/migrations/003_content_publishing.sql` — `slug`, `scheduled_publish_at`, `published_at`
-4. `supabase/migrations/004_content_target_languages.sql` — `content.target_languages text[]`
-5. `supabase/migrations/005_article_comments.sql` — article comments, approver name, version username
-6. `supabase/migrations/006_uuidv7.sql` — time-ordered UUID v7 defaults for new rows
-7. `supabase/migrations/007_rewrite_uuidv7.sql` — rewrite existing v4 primary keys (and foreign keys) to v7. Old URLs stop working.
-8. `supabase/migrations/008_access_control.sql` — users, application owners, invited members
-9. `supabase/migrations/009_password_sign_in.sql` — email and password sign-in
-10. `supabase/migrations/010_content_list_meta.sql` — market and submitted by
-11. `supabase/migrations/011_member_roles.sql` — Editor, HOD, and Admin
-12. `supabase/migrations/012_org_role_map.sql` — group account titles
-13. `supabase/migrations/013_content_types.sql` — per-app content types
-14. `supabase/migrations/014_translation_quality.sql` — quality categories, terminology, boilerplate, runs, scores, findings, actions
-15. `supabase/migrations/015_quality_run_version.sql` — one quality run per saved translation version
-
-```bash
+npm run db:migrate   # creates all tables, safe to re-run
+npm run db:seed      # adds default languages, apps, and admin user
 npm run dev
 ```
 
@@ -146,7 +109,7 @@ Joget (later SSO) supplies identity. Lingo copies username, name, email, and opt
 - Any signed-in person can create an application and becomes its owner.
 - The owner invites people by email or employee ID and can grant edit and approve.
 - A person sees only applications they own or were invited to.
-- `LINGO_SUPERADMINS` marks platform superadmins. They use Languages, Roles, Logs, and Setup, and they can open every application without being the owner or an invitee.
+- `LINGO_SUPERADMINS` marks platform superadmins. They use Languages and Setup, and they can open every application without being the owner or an invitee.
 - Existing applications have no owner until a superadmin sets one. Until then only a superadmin can see them.
 
 ## Sample imports
@@ -159,13 +122,9 @@ Joget (later SSO) supplies identity. Lingo copies username, name, email, and opt
 ```
 Applications
 ├── STRING  → namespaces → translation_keys → translations → translation_versions
-└── CONTENT → content_types → content → content_translations → content_translation_versions
-                              └─ quality_runs → quality_scores
-                                            ├─ quality_findings → quality_actions
+└── CONTENT → content    → content_translations → content_translation_versions
 
-Quality lists (shared): quality_categories, terminology, boilerplate_phrases
-TranslationService → MyMemory | mock | Gemini
-Quality review → Gemini + terminology and boilerplate rules
+TranslationService → MyMemory | mock
 ```
 
 ### Domain notes (Press)
@@ -173,13 +132,12 @@ Quality review → Gemini + terminology and boilerplate rules
 - **Source language** (`content.source_language`): language of the authoring pane. Editable on create, edit, and CSV import. Auto-translate uses `source → target`.
 - **Target languages** (`content.target_languages`): intended locales for that article (excludes source). Listing/editor chips and import wizard write this array.
 - **Source content** lives in `content.source_content` JSON (`title`, `summary`, `body`, `seo_*`). Body is HTML.
-- **Per-language status** on `content_translations.status` (`MISSING` | `SYSTEM_GENERATED` | `MANUALLY_MODIFIED` | `APPROVED`). There is no separate version-level approval. Approving stores `approved_by_name` / `approved_by_username` from the signed-in Joget user. An editor save stores `MANUALLY_MODIFIED` and clears the stamp. An HOD save of an article language stores `APPROVED` and stamps the approver. Editing the source text clears approval on every target language. Changing type, market, schedule, or the target list does not.
+- **Per-language status** on `content_translations.status` (`MISSING` | `SYSTEM_GENERATED` | `MANUALLY_MODIFIED` | `APPROVED`). There is no separate version-level approval. Approving stores `approved_by_name` / `approved_by_username` from the signed-in Joget user. Saving that language clears the stamp. Editing the source clears approval on every target language.
 - **Comments** stay on the article (`article_comments.content_id`) but each row is for one `language_code`. The editor opens them from a floating button in a right-hand panel, defaulting to the language in the Editing pane. Each row stores `author_username` and `author_name`.
 - **Copy** is the icon beside each Title, Description, and Body label, on both the source pane and the editing pane. Title and description copy as plain text. Body copies the HTML currently in the editor.
 - **Export** on the article list writes selected rows to `.xlsx` using the import columns (`title`, `source_language`, `content_type`, `status`, `summary`, `body`, `seo_*`, then `{lang}_title` / `{lang}_body` / …). Source columns are always included. A language column is filled only when that translation is `APPROVED`; other languages stay blank. Articles with no approved target language are skipped. The list reports both. Language codes keep their stored case (`zh-Hans`).
-- **Lifecycle** on `content.status` (`DRAFT` → `TRANSLATING` → `REVIEW` → `APPROVED` → `PUBLISHED`). An editor creates or imports as `DRAFT`. An HOD, owner, or superadmin creates or imports as `APPROVED`. An editor’s auto-translate run sets `TRANSLATING`, then `REVIEW`, with each target `SYSTEM_GENERATED`. An HOD’s run stores each target as `APPROVED`. Setting `PUBLISHED` stamps `published_at`. Leaving `PUBLISHED` clears `published_at`. An editor saving a language on an approved or published article returns it to `REVIEW`. An HOD save leaves a published article published. Editing the source text of an approved or published article clears target approvals and returns the article to `REVIEW`. Approving the last target language sets the article to `APPROVED` when it is not already published.
+- **Lifecycle** on `content.status` (`DRAFT` → `TRANSLATING` → `REVIEW` → `APPROVED` → `PUBLISHED`). Setting `PUBLISHED` stamps `published_at`. Saving an approved translation, or editing the source of an approved or published article, sets the article back to `REVIEW` and clears `published_at`. Approving the last target language sets the article to `APPROVED`.
 - **Due UX**: list sorted by nearest `scheduled_publish_at`; filters for overdue / due soon (24h) / scheduled / none / published.
-- **Quality review** scores the translation on the checks that are on. Message, tone, structure, and cross-language come from Gemini. Terminology and boilerplate are checked against `terminology` and `boilerplate_phrases`. The overall score is the weighted average of the checks that returned a score. Accept writes a suggestion into the editor draft; Save commits the translation and the accepted actions together (`commit_content_translation_quality`). Ignore is stored immediately. One saved version holds one `quality_runs` row (`content_translation_version_id`). The score does not block publish. HOD and above change weights and terminology at `/applications/[id]/settings/quality`.
 
 ### Auto-translate cost
 
@@ -188,7 +146,7 @@ For each target language, `translateArticle` calls the provider once per field:
 - title, summary, seo_title, seo_description → **4** requests
 - body → **1 request per HTML text node** (markup preserved via `translateHtmlPreservingMarkup`)
 
-Rich sample articles ≈ **20–25 MyMemory calls per language**. With `TRANSLATION_PROVIDER=gemini`, one article is one call: the reply separates title, summary, body, and the SEO fields. Provider set by `TRANSLATION_PROVIDER` (`mymemory` default, `mock` prefixes `[lang] …`, `gemini` uses `GEMINI_API_KEY`). MyMemory truncates each chunk at 450 chars.
+Rich sample articles ≈ **20–25 MyMemory calls per language**. Provider set by `TRANSLATION_PROVIDER` (`mymemory` default, `mock` prefixes `[lang] …`). MyMemory truncates each chunk at 450 chars.
 
 ## Repository map
 
@@ -197,12 +155,9 @@ app/                          # App Router pages
   page.tsx                    # Dashboard
   setup/                      # Migration status + SQL display
   languages/
-  roles/
-  logs/
   applications/
     [id]/
       articles/               # CONTENT apps
-      settings/               # types and quality
       translations/           # STRING apps
       namespaces/
       import/
@@ -227,8 +182,6 @@ lib/
     applications.ts
     languages.ts
   translation/service.ts      # Providers + HTML-preserving translate
-  translation-quality/        # Gemini review, rules, scoring, persistence
-  service-log.ts              # Daily service-call log files
   import/parse.ts             # CSV/XLSX parsers
   target-languages.ts         # normalizeTargetLanguages()
   publish-due.ts              # Due windows / labels
@@ -295,13 +248,38 @@ Namespaces + keys + `autoTranslateKey(Languages)` + versions + stats (parallel t
 4. **HTML body translate = many HTTP calls** — do not assume one request per article; rate limits and slowness are expected on MyMemory.
 5. **Source vs target** — for Malay→English, set `source_language=ms` and include `en` in targets / import translate list. Wrong source language produces bad translations.
 6. **Migrations** — new Press fields need 003 + 004; quality needs 014 + 015; `/setup` probes columns and tells which file to run.
+6. **Migrations** — new Press fields need 003 + 004; `/setup` probes columns and tells which file to run.
 7. **Prefer existing patterns** — `components/ui.tsx` primitives, `FilterSelect` for list filters, `LanguageMultiSelect` for translate-to UX, server actions in `lib/actions/*`.
 
 ## Scripts
 
 ```bash
-npm run dev      # local app
+npm run dev            # local app
 npm run build
 npm run start
 npm run lint
 ```
+
+### Database scripts
+
+```bash
+npm run db:migrate     # apply any new migration files (safe to re-run, skips already-applied)
+npm run db:seed        # insert default languages, applications, and admin user (safe to re-run)
+npm run db:reset       # ⚠ DROP everything — then run db:migrate and db:seed yourself
+```
+
+**Normal workflow** after pulling new code from the team:
+
+```bash
+npm run db:migrate
+```
+
+**Fresh setup** from a blank database:
+
+```bash
+npm run db:reset       # requires LINGO_RESET_CONFIRM=yes in .env.local
+npm run db:migrate
+npm run db:seed
+```
+
+**Adding a new migration:** create a numbered file in `supabase/migrations/` (e.g. `018_your_change.sql`) and run `npm run db:migrate`. It will be applied once and tracked — no need to touch any other file.
