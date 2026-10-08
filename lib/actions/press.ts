@@ -326,10 +326,14 @@ export async function createArticle(input: {
   scheduled_publish_at?: string | null;
   target_languages?: string[];
   market?: string | null;
+  /** Keep DRAFT for an approver. Omitted saves from approvers are stored as approved. */
+  keepAsDraft?: boolean;
 }): Promise<Content> {
   const grant = await requireAppCapability(input.application_id, "edit");
   let status: ContentLifecycleStatus = input.status ?? "DRAFT";
-  if (grant.access.can_approve && status !== "PUBLISHED") {
+  if (input.keepAsDraft) {
+    status = "DRAFT";
+  } else if (grant.access.can_approve && status !== "PUBLISHED") {
     status = "APPROVED";
   }
   if (
@@ -387,6 +391,130 @@ export async function createArticle(input: {
 
   revalidatePath(`/applications/${input.application_id}`);
   return mapContentRow(data as Content);
+}
+
+/** Create or update a new article, then store its translations. Draft never approves. */
+export async function saveNewArticle(input: {
+  applicationId: string;
+  contentId?: string | null;
+  title: string;
+  contentType: string;
+  sourceLanguage: string;
+  sourceFields: SourceContentFields;
+  market?: string | null;
+  targetLanguages?: string[];
+  scheduledPublishAt?: string | null;
+  mode: "draft" | "approve";
+  translations?: Array<{
+    languageCode: string;
+    fields: SourceContentFields;
+    origin: "system" | "manual";
+  }>;
+}): Promise<{ id: string }> {
+  const approve = input.mode === "approve";
+  if (approve) {
+    await requireAppCapability(input.applicationId, "approve");
+  }
+  const sourceFields: SourceContentFields = {
+    title: input.sourceFields.title?.trim() || input.title.trim(),
+    summary: input.sourceFields.summary?.trim() ?? "",
+    body: input.sourceFields.body ?? "",
+    seo_title: input.sourceFields.seo_title?.trim() || input.title.trim(),
+    seo_description:
+      input.sourceFields.seo_description?.trim() ||
+      input.sourceFields.summary?.trim() ||
+      "",
+  };
+  const status: ContentLifecycleStatus = approve ? "APPROVED" : "DRAFT";
+  let articleId = input.contentId?.trim() || "";
+  if (!articleId) {
+    const article = await createArticle({
+      application_id: input.applicationId,
+      title: input.title.trim() || sourceFields.title,
+      slug: null,
+      source_language: input.sourceLanguage,
+      content_type: input.contentType,
+      status,
+      market: input.market ?? null,
+      target_languages: input.targetLanguages,
+      scheduled_publish_at: input.scheduledPublishAt ?? null,
+      source_content: sourceFields,
+      keepAsDraft: !approve,
+    });
+    articleId = article.id;
+  } else {
+    await updateArticle(articleId, input.applicationId, {
+      title: input.title.trim() || sourceFields.title,
+      slug: null,
+      content_type: input.contentType,
+      source_language: input.sourceLanguage,
+      source_content: sourceFields,
+      status,
+      scheduled_publish_at: input.scheduledPublishAt ?? null,
+      target_languages: input.targetLanguages,
+      market: input.market ?? null,
+      keepApprovals: true,
+    });
+  }
+
+  if (!approve) {
+    const db = await getDb();
+    const { error } = await db
+      .from("content")
+      .update({ status: "DRAFT", published_at: null })
+      .eq("id", articleId);
+    if (error) throw new Error(error.message);
+    const { error: sourceError } = await db
+      .from("content_translations")
+      .update({
+        status: "MANUALLY_MODIFIED",
+        approved_by_username: null,
+        approved_by_name: null,
+        approved_by_user_id: null,
+        approved_at: null,
+      })
+      .eq("content_id", articleId)
+      .eq("language_code", input.sourceLanguage);
+    if (sourceError) throw new Error(sourceError.message);
+  } else {
+    await upsertContentTranslation({
+      content_id: articleId,
+      language_code: input.sourceLanguage,
+      fields: sourceFields,
+      source_type: "MANUAL",
+      status: "APPROVED",
+    });
+  }
+
+  for (const row of input.translations ?? []) {
+    if (languageKey(row.languageCode) === languageKey(input.sourceLanguage)) continue;
+    if (
+      !row.fields.title.trim() &&
+      !row.fields.summary.trim() &&
+      !row.fields.body.trim()
+    ) {
+      continue;
+    }
+    await upsertContentTranslation({
+      content_id: articleId,
+      language_code: row.languageCode,
+      fields: {
+        ...row.fields,
+        seo_title: row.fields.seo_title || row.fields.title,
+        seo_description: row.fields.seo_description || row.fields.summary,
+      },
+      source_type: row.origin === "system" ? "SYSTEM" : "MANUAL",
+      status: approve
+        ? "APPROVED"
+        : row.origin === "system"
+          ? "SYSTEM_GENERATED"
+          : "MANUALLY_MODIFIED",
+    });
+  }
+
+  revalidatePath(`/applications/${input.applicationId}`);
+  revalidatePath(`/applications/${input.applicationId}/articles/${articleId}`);
+  return { id: articleId };
 }
 
 export async function updateArticle(
@@ -938,6 +1066,56 @@ export async function autoTranslateArticleLanguages(input: {
   }
   if (approveTranslations) {
     await syncArticleStatusFromApprovals(input.contentId, input.applicationId);
+  }
+  return results;
+}
+
+/** Translate into the selected languages without creating or updating an article. */
+export async function previewTranslateArticle(input: {
+  applicationId: string;
+  sourceLanguage: string;
+  targetLanguages: string[];
+  sourceFields: SourceContentFields;
+}): Promise<{ language_code: string; fields: SourceContentFields }[]> {
+  await requireAppCapability(input.applicationId, "edit");
+  const sourceLanguage = input.sourceLanguage.trim();
+  const sourceFields: SourceContentFields = {
+    title: input.sourceFields.title?.trim() ?? "",
+    summary: input.sourceFields.summary?.trim() ?? "",
+    body: input.sourceFields.body ?? "",
+    seo_title:
+      input.sourceFields.seo_title?.trim() || input.sourceFields.title?.trim() || "",
+    seo_description:
+      input.sourceFields.seo_description?.trim() ||
+      input.sourceFields.summary?.trim() ||
+      "",
+  };
+  if (!sourceFields.body.trim() && !sourceFields.title.trim()) {
+    throw new Error("Nothing to translate — add a source title or body first.");
+  }
+  const requested = normalizeTargetLanguages(input.targetLanguages, sourceLanguage);
+  if (requested.length === 0) {
+    throw new Error("Choose a language other than the source.");
+  }
+  const service = getTranslationService();
+  const results: { language_code: string; fields: SourceContentFields }[] = [];
+  for (const targetLanguage of requested) {
+    let fields = await service.translateArticle({
+      fields: sourceFields,
+      sourceLanguage,
+      targetLanguage,
+    });
+    if (!fields.body?.trim() && sourceFields.body.trim()) {
+      fields = {
+        ...fields,
+        body: await service.translateText({
+          text: sourceFields.body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+          sourceLanguage,
+          targetLanguage,
+        }),
+      };
+    }
+    results.push({ language_code: targetLanguage, fields });
   }
   return results;
 }

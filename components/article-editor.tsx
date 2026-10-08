@@ -584,28 +584,33 @@ export function ArticleEditor({
     setScrollRequest((current) => current + 1);
   }
 
+  const scorePreviewRef = useRef(scorePreview);
+  scorePreviewRef.current = scorePreview;
+
   useEffect(() => {
-    if (!scrollRequest || !scorePreview) return;
-    const phrase = scorePreview.text.trim();
+    if (!scrollRequest) return;
+    const preview = scorePreviewRef.current;
+    if (!preview) return;
+    const phrase = preview.text.trim();
     const frame = requestAnimationFrame(() => {
-      if (scorePreview.field === "content") {
+      if (preview.field === "content") {
         document.querySelector(".quality-locate")?.scrollIntoView({
           behavior: "smooth",
-          block: "center",
+          block: "nearest",
         });
         return;
       }
-      const el = scorePreview.field === "title" ? titleRef.current : summaryRef.current;
+      const el = preview.field === "title" ? titleRef.current : summaryRef.current;
       if (!el) return;
       const at = el.value.toLowerCase().indexOf(phrase.toLowerCase());
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
       if (at >= 0) {
-        el.focus();
+        el.focus({ preventScroll: true });
         el.setSelectionRange(at, at + phrase.length);
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [scrollRequest, scorePreview]);
+  }, [scrollRequest]);
 
   function ignoreQualityAction(actionId: string, stored = true) {
     const remember = (ids: string[]) => (ids.includes(actionId) ? ids : [...ids, actionId]);
@@ -775,9 +780,8 @@ export function ArticleEditor({
           options={allTargets}
           statuses={statuses}
           selected={targetLanguages}
-          activeCode={editingCode || undefined}
           onSelectedChange={onTargetsChange}
-          onActiveChange={setTargetLang}
+          showEditingSwitcher={false}
           translateAction={
             <BatchTranslateButton
               count={targetLanguages.length}
@@ -785,22 +789,6 @@ export function ArticleEditor({
               loading={isTranslating}
               onClick={runBatchTranslate}
             />
-          }
-          editingAction={
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={pending || historyLoading || isTranslating || !editingCode}
-              onClick={() =>
-                showHistory ? setShowHistory(false) : loadHistory()
-              }
-            >
-              {showHistory
-                ? "Close history"
-                : historyLoading
-                  ? "Loading…"
-                  : "History"}
-            </Button>
           }
         />
         {isTranslating ? (
@@ -813,47 +801,6 @@ export function ArticleEditor({
           </div>
         ) : null}
       </Card>
-
-      {showHistory ? (
-        <div ref={historyRef}>
-          <ArticleVersionPanel
-            versions={versions}
-            draft={draft}
-            loading={historyLoading}
-            error={historyError}
-            pending={pending}
-            onRestore={setDraft}
-            onDelete={(versionId, versionNumber) => {
-              if (
-                !confirm(
-                  `Delete version v${versionNumber}? This cannot be undone.`
-                )
-              ) {
-                return;
-              }
-              startTransition(async () => {
-                setHistoryError("");
-                try {
-                  await deleteContentTranslationVersion({
-                    versionId,
-                    applicationId,
-                    contentId: article.id,
-                  });
-                  setVersions((prev) =>
-                    prev.filter((item) => item.id !== versionId)
-                  );
-                } catch (err) {
-                  setHistoryError(
-                    err instanceof Error
-                      ? err.message
-                      : "Failed to delete version"
-                  );
-                }
-              });
-            }}
-          />
-        </div>
-      ) : null}
 
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
 
@@ -929,28 +876,63 @@ export function ArticleEditor({
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <Card className="overflow-hidden border-[var(--diy-red)]/20">
           <div className="border-b border-[var(--hub-border)] bg-[var(--diy-red-soft)] px-4 py-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                className="flex min-w-0 items-center gap-2 text-left"
-                aria-expanded={editingOpen}
-                onClick={() => setEditingOpen((open) => !open)}
-              >
-                <span className="text-[var(--diy-red)]" aria-hidden>
-                  {editingOpen ? "▾" : "▸"}
-                </span>
-                <span>
-                  <span className="block text-xs font-semibold tracking-wide text-[var(--diy-red)] uppercase">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className="flex items-center gap-2 text-left"
+                  aria-expanded={editingOpen}
+                  onClick={() => setEditingOpen((open) => !open)}
+                >
+                  <span className="text-[var(--diy-red)]" aria-hidden>
+                    {editingOpen ? "▾" : "▸"}
+                  </span>
+                  <span className="text-xs font-semibold tracking-wide text-[var(--diy-red)] uppercase">
                     Editing
                   </span>
-                  <span className="mt-0.5 block font-semibold text-slate-900">
-                    {targetMeta?.name ?? "Choose a language"}
+                </button>
+                {targetLanguages.length > 0 ? (
+                  <select
+                    aria-label="Editing language"
+                    className={`${inputClass} w-auto min-w-48`}
+                    value={editingCode}
+                    disabled={isTranslating}
+                    onChange={(e) => setTargetLang(e.target.value)}
+                  >
+                    {targetLanguages.map((code) => {
+                      const lang = findLanguage(languages, code);
+                      return (
+                        <option key={code} value={code}>
+                          {lang?.name ?? code}
+                        </option>
+                      );
+                    })}
+                  </select>
+                ) : (
+                  <span className="font-semibold text-slate-900">
+                    Choose a language
                   </span>
-                </span>
-              </button>
-              {editingCode ? (
-                <Badge tone={statusTone(langStatus)}>{langStatus}</Badge>
-              ) : null}
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {editingCode ? (
+                  <Badge tone={statusTone(langStatus)}>{langStatus}</Badge>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={pending || historyLoading || isTranslating || !editingCode}
+                  onClick={() =>
+                    showHistory ? setShowHistory(false) : loadHistory()
+                  }
+                >
+                  {showHistory
+                    ? "Close history"
+                    : historyLoading
+                      ? "Loading…"
+                      : "History"}
+                </Button>
+              </div>
             </div>
           </div>
           <div className="space-y-3 p-4" hidden={!editingOpen}>
@@ -1094,6 +1076,46 @@ export function ArticleEditor({
                 </span>
               ) : null}
             </div>
+            {showHistory ? (
+              <div ref={historyRef} className="border-t border-[var(--hub-border)] pt-3">
+                <ArticleVersionPanel
+                  versions={versions}
+                  draft={draft}
+                  loading={historyLoading}
+                  error={historyError}
+                  pending={pending}
+                  onRestore={setDraft}
+                  onDelete={(versionId, versionNumber) => {
+                    if (
+                      !confirm(
+                        `Delete version v${versionNumber}? This cannot be undone.`
+                      )
+                    ) {
+                      return;
+                    }
+                    startTransition(async () => {
+                      setHistoryError("");
+                      try {
+                        await deleteContentTranslationVersion({
+                          versionId,
+                          applicationId,
+                          contentId: article.id,
+                        });
+                        setVersions((prev) =>
+                          prev.filter((item) => item.id !== versionId)
+                        );
+                      } catch (err) {
+                        setHistoryError(
+                          err instanceof Error
+                            ? err.message
+                            : "Failed to delete version"
+                        );
+                      }
+                    });
+                  }}
+                />
+              </div>
+            ) : null}
             </>
             )}
           </div>

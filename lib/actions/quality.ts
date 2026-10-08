@@ -4,6 +4,7 @@ import {
   acknowledgeIgnoredQualityAction as acknowledgeIgnored,
   ignoreTranslationFinding as ignoreFinding,
   analyzeTranslationQuality as analyze,
+  previewTranslationQuality as previewAnalyze,
   recheckTranslationRules as recheckRules,
   createTerminologyEntry as createTerm,
   getTranslationQualityFindings as findings,
@@ -50,6 +51,30 @@ export async function analyzeTranslationQuality(input: {
 }) {
   try {
     return { result: await analyze(input), error: "" };
+  } catch (error) {
+    return {
+      result: null,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Quality analysis failed. Please try again.",
+    };
+  }
+}
+
+export async function previewTranslationQuality(input: {
+  applicationId: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  sourceTitle: string;
+  sourceSummary: string;
+  sourceContent: string;
+  translatedTitle: string;
+  translatedSummary: string;
+  translatedContent: string;
+}) {
+  try {
+    return { result: await previewAnalyze(input), error: "" };
   } catch (error) {
     return {
       result: null,

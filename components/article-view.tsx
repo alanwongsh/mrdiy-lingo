@@ -127,7 +127,34 @@ function wrapFirstText(html: string, phrase: string, wrap: (matched: string) => 
   return html;
 }
 
-/** Highlight a sentence that is split by tags, such as a bold word in the middle. */
+function decodeTextEntity(text: string, offset: number): { char: string; length: number } | null {
+  if (text[offset] !== "&") return null;
+  const end = text.indexOf(";", offset + 1);
+  if (end < 0 || end - offset > 16) return null;
+  const body = text.slice(offset + 1, end);
+  const named: Record<string, string> = {
+    amp: "&",
+    lt: "<",
+    gt: ">",
+    quot: '"',
+    apos: "'",
+    nbsp: " ",
+  };
+  if (body.startsWith("#")) {
+    const code =
+      body[1] === "x" || body[1] === "X"
+        ? Number.parseInt(body.slice(2), 16)
+        : Number.parseInt(body.slice(1), 10);
+    if (!Number.isFinite(code) || code <= 0 || code > 0x10ffff) return null;
+    const char = String.fromCodePoint(code);
+    return { char: char === "\u00a0" ? " " : char, length: end - offset + 1 };
+  }
+  const char = named[body.toLowerCase()];
+  if (!char) return null;
+  return { char, length: end - offset + 1 };
+}
+
+/** Highlight a sentence that is split by tags, such as a brand name inside a link. */
 function markAcrossTags(html: string, phrase: string) {
   const needle = phrase.trim().toLowerCase().replace(/\s+/g, " ");
   if (!needle || !html) return html;
@@ -146,18 +173,29 @@ function markAcrossTags(html: string, phrase: string) {
     cursor = end;
   }
   let flat = "";
-  const map: Array<{ segment: number; offset: number } | null> = [];
-  const pushChar = (segment: number | null, offset: number, char: string) => {
+  const map: Array<{ segment: number; offset: number; length: number } | null> = [];
+  const pushChar = (
+    segment: number | null,
+    offset: number,
+    length: number,
+    char: string
+  ) => {
     flat += char.toLowerCase();
-    map.push(segment == null ? null : { segment, offset });
+    map.push(segment == null ? null : { segment, offset, length });
   };
   for (let index = 0; index < segments.length; index += 1) {
     const text = segments[index].text;
-    if (flat && !/\s$/.test(flat) && text && !/^\s/.test(text)) pushChar(null, 0, " ");
-    for (let offset = 0; offset < text.length; offset += 1) {
-      const char = text[offset];
-      if (/\s/.test(char) && /\s$/.test(flat)) continue;
-      pushChar(index, offset, /\s/.test(char) ? " " : char);
+    let offset = 0;
+    while (offset < text.length) {
+      const entity = decodeTextEntity(text, offset);
+      const char = entity?.char ?? text[offset];
+      const length = entity?.length ?? 1;
+      if (/\s/.test(char) && /\s$/.test(flat)) {
+        offset += length;
+        continue;
+      }
+      pushChar(index, offset, length, /\s/.test(char) ? " " : char);
+      offset += length;
     }
   }
   const at = flat.indexOf(needle);
@@ -167,8 +205,9 @@ function markAcrossTags(html: string, phrase: string) {
     const point = map[index];
     if (!point) continue;
     const current = covered.get(point.segment);
-    if (!current) covered.set(point.segment, { from: point.offset, to: point.offset + 1 });
-    else current.to = Math.max(current.to, point.offset + 1);
+    const end = point.offset + point.length;
+    if (!current) covered.set(point.segment, { from: point.offset, to: end });
+    else current.to = Math.max(current.to, end);
   }
   if (covered.size === 0) return html;
   let out = "";
@@ -776,6 +815,8 @@ export function ArticleView({
   const savedKey = `${reviewCode ?? ""}:${reviewTranslation?.updated_at ?? ""}`;
   const [draftKey, setDraftKey] = useState(savedKey);
   const [reviewDraft, setReviewDraft] = useState<SourceContentFields>(savedFields);
+  const reviewDraftRef = useRef(reviewDraft);
+  reviewDraftRef.current = reviewDraft;
   const [acceptedActionIds, setAcceptedActionIds] = useState<string[]>([]);
   const [ignoredActionIds, setIgnoredActionIds] = useState<string[]>([]);
   const [localHandledIds, setLocalHandledIds] = useState<string[]>([]);
@@ -815,7 +856,7 @@ export function ArticleView({
     const frame = requestAnimationFrame(() => {
       document.querySelector(".quality-locate")?.scrollIntoView({
         behavior: "smooth",
-        block: "center",
+        block: "nearest",
       });
     });
     return () => cancelAnimationFrame(frame);
@@ -839,7 +880,9 @@ export function ArticleView({
 
   function acceptReviewAction(action: QualityAction, stored = true) {
     try {
-      setReviewDraft((current) => applyQualityAction(current, action));
+      const next = applyQualityAction(reviewDraftRef.current, action);
+      reviewDraftRef.current = next;
+      setReviewDraft(next);
       const remember = (ids: string[]) => (ids.includes(action.id) ? ids : [...ids, action.id]);
       if (stored) setAcceptedActionIds(remember);
       else setLocalHandledIds(remember);

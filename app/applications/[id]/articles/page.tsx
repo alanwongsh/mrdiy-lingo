@@ -69,7 +69,7 @@ export default async function ArticlesPage({
         description={`${result.total} article${result.total === 1 ? "" : "s"}`}
         actions={
           <LinkButton href={`/applications/${app.id}/articles/new`}>
-            New article
+            New Draft
           </LinkButton>
         }
       />
