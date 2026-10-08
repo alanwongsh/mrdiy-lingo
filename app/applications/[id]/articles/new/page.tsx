@@ -209,11 +209,11 @@ export default function NewArticlePage() {
     });
   }
 
-  function acceptQualityAction(action: QualityAction) {
+  function acceptQualityAction(action: QualityAction, _stored?: boolean, quiet = false) {
     if (!editingCode) return;
     const key = languageKey(editingCode);
     const existing = heldRef.current[key]?.fields ?? emptySourceContent();
-    const liveBody = targetBodyRef.current?.getHTML()?.trim();
+    const liveBody = quiet ? "" : targetBodyRef.current?.getHTML()?.trim();
     const fields =
       action.targetField === "content" && liveBody
         ? { ...existing, body: liveBody }
@@ -232,7 +232,14 @@ export default function NewArticlePage() {
       );
       setError("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not apply the suggestion.");
+      const message = err instanceof Error ? err.message : "Could not apply the suggestion.";
+      if (quiet && message.includes("no longer matches")) {
+        setAcceptedActionIds((ids) =>
+          ids.includes(action.id) ? ids : [...ids, action.id]
+        );
+        return;
+      }
+      setError(message);
     }
   }
 

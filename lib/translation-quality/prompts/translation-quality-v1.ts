@@ -1,5 +1,5 @@
 import type { TranslationQualityInput } from "@/lib/translation-quality/types";
-import { htmlToText } from "@/lib/translation-quality/text";
+import { htmlToText, languageCompatible } from "@/lib/translation-quality/text";
 
 export const PROMPT_VERSION = "translation-quality-v1";
 
@@ -16,9 +16,17 @@ export function buildTranslationQualityPrompt(
     .join("\n");
 
   const terms = (input.terminology ?? [])
+    .filter(
+      (entry) =>
+        entry.isActive &&
+        languageCompatible(entry.sourceLanguage, input.sourceLanguage) &&
+        languageCompatible(entry.targetLanguage, input.targetLanguage)
+    )
     .map((entry) => {
       const preferred = entry.preferredTranslation || entry.term;
-      return `- ${entry.term} → ${preferred}`;
+      const forbidden = entry.forbiddenTranslations.map((item) => item.trim()).filter(Boolean);
+      const avoid = forbidden.length > 0 ? `; do not use ${forbidden.join(", ")} for this term` : "";
+      return `- When the source says "${entry.term}", use "${preferred}"${avoid}.`;
     })
     .join("\n");
 
@@ -43,8 +51,10 @@ Do not penalize valid stylistic differences.
 For cross_language, prioritize semantic accuracy.
 For tone, compare the translated tone against the source.
 For structure, evaluate preservation of article organization.
-Do not score terminology or boilerplate. Other checks cover those.
-Treat the preferred terms below as intentional. Do not ask to translate a brand that must stay unchanged.
+Do not score terminology or boilerplate. Other checks cover those, and your scores must not move because of them.
+The glossary below is already decided. Using its preferred word for that source word is correct. Do not lower message, tone, structure, or cross_language for it, and do not suggest a different word.
+A preferred word applies only where the source uses that term. If the source says "booth", "gerai" is the right meaning and "Kedai" is a mistranslation. Score that as meaning, not as terminology.
+Do not suggest the reverse of a preferred term when the source word is the glossary term.
 
 Preferred terms:
 ${terms || "- (none)"}
@@ -78,8 +88,28 @@ ${articleText(input.translatedSummary)}
 
 Translated article:
 ${articleText(input.translatedContent)}
-
+${focusBlock(input)}
 Return only the requested structured JSON.`;
+}
+
+function focusBlock(input: TranslationQualityInput): string {
+  const passages = input.passageFocus ?? [];
+  if (passages.length === 0) return "";
+  const lines = passages
+    .map(
+      (passage, index) =>
+        `Passage ${index + 1}
+Source: ${passage.source}
+Translation: ${passage.translated}`
+    )
+    .join("\n\n");
+  return `
+These passages were left out of the review above. Return one cross_language finding for every passage.
+Set translatedText to the Translation line exactly, and suggestedText to the full correction in ${input.targetLanguage}.
+Use actionType replace. Leave findings empty for every other category.
+
+${lines}
+`;
 }
 
 export function geminiResponseSchema(categoryCodes: string[]) {

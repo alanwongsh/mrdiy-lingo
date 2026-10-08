@@ -557,7 +557,7 @@ export function ArticleEditor({
     });
   }
 
-  function acceptQualityAction(action: QualityAction) {
+  function acceptQualityAction(action: QualityAction, _stored?: boolean, quiet = false) {
     try {
       const next = applyQualityAction(draftRef.current, action);
       draftRef.current = next;
@@ -571,11 +571,15 @@ export function ArticleEditor({
       );
       setError("");
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Could not apply the suggestion."
-      );
+      const message =
+        err instanceof Error ? err.message : "Could not apply the suggestion.";
+      if (quiet && message.includes("no longer matches")) {
+        setAcceptedActionIds((ids) =>
+          ids.includes(action.id) ? ids : [...ids, action.id]
+        );
+        return;
+      }
+      setError(message);
     }
   }
 

@@ -209,7 +209,7 @@ export function TranslationQualityPanel({
   acceptedActionIds: string[];
   ignoredActionIds: string[];
   onLatestRunId: (runId: string | null) => void;
-  onAccept: (action: QualityAction, stored?: boolean) => void;
+  onAccept: (action: QualityAction, stored?: boolean, quiet?: boolean) => void;
   onIgnore: (actionId: string, stored?: boolean) => void;
   /** Hover a finding to highlight that sentence in the article. */
   onPreview?: (target: { field: QualityAction["targetField"]; text: string } | null) => void;
@@ -532,6 +532,29 @@ export function TranslationQualityPanel({
     if (action.status !== "pending") return !isLatest && !isDraftPreview;
     return true;
   });
+  const acceptItems = visibleFindings.flatMap((finding) => {
+    if (!selected) return [];
+    const storedAction = selected.actions.find((item) => item.findingId === finding.id);
+    const action = storedAction ?? fallbackAction(finding);
+    const place = locateFinding(draft, finding);
+    const open =
+      canApply &&
+      canReview &&
+      Boolean(action) &&
+      (!action || action.status === "pending") &&
+      !accepted.has(action?.id ?? finding.id) &&
+      !ignored.has(action?.id ?? finding.id) &&
+      Boolean(place && !place.hidden);
+    if (!open || !action || !place) return [];
+    return [{ action: { ...action, targetField: place.field }, stored: Boolean(storedAction) }];
+  });
+  function acceptAll() {
+    const ordered = [...acceptItems].sort(
+      (left, right) =>
+        (right.action.originalText?.length ?? 0) - (left.action.originalText?.length ?? 0)
+    );
+    for (const item of ordered) onAccept(item.action, item.stored, true);
+  }
 
   const versionLabel = versionNumber ? `v${versionNumber}` : "";
   const editHref = `/applications/${applicationId}/articles/${contentId}/edit?lang=${encodeURIComponent(languageCode)}`;
@@ -690,6 +713,11 @@ export function TranslationQualityPanel({
             <h3 className="mt-5 text-[11px] font-bold tracking-[0.14em] text-slate-500 uppercase">
               Findings {visibleFindings.length}
             </h3>
+            {acceptItems.length > 1 ? (
+              <Button type="button" className="mt-2 w-full" onClick={acceptAll}>
+                Accept all
+              </Button>
+            ) : null}
             {visibleFindings.length === 0 ? (
               <p className="mt-2 text-sm text-slate-500">No open findings.</p>
             ) : (
@@ -917,6 +945,11 @@ export function TranslationQualityPanel({
 
           <div>
             <h3 className="text-sm font-semibold text-slate-900">Issues and suggestions</h3>
+            {acceptItems.length > 1 ? (
+              <Button type="button" className="mt-2" variant="secondary" onClick={acceptAll}>
+                Accept all
+              </Button>
+            ) : null}
             {unsaved && (accepted.size > 0 || ignored.size > 0) ? (
               <p className="mt-1 text-xs font-medium text-amber-800">
                 Unsaved changes. Accepted suggestions stay in the editor until you save.

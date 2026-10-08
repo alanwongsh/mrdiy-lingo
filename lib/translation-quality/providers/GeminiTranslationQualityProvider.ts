@@ -6,7 +6,7 @@ import {
   geminiResponseSchema,
 } from "@/lib/translation-quality/prompts/translation-quality-v1";
 import type { TranslationQualityInput } from "@/lib/translation-quality/types";
-import { clip, safeErrorMessage } from "@/lib/translation-quality/text";
+import { clip, normalizeSpace, paragraphs, safeErrorMessage, similarity } from "@/lib/translation-quality/text";
 import type {
   ProviderFinding,
   ProviderQualityResult,
@@ -178,6 +178,85 @@ async function generate(
   });
 }
 
+function findingQuotes(categories: ProviderQualityResult["categories"]): string[] {
+  return categories.flatMap((category) =>
+    category.findings
+      .map((finding) => normalizeSpace(finding.translatedText ?? ""))
+      .filter(Boolean)
+  );
+}
+
+function passageCovered(passage: string, quotes: string[]): boolean {
+  const plain = normalizeSpace(passage);
+  if (!plain) return true;
+  return quotes.some(
+    (quote) => quote.includes(plain) || (plain.includes(quote) && quote.length >= 24)
+  );
+}
+
+function looksUntranslated(source: string, translated: string, targetLanguage: string): boolean {
+  if (/\[[a-z]{2,3}(?:-[A-Za-z0-9]+)?\]/i.test(translated)) return true;
+  const left = normalizeSpace(source);
+  const right = normalizeSpace(translated);
+  if (left.length >= 24 && right.length >= 24 && (left === right || similarity(left, right) >= 0.72)) {
+    return true;
+  }
+  if (!/^(zh|ja|ko)/i.test(targetLanguage) || right.length < 40) return false;
+  const latin = right.replace(/[^a-z]/gi, "").length;
+  const cjk = right.match(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g)?.length ?? 0;
+  return latin > 20 && latin > cjk * 2;
+}
+
+function leftoverPassages(
+  input: TranslationQualityInput,
+  quotes: string[]
+): Array<{ source: string; translated: string }> {
+  const pairs = [
+    { source: input.sourceTitle ?? "", translated: input.translatedTitle ?? "" },
+    { source: input.sourceSummary ?? "", translated: input.translatedSummary ?? "" },
+    ...paragraphs(input.sourceContent).map((source, index) => ({
+      source,
+      translated: paragraphs(input.translatedContent)[index] ?? "",
+    })),
+  ];
+  const translatedOnly = paragraphs(input.translatedContent).slice(paragraphs(input.sourceContent).length);
+  return [...pairs, ...translatedOnly.map((translated) => ({ source: "", translated }))]
+    .filter(
+      (pair) =>
+        pair.translated.trim().length >= 24 &&
+        !passageCovered(pair.translated, quotes) &&
+        looksUntranslated(pair.source, pair.translated, input.targetLanguage)
+    );
+}
+
+function mergeFocusedFindings(
+  base: ProviderQualityResult["categories"],
+  extra: ProviderQualityResult["categories"]
+): ProviderQualityResult["categories"] {
+  const seen = new Set(findingQuotes(base));
+  const incoming = extra.flatMap((category) => category.findings);
+  const additions = incoming.filter((finding) => {
+    const key = normalizeSpace(finding.translatedText ?? "");
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (additions.length === 0) return base;
+  const categories = base.map((category) => ({ ...category, findings: [...category.findings] }));
+  const cross = categories.find((category) => category.categoryCode === "cross_language");
+  if (cross) {
+    cross.findings.push(...additions);
+    return categories;
+  }
+  categories.push({
+    categoryCode: "cross_language",
+    score: 0,
+    summary: "Leftover passages were still untranslated.",
+    findings: additions,
+  });
+  return categories;
+}
+
 export class GeminiTranslationQualityProvider implements TranslationQualityProvider {
   readonly id = "gemini";
   readonly name = "Google Gemini";
@@ -195,9 +274,8 @@ export class GeminiTranslationQualityProvider implements TranslationQualityProvi
     }
 
     const ai = new GoogleGenAI({ apiKey: config.geminiApiKey });
-    const prompt = buildTranslationQualityPrompt(input);
     const schema = geminiResponseSchema(codes);
-    const call = async (attempt: number, withThinkingOff: boolean) => {
+    const call = async (prompt: string, attempt: number, withThinkingOff: boolean) => {
       const started = Date.now();
       try {
         const response = await generate(ai, config.geminiModel, prompt, schema, withThinkingOff);
@@ -225,31 +303,62 @@ export class GeminiTranslationQualityProvider implements TranslationQualityProvi
       }
     };
 
-    let response;
-    try {
-      response = await call(1, true);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      if (!/thinking|invalid argument/i.test(message)) throw error;
-      response = await call(2, false);
+    const request = async (prompt: string) => {
+      let response;
+      try {
+        response = await call(prompt, 1, true);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (!/thinking|invalid argument/i.test(message)) throw error;
+        response = await call(prompt, 2, false);
+      }
+      const text = response.text;
+      if (!text?.trim()) {
+        throw new Error("Gemini returned an empty quality analysis.");
+      }
+      return {
+        categories: validateGeminiPayload(parseModelJson(text), codes),
+        usage: tokenUsage(response.usageMetadata),
+      };
+    };
+
+    const first = await request(buildTranslationQualityPrompt(input));
+    let categories = first.categories;
+    let promptTokens = first.usage?.promptTokens ?? 0;
+    let outputTokens = first.usage?.outputTokens ?? 0;
+    let focus = input;
+    for (let pass = 0; pass < 2; pass += 1) {
+      const missing = leftoverPassages(focus, findingQuotes(categories));
+      if (missing.length === 0) break;
+      try {
+        const next = await request(
+          buildTranslationQualityPrompt({ ...input, passageFocus: missing })
+        );
+        categories = mergeFocusedFindings(categories, next.categories);
+        promptTokens += next.usage?.promptTokens ?? 0;
+        outputTokens += next.usage?.outputTokens ?? 0;
+        focus = {
+          ...input,
+          sourceContent: missing.map((passage) => passage.source).join("\n\n"),
+          translatedContent: missing.map((passage) => passage.translated).join("\n\n"),
+          sourceTitle: "",
+          sourceSummary: "",
+          translatedTitle: "",
+          translatedSummary: "",
+        };
+      } catch {
+        break;
+      }
     }
 
-    const text = response.text;
-    if (!text?.trim()) {
-      throw new Error("Gemini returned an empty quality analysis.");
-    }
-    const categories = validateGeminiPayload(parseModelJson(text), codes);
-    const usage = tokenUsage(response.usageMetadata);
     return {
       providerId: this.id,
       model: config.geminiModel,
       categories,
-      usage: usage
-        ? {
-            promptTokens: usage.promptTokens,
-            outputTokens: usage.outputTokens,
-          }
-        : undefined,
+      usage:
+        promptTokens || outputTokens
+          ? { promptTokens, outputTokens }
+          : undefined,
     };
   }
 }

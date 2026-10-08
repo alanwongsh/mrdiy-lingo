@@ -68,6 +68,50 @@ function sourceHasTerm(source: string, term: string): boolean {
   return false;
 }
 
+function sentencesOf(value: string): string[] {
+  return htmlToText(value)
+    .split(/\n+|(?<=[.!?。！？])\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function sentenceAt(html: string, index: number, length: number): string {
+  const matched = html.slice(index, index + length).trim().toLowerCase();
+  const sentences = sentencesOf(html);
+  if (!matched) return "";
+  const before = sentencesOf(html.slice(0, index)).length;
+  const around = sentences[Math.max(0, before - 1)] ?? "";
+  if (around.toLowerCase().includes(matched)) return around;
+  return sentences.find((sentence) => sentence.toLowerCase().includes(matched)) ?? around;
+}
+
+/** "gerai" is wrong for Store only in the sentence that says store, not for booths. */
+function sourceSentenceForTerm(
+  translatedSentence: string,
+  translatedSentences: string[],
+  sourceSentences: string[]
+): string {
+  const numbers = translatedSentence.match(/\d[\d,.]*/g) ?? [];
+  let best = "";
+  let bestScore = 0;
+  for (const source of sourceSentences) {
+    let score = 0;
+    for (const number of numbers) {
+      if (number.replace(/\D/g, "").length >= 2 && source.includes(number)) score += 5;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = source;
+    }
+  }
+  if (best) return best;
+  if (sourceSentences.length === translatedSentences.length) {
+    const index = translatedSentences.indexOf(translatedSentence);
+    if (index >= 0) return sourceSentences[index] ?? "";
+  }
+  return "";
+}
+
 function entriesForPair(input: TranslationQualityInput): TerminologyEntry[] {
   const rows = (input.terminology ?? []).filter((entry) => entry.isActive);
   const exact = rows.filter(
@@ -129,12 +173,28 @@ export class TerminologyRule implements TranslationQualityRule {
         : [];
       if (!inSource && forbiddenHits.length === 0 && preferredHits.length === 0) continue;
 
-      if (uniqueForbiddenHits.length > 0) {
+      const brand = entry.category.trim().toLowerCase() === "brand";
+      const applicableForbiddenHits = brand
+        ? uniqueForbiddenHits
+        : uniqueForbiddenHits.filter((hit) => {
+            const translatedSentences = sentencesOf(FIELDS.find((field) => field.field === hit.field)?.text(input) ?? "");
+            const translatedSentence = sentenceAt(
+              FIELDS.find((field) => field.field === hit.field)?.text(input) ?? "",
+              hit.hit.index,
+              hit.hit.matched.length
+            );
+            const sourceSentence = sourceSentenceForTerm(
+              translatedSentence,
+              translatedSentences,
+              sentencesOf(source)
+            );
+            return sourceHasTerm(sourceSentence, entry.term);
+          });
+      if (applicableForbiddenHits.length > 0) {
         penalty += 11;
         issueNames.push(entry.term);
         const inconsistent = preferredHits.length > 0;
-        const brand = entry.category.trim().toLowerCase() === "brand";
-        for (const hit of uniqueForbiddenHits.slice(0, 8)) {
+        for (const hit of applicableForbiddenHits.slice(0, 8)) {
           findings.push({
             severity: "warning",
             title: brand
@@ -157,16 +217,29 @@ export class TerminologyRule implements TranslationQualityRule {
           });
         }
       } else if (inSource && preferred && preferredHits.length === 0) {
+        const replacements = FIELDS.flatMap((field) =>
+          visibleTerm(field.text(input), entry.term).map((hit) => ({
+            field: field.field,
+            hit,
+          }))
+        );
+        if (replacements.length === 0) continue;
         penalty += 8;
         issueNames.push(entry.term);
-        findings.push({
-          severity: "warning",
-          title: "Missing preferred terminology",
-          explanation: `The source uses "${entry.term}", but the translation does not use "${preferred}".`,
-          sourceText: entry.term,
-          suggestedText: preferred,
-          targetField: "content",
-        });
+        for (const hit of replacements.slice(0, 8)) {
+          findings.push({
+            severity: "warning",
+            title: "Missing preferred terminology",
+            explanation: `The source uses "${entry.term}". Replace "${hit.hit.matched}" with "${preferred}".`,
+            sourceText: entry.term,
+            translatedText: hit.hit.matched,
+            suggestedText: preferred,
+            targetField: hit.field,
+            startOffset: hit.hit.index,
+            endOffset: hit.hit.index + hit.hit.matched.length,
+            actionType: "replace",
+          });
+        }
       }
     }
 

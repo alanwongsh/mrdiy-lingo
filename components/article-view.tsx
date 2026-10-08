@@ -878,7 +878,7 @@ export function ArticleView({
     };
   }
 
-  function acceptReviewAction(action: QualityAction, stored = true) {
+  function acceptReviewAction(action: QualityAction, stored = true, quiet = false) {
     try {
       const next = applyQualityAction(reviewDraftRef.current, action);
       reviewDraftRef.current = next;
@@ -906,7 +906,14 @@ export function ArticleView({
             : "title";
       setReviewNote(`Updated the ${where}. Save changes to keep it.`);
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Could not apply the suggestion.");
+      const message = err instanceof Error ? err.message : "Could not apply the suggestion.";
+      if (quiet && message.includes("no longer matches")) {
+        const remember = (ids: string[]) => (ids.includes(action.id) ? ids : [...ids, action.id]);
+        if (stored) setAcceptedActionIds(remember);
+        else setLocalHandledIds(remember);
+        return;
+      }
+      setSaveError(message);
       setReviewNote("");
     }
   }

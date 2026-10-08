@@ -62,6 +62,8 @@ export interface TranslationQualityInput {
   terminology?: TerminologyEntry[];
   boilerplate?: BoilerplatePhrase[];
   enabledCategories: QualityCategoryConfig[];
+  /** When set, the model reviews only these leftover passages. */
+  passageFocus?: Array<{ source: string; translated: string }>;
 }
 
 export interface QualityScore {
