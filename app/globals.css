@@ -175,9 +175,49 @@ textarea {
   padding-left: 1.25rem;
 }
 
+.html-editor-surface ul {
+  list-style: disc;
+}
+
+.html-editor-surface ol {
+  list-style: decimal;
+}
+
+.html-editor-surface li {
+  display: list-item;
+}
+
 .html-editor-surface a {
   color: var(--diy-red);
   text-decoration: underline;
+}
+
+.html-editor-surface strong,
+.html-editor-surface b {
+  font-weight: 700;
+}
+
+.quality-diff-remove,
+.quality-diff-add,
+.quality-locate {
+  font: inherit;
+  font-weight: inherit;
+}
+
+.quality-diff-remove {
+  background: #fee2e2;
+  color: #991b1b;
+  text-decoration: line-through;
+  text-decoration-color: #f87171;
+}
+
+.quality-diff-add {
+  background: #d1fae5;
+}
+
+.quality-locate {
+  background: #fde68a;
+  box-shadow: 0 0 0 2px #fbbf24;
 }
 
 .html-editor-surface .tiptap,

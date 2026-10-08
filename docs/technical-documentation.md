@@ -14,7 +14,7 @@ Lingo is the internal multilingual content hub for MR.DIY applications. Editors 
 | Current version | V0.1 (`package.json` `0.1.0`) |
 | System status | Under development |
 | Environment | Supabase + Vercel (development) |
-| Technology stack | Frontend and backend: Next.js. Database: Supabase (PostgreSQL). Translation: MyMemory for development. OpenAI is the planned provider for QAT and production. |
+| Technology stack | Frontend and backend: Next.js. Database: Supabase (PostgreSQL). Translation: MyMemory for development, or Gemini with the quality key. OpenAI is the planned translation provider for QAT and production. Translation quality review: Google Gemini, plus terminology and boilerplate rules. |
 
 ---
 
@@ -43,6 +43,10 @@ flowchart LR
     LLM[OpenAI planned]
   end
 
+  subgraph quality [Quality review]
+    Gemini[Google Gemini]
+  end
+
   Browser --> Proxy
   Joget -->|HMAC token| Proxy
   Proxy --> Next
@@ -50,18 +54,21 @@ flowchart LR
   Actions --> PG
   Actions --> MM
   Actions --> Mock
+  Actions --> Gemini
   LLM -.-> Actions
 ```
 
-The browser never calls MyMemory or the database with a user credential. Pages and server actions run on the Next.js server. The server reads and writes Supabase with the project publishable key, and it calls the translation provider from the server.
+The browser never calls MyMemory, Gemini, or the database with a user credential. Pages and server actions run on the Next.js server. The server reads and writes Supabase with the project publishable key, and it calls the translation provider and Gemini from the server.
 
 ### 2.1 Application components
 
-**Next.js application.** Provides the user interface and the server-side functions for translation management: applications, languages, content, string keys, import, export, comments, and version history. UI and mutations live in one App Router project. Mutations are server actions in `lib/actions/`.
+**Next.js application.** Provides the user interface and the server-side functions for translation management: applications, languages, content, string keys, import, export, comments, version history, and translation quality review. UI and mutations live in one App Router project. Mutations are server actions in `lib/actions/`.
 
-**Supabase database.** Stores source content, translations, version history, workflow status, approvals, comments, users, and application membership. Row-level security is enabled. Current policies allow the server role through; who can see or change an application is enforced in application code (`lib/auth/access.ts`).
+**Supabase database.** Stores source content, translations, version history, workflow status, approvals, comments, users, application membership, quality categories, terminology, boilerplate, and quality runs. Row-level security is enabled. Current policies allow the server role through; who can see or change an application is enforced in application code (`lib/auth/access.ts`).
 
-**Translation service.** Receives source text from the Next.js server, returns translated text, and the server stores the result for review. The active provider is selected with `TRANSLATION_PROVIDER`. Development uses MyMemory. `mock` prefixes text and needs no network. An OpenAI provider is planned for QAT and production and is not wired in V0.1.
+**Translation service.** Receives source text from the Next.js server, returns translated text, and the server stores the result for review. The active provider is selected with `TRANSLATION_PROVIDER`: `mymemory`, `mock`, or `gemini`. Gemini uses the same `GEMINI_API_KEY` and `GEMINI_MODEL` as quality review. An OpenAI provider is planned for QAT and production and is not wired in V0.1.
+
+**Quality review.** After a translation exists, the server can score it. Google Gemini scores message, tone, structure, and cross-language. Terminology and boilerplate are checked against lists stored in the database. The article screens do not call Gemini themselves.
 
 **Joget.** MR.DIY’s existing portal. Joget does not share its session cookie with Lingo. It opens Lingo in an iframe with a short-lived signed token. People who are not coming from Joget sign in on `/sign-in` with email and password. Both paths end in the same `lingo_actor` session cookie.
 
@@ -85,16 +92,18 @@ flowchart TB
   NS --> Keys[Translation keys]
   Keys --> Tr[Translations per language]
   Tr --> TV[Version history]
-  Content --> Article[Articles]
+  Content --> Types[Content types]
+  Types --> Article[Articles]
   Article --> CT[Translations per language]
   CT --> CV[Version history]
+  CV --> QR[Quality run]
   Article --> Comments[Comments per language]
 ```
 
 | Model | Used for | Unit of work | Main screens |
 | --- | --- | --- | --- |
 | `STRING` | Product interface copy | A key inside a namespace, with one source string and one translation per language | Namespaces, translation keys |
-| `CONTENT` | Press and editorial content | An article with title, summary, HTML body, and SEO fields, plus one translation per target language | Articles |
+| `CONTENT` | Press and editorial content | An article with a type, title, summary, HTML body, and SEO fields, plus one translation per target language | Types, articles |
 
 ---
 
@@ -143,6 +152,7 @@ Primary keys are time-ordered UUID v7 (`uuidv7()`), so new rows append in index 
 | --- | --- |
 | MyMemory | Temporary free translation API for development. Each request is truncated at 450 characters |
 | OpenAI | Planned translation provider for QAT and production. Not implemented in V0.1 |
+| Google Gemini | Scores article translations, and translates them when `TRANSLATION_PROVIDER=gemini`. The API key stays on the server |
 | Supabase | Database |
 | Vercel | Application hosting |
 | Joget | Identity source for iframe sign-in |
@@ -151,26 +161,35 @@ Primary keys are time-ordered UUID v7 (`uuidv7()`), so new rows append in index 
 
 ## 4. Data model
 
-Schema is applied in order from `supabase/migrations/001` through `009`. Setup (`/setup`) shows which migrations the connected database still needs.
+Schema is applied in order from `supabase/migrations/001` through `015`. Setup (`/setup`) shows which migrations the connected database still needs. Service call logs are daily files on the server, not database tables.
 
 ### 4.1 Tables
 
 | Table | Description |
 | --- | --- |
 | `languages` | Languages available for translation. Each row has a code, a name, and a status of `ACTIVE` or `INACTIVE`. |
-| `hub_users` | Lingo user directory. A row is created when someone signs in from Joget, signs in with email and password, or is invited before their first sign-in. Holds display name, username, email, employee ID, superadmin flag, and the password hash used for email sign-in. |
+| `hub_users` | Lingo user directory. A row is created when someone signs in from Joget, signs in with email and password, or is invited before their first sign-in. Holds display name, username, email, employee ID, superadmin flag, the password hash used for email sign-in, and `ldap_role` (the account title, such as Executive or HOD). |
+| `org_role_map` | Maps an account title (`ldap_role`) to a permission group: `EDITOR` or `HOD`. Titles in the HOD group can approve. Every other title can edit and draft. Maintained from the Roles screen. |
 | `applications` | Applications managed for translation. Each application is either `STRING` (product copy) or `CONTENT` (press articles), and has one owner. |
-| `application_members` | Users invited to one application, with `can_edit` and `can_approve`. |
+| `application_members` | Users invited to one application. `role` is `EDITOR`, `HOD`, or `ADMIN`. HOD and Admin can approve. Editor can edit and draft. `can_edit` and `can_approve` follow that role. |
 | `namespaces` | Groups translation keys inside a STRING application. The name is unique per application. |
 | `translation_keys` | A STRING key: key name, source language, and source text. The key is unique per application. |
 | `translations` | The current string for one key and one language, plus status and the approval stamp. |
 | `translation_versions` | Append-only history of a string translation. |
-| `content` | An article in a CONTENT application: type, title, slug, source language, source JSON, lifecycle status, target languages, and schedule and publish timestamps. |
+| `content_types` | Types owned by one CONTENT application. Each row has a stable `code`, a display `name`, a description, `ACTIVE` or `INACTIVE`, and a sort order. The code is unique per application. New articles default to `GENERAL`. An inactive type stays on articles that already use it and is hidden from new choices. Import creates a type when the file uses a code this app does not have yet. |
+| `content` | An article in a CONTENT application. `content_type` is that app’s type code. Also stores title, slug, source language, source JSON, market, who submitted it, lifecycle status, target languages, and schedule and publish timestamps. |
 | `content_translations` | One translation of an article into one language: title, summary, body, SEO title, SEO description, status, and the approval stamp. |
 | `content_translation_versions` | Append-only history of an article translation, stored as JSON of those five fields. |
 | `article_comments` | A comment on an article, scoped to one language. |
+| `quality_categories` | The checks used to score a translation. `category_type` is `ai` or `rule`. `enabled` turns a check on or off. `configuration.weight` is that check’s share of the score. Seeded checks: message 20, tone 15, structure 15, cross-language 25, terminology 15, boilerplate 10. The code is unique. |
+| `terminology` | A preferred wording for one source language and one target language, plus spellings to avoid. One term is unique per language pair, ignoring case. `is_active` includes or excludes it from reviews. |
+| `boilerplate_phrases` | A required standard phrase for one language. The name is unique per language, ignoring case. `expected_usage` is `when_source_present`: the phrase is required when the source contains the matching phrase. Seeded with the company introduction. |
+| `quality_runs` | One quality analysis of an article translation. Stores provider, model, languages, status (`pending`, `running`, `completed`, `failed`), overall score, request and response metadata, and an error message. `content_translation_version_id` points at the saved version that was analyzed. That column is unique when it is set, so a saved version keeps one run. A draft analysis leaves it null. Deleting the article or that version deletes the run. |
+| `quality_scores` | One category result on a run: category code, score from 0 to 100, band (`excellent`, `good`, `warning`, `critical`), summary, or an error message when that category did not score. |
+| `quality_findings` | A problem found in a run: severity (`info`, `warning`, `error`, `critical`), title, explanation, source quote, translated quote, suggested wording, and field (`title`, `summary`, or `content`). |
+| `quality_actions` | A suggested edit for one finding. `action_type` is `replace`, `insert`, `delete`, or `rewrite`. Status is `pending`, `applied`, or `ignored`. |
 
-Deleting an application cascades to its namespaces, keys, translations, articles, and memberships.
+Deleting an application cascades to its namespaces, keys, translations, content types, articles, and memberships. Deleting an article cascades to its quality runs. Deleting a run cascades to its scores, findings, and actions.
 
 ### 4.2 Article source fields
 
@@ -197,7 +216,7 @@ Deleting an application cascades to its namespaces, keys, translations, articles
 | `MANUALLY_MODIFIED` | Written or edited by a person, or brought in by import |
 | `APPROVED` | Signed off. Stores approver username, display name, user id, and time |
 
-Saving a translation clears its approval stamp. A new version row is written only when the text or status actually changes.
+An editor save stores `MANUALLY_MODIFIED` and clears the approval stamp. An HOD save of an article language stores `APPROVED` and records who approved it and when. A string edit stays `MANUALLY_MODIFIED` until someone approves it. A new version row is written only when the text or status actually changes.
 
 **Article lifecycle** (`content.status`):
 
@@ -211,9 +230,17 @@ Saving a translation clears its approval stamp. A new version row is written onl
 
 **Version source** (`source_type`): `SYSTEM` (provider), `MANUAL` (editor), `IMPORT` (file).
 
-**Article type:** `ARTICLE`, `NEWS`, `ANNOUNCEMENT`.
+**Article type:** each CONTENT application defines its own codes in `content_types`. `GENERAL` is the default. Existing articles may still use `ARTICLE`, `NEWS`, or `ANNOUNCEMENT`.
 
-**Record status** for applications, languages, and namespaces: `ACTIVE` or `INACTIVE`.
+**Record status** for applications, languages, namespaces, and content types: `ACTIVE` or `INACTIVE`.
+
+### 4.4 Quality score
+
+The overall score is the weighted average of the category scores that succeeded. A check that is switched off, or that failed, is left out, and the remaining weights are scaled to 100. Bands: 90 and above excellent, 75 and above good, 60 and above warning, below 60 critical.
+
+Message, tone, structure, and cross-language are scored by Gemini. Terminology and boilerplate are scored by rules against `terminology` and `boilerplate_phrases`. Accepting a suggestion does not change the stored score. A new analysis replaces it.
+
+The review does not block publishing. Findings are a reference for the reviewer.
 
 ---
 
@@ -223,12 +250,14 @@ Identity comes from Joget or from email sign-in. Lingo stores the person on `hub
 
 | Actor | What they can do |
 | --- | --- |
-| Signed-in user | Create an application and become its owner. See applications they own or were invited to |
-| Owner | Edit, approve, invite and remove members, grant edit and approve |
-| Member | View the application. Edit when `can_edit` is on. Approve when `can_approve` is on. Cannot manage membership |
-| Superadmin | Listed in `LINGO_SUPERADMINS` (username, email, or employee ID). Opens every application, including ones with no owner. Uses Languages and Setup. Can assign an owner |
+| Signed-in user | Create an application and become its owner. See applications they own or were invited to. |
+| Owner | Edit and approve that application. Invite and remove members, and set each member’s account role. The role map does not limit the owner. |
+| Member | View the application. Cannot manage membership. Edit and approve follow the account title on `hub_users.ldap_role`, grouped by `org_role_map`. A title in the HOD group can edit and approve. Every other title, including a blank one, can edit and draft only. |
+| Superadmin | Listed in `LINGO_SUPERADMINS` (username, email, or employee ID) and stored as `hub_users.is_superadmin`. Opens every application, including ones with no owner. Edit, approve, and manage members on all of them. Uses Languages, Roles, Logs, and Setup. Can assign an owner. |
 
-Moving an article to `APPROVED` or `PUBLISHED`, and approving a language, requires the approve capability. Other writes require edit.
+Moving an article to `APPROVED` or `PUBLISHED`, and approving a language, requires the approve capability. Other writes require edit. An HOD who saves a language stores that language as `APPROVED`. An editor’s save stores it as `MANUALLY_MODIFIED` and returns an approved or published article to `REVIEW`.
+
+Quality settings — which checks are on, their weights, and the terminology list — can be changed by anyone who can approve that application: HOD and above, the owner, and a superadmin. An editor can open the screen and read it.
 
 Applications created before access control have no owner. Until a superadmin sets one, only a superadmin can see them.
 
@@ -286,10 +315,10 @@ flowchart TD
   A[Dashboard or Applications] --> B[New application]
   B --> C{Model}
   C -->|Strings| D[Namespaces and keys]
-  C -->|Content| E[Articles]
+  C -->|Content| E[General type and articles]
   B --> F[Creator becomes owner]
   F --> G[Owner invites by email or employee ID]
-  G --> H[Grant edit and or approve]
+  G --> H[Assign an account role]
   H --> I[Invitee sees the app after they sign in]
 ```
 
@@ -301,34 +330,43 @@ This is the main CONTENT flow.
 
 ```mermaid
 flowchart TD
-  Create[Create or import article] --> Draft[DRAFT]
-  Draft --> Edit[Edit source pane]
-  Edit --> Targets[Choose target languages]
-  Targets --> Auto[Auto-translate]
-  Auto --> Translating[TRANSLATING]
-  Translating --> Review[REVIEW]
-  Review --> Manual[Edit a language]
+  Create[Create or import article] --> Start{Creator can approve?}
+  Start -->|No| Draft[DRAFT]
+  Start -->|Yes| Approved[APPROVED]
+  Draft --> Work[Edit source text and target languages]
+  Work --> Auto[Auto-translate]
+  Auto --> AutoWho{Who ran it?}
+  AutoWho -->|Editor| Review[REVIEW]
+  AutoWho -->|HOD| LangOk[Language APPROVED]
+  Review --> SaveLang[Save a language]
+  SaveLang --> Actor{Who saved?}
+  Actor -->|Editor| Manual[MANUALLY_MODIFIED and article REVIEW]
+  Actor -->|HOD| LangOk
   Manual --> Review
-  Review --> ApproveLang[Approve each target language]
-  ApproveLang --> All{All targets approved?}
-  All -->|Yes| Approved[APPROVED]
-  All -->|No| Review
+  LangOk --> All{All targets approved?}
+  All -->|No| Stay[Article status unchanged]
+  All -->|Yes| Approved
   Approved --> Publish[PUBLISHED]
-  Approved --> Change[Edit source or an approved translation]
-  Publish --> Change
-  Change --> Review
+  Publish --> SaveLang
+  Approved --> SourceEdit[Edit source text]
+  Publish --> SourceEdit
+  SourceEdit --> Cleared[Clear target approvals]
+  Cleared --> Review
+  Approved --> Settings[Type, market, schedule, or language list]
+  Publish --> Settings
+  Settings --> Keep[Approval unchanged]
 ```
 
 Step by step:
 
-1. An editor creates an article (or imports one). They set the source language, write title, description, HTML body, and SEO fields, and pick target languages. The source language is also stored as a translation row so the source text has history.
-2. **Auto-translate** sends the live editor text to the translation service, one target language at a time. The article status becomes `TRANSLATING`, then `REVIEW` when the run finishes. Each target is saved as `SYSTEM_GENERATED` and a version is appended.
-3. For an article, the service translates title, summary, SEO title, and SEO description as four plain-text calls, and the body as one call per HTML text node so tags stay in place. A rich article is often about 20–25 MyMemory calls per language.
-4. A reviewer edits a language in the second pane. Saving marks that language `MANUALLY_MODIFIED` and clears its approval.
-5. A person with approve permission approves a language. The row stores who approved it and when.
-6. When every language in `target_languages` is `APPROVED`, the article itself becomes `APPROVED`.
+1. An editor creates an article (or imports one) as `DRAFT`. An HOD, owner, or superadmin creates it as `APPROVED`. The type defaults to General. They set the source language, write title, description, HTML body, and SEO fields, and pick target languages. The source language is also stored as a translation row so the source text has history.
+2. **Auto-translate** sends the live editor text to the translation service, one target language at a time. An editor’s run sets the article to `TRANSLATING`, then `REVIEW`, and each target is `SYSTEM_GENERATED`. An HOD’s run stores each target as `APPROVED`. A version is appended either way.
+3. For an article, MyMemory translates title, summary, SEO title, and SEO description as four plain-text calls, and the body as one call per HTML text node so tags stay in place. A rich article is often about 20–25 MyMemory calls per language. Gemini sends the whole article in one call and returns the title, summary, body, and SEO fields separately.
+4. An editor saves a language as `MANUALLY_MODIFIED`. If the article was `APPROVED` or `PUBLISHED`, it returns to `REVIEW`.
+5. An HOD saves a language as `APPROVED` immediately. A published article stays `PUBLISHED`. The row stores who approved it and when.
+6. When every language in `target_languages` is `APPROVED`, the article itself can become `APPROVED`.
 7. Publishing sets status to `PUBLISHED` and stamps `published_at`. Leaving `PUBLISHED` clears `published_at`.
-8. Editing the source of an approved or published article clears approval on every target language and returns the article to `REVIEW`. Saving an approved translation, or changing the target list so that not every target is approved, does the same.
+8. Editing the source text of an approved or published article clears approval on every target language and returns the article to `REVIEW`. Changing type, market, schedule, source language, or the target list does not.
 9. Export is separate from approval. On the article list, an editor selects articles and downloads Excel. Source columns are always filled. A language is filled only when that translation is already approved. An article with no approved target language is skipped, and languages that are not approved stay blank.
 
 The article list sorts by the nearest `scheduled_publish_at` and can filter overdue, due within 24 hours, scheduled, no date, or published.
@@ -344,12 +382,13 @@ The same four statuses apply to product strings and to article languages.
 ```mermaid
 stateDiagram-v2
   [*] --> MISSING
-  MISSING --> SYSTEM_GENERATED: Auto-translate
-  MISSING --> MANUALLY_MODIFIED: Type or import
-  SYSTEM_GENERATED --> MANUALLY_MODIFIED: Edit
-  SYSTEM_GENERATED --> APPROVED: Approve
-  MANUALLY_MODIFIED --> APPROVED: Approve
-  APPROVED --> MANUALLY_MODIFIED: Edit or source change
+  MISSING --> SYSTEM_GENERATED: Editor auto-translate
+  MISSING --> MANUALLY_MODIFIED: Editor types or imports
+  MISSING --> APPROVED: HOD saves, translates, or imports
+  SYSTEM_GENERATED --> MANUALLY_MODIFIED: Editor saves
+  SYSTEM_GENERATED --> APPROVED: HOD saves or approves
+  MANUALLY_MODIFIED --> APPROVED: HOD saves or approves
+  APPROVED --> MANUALLY_MODIFIED: Editor saves or source text changes
 ```
 
 ### 6.5 Product string workflow
@@ -381,7 +420,8 @@ flowchart TD
   Pick[Choose a STRING or CONTENT application] --> File[Upload CSV or XLSX]
   File --> Preview[Validate and preview]
   Preview --> Confirm[Confirm]
-  Confirm --> Opt{Auto-translate missing targets?}
+  Confirm --> Created[Create a missing namespace or content type]
+  Created --> Opt{Auto-translate missing targets?}
   Opt -->|Yes| Run[Provider fills languages absent from the file]
   Opt -->|No| Done[Stored as IMPORT]
   Run --> Done
@@ -398,7 +438,7 @@ flowchart TD
 
 A namespace named in the file is created on confirm if it does not exist yet.
 
-**Articles.** Required columns are `title` and `source_language`. Optional columns: `content_type`, `status`, `summary`, `body`, `seo_title`, `seo_description`, and `{lang}_{field}` such as `ms_title` or `en_body`.
+**Articles.** Required columns are `title` and `source_language`. Optional columns: `content_type`, `status`, `summary`, `body`, `seo_title`, `seo_description`, and `{lang}_{field}` such as `ms_title` or `en_body`. A blank `content_type` becomes General. A code this app does not have yet is created on confirm. An HOD import stores supplied translations as `APPROVED`. An editor import stores them as `MANUALLY_MODIFIED`.
 
 Each valid article row is inserted as a new article. The file is not matched to an existing article by title or slug. Invalid rows (missing title) are `ERROR` and are skipped. Optional auto-translate runs only for target languages that the file did not already supply.
 
@@ -412,6 +452,36 @@ From the article list, an editor selects rows and exports `.xlsx`.
 - The screen reports how many articles were skipped and which languages were left blank because they were not approved.
 - Language codes keep their stored case (for example `zh-Hans`).
 
+### 6.8 Review translation quality
+
+Quality review is available on an article translation. It does not change article status and does not block publish.
+
+```mermaid
+flowchart TD
+  Open[Open a language] --> Analyze[Analyze]
+  Analyze --> Gemini[Gemini scores message tone structure and cross-language]
+  Analyze --> Rules[Rules score terminology and boilerplate]
+  Gemini --> Run[Store one quality run]
+  Rules --> Run
+  Run --> Rail[Show score and findings]
+  Rail --> Accept[Accept a suggestion into the draft]
+  Rail --> Ignore[Ignore a finding]
+  Accept --> Save[Save]
+  Save --> Commit[Save the translation and mark accepted actions applied]
+  Ignore --> Stay[Finding stays ignored until the next analysis]
+  Rail --> Again[Analyze again]
+  Again --> Analyze
+```
+
+1. **Analyze** sends the source and the translation to Gemini for the AI checks that are on, and runs terminology and boilerplate locally. The result is one `quality_runs` row with scores, findings, and actions. Token counts are stored on the run when Gemini returns them, and the prompt and reply are written to the daily service log.
+2. A saved translation that already matches the latest version is attached to that version. One version holds one run. **Analyze again** replaces it. Text that does not match the saved version is stored as a draft run until a later save matches that analyzed text.
+3. **Accept** writes the suggestion into the editor only. The database stays unchanged until **Save**. Save writes the translation and marks those actions `applied` in one database function, `commit_content_translation_quality`.
+4. **Ignore** marks the action `ignored` immediately. The finding stays hidden until the next analysis.
+5. **Recheck wording** runs terminology and boilerplate again on the saved version. It does not call Gemini.
+6. HOD and above edit weights and terminology under the application’s Quality settings. Boilerplate phrases are the rows in `boilerplate_phrases`.
+
+On the review rail, an `info` finding is a Note, a `warning` is a Check, and `error` or `critical` is a Blocker. Those labels do not stop publishing.
+
 ---
 
 ## 7. Translation service
@@ -422,11 +492,12 @@ From the article list, an editor selects rows and exports `.xlsx`.
 | --- | --- | --- |
 | `mymemory` (default) | Development | `https://api.mymemory.translated.net/get`, language pair `source\|target`. Text longer than 450 characters is cut and the result is marked with `[…]`. A failed call falls back to a `[lang] ` prefix so the editor still receives text |
 | `mock` | Offline demos | Prefixes the source with `[lang] ` and does not call the network |
+| `gemini` | Testing with the quality key | Sends one article in one call. The reply is JSON with title, summary, body, SEO title, and SEO description kept separate. HTML tags in the body must match the source. A failed call is reported and is not stored. The prompt and reply are written to the service log |
 | OpenAI | QAT / production | Planned. Same interface, so screens and version history stay unchanged when the provider is swapped |
 
 Language codes sent to MyMemory are normalized: `zh-Hans` → `zh-CN`, `zh-Hant` → `zh-TW`. Other codes use the part before the hyphen when they are not in the map.
 
-HTML bodies are split on tags. Only text nodes are translated. Attributes and markup are copied through. If that pass returns no visible text, the service strips tags and translates the plain text once.
+HTML bodies from MyMemory are split on tags. Only text nodes are translated. Attributes and markup are copied through. If that pass returns no visible text, the service strips tags and translates the plain text once. Gemini translates the article in one call and keeps the body HTML inside that reply.
 
 Auto-translate prefers text currently in the editor over the last saved copy, and it ignores an empty editor field so a blank TipTap state cannot wipe a saved body.
 
@@ -446,12 +517,17 @@ Auto-translate prefers text currently in the editor over the last saved copy, an
 | `/applications/[id]/namespaces` | STRING member | Namespaces |
 | `/applications/[id]/translations` | STRING member | Keys and per-language status |
 | `/applications/[id]/articles` | CONTENT member | Article list, filters, selection, export, bulk delete |
-| `/applications/[id]/articles/[contentId]` | CONTENT member | Dual-pane editor, translate, approve, history, comments |
+| `/applications/[id]/articles/[contentId]` | CONTENT member | Article view, quality review, history, comments |
+| `/applications/[id]/articles/[contentId]/edit` | CONTENT member who can edit | Dual-pane editor, translate, save, quality review |
+| `/applications/[id]/settings/types` | CONTENT member who can edit | Content types for that application |
+| `/applications/[id]/settings/quality` | CONTENT member | Scoring weights and terminology. HOD and above can change them |
 | `/applications/[id]/import` and `/import` | Editor | Import wizard |
 | `/languages` | Superadmin | Create and activate or deactivate languages |
+| `/roles` | Superadmin | Group account titles into Editor or HOD and above |
+| `/logs` | Superadmin | Service call logs: input, output, and token counts. One file per day, deleted after the retention window |
 | `/setup` | Superadmin, or anyone while no superadmin exists yet | Migration checklist |
 
-Inside a STRING application the sub-navigation is namespaces and translations. Inside a CONTENT application it is articles.
+Inside a STRING application the sub-navigation is namespaces and translations. Inside a CONTENT application it is articles, with settings for types and quality.
 
 ---
 
@@ -463,7 +539,11 @@ Local and Vercel configuration (`.env.local` / Vercel project env):
 | --- | --- |
 | `NEXT_PRIVATE_SUPABASE_URL` | Supabase project URL |
 | `NEXT_PRIVATE_SUPABASE_PUBLISHABLE_KEY` | Supabase key used by the Next.js server |
-| `TRANSLATION_PROVIDER` | `mymemory` or `mock` |
+| `TRANSLATION_PROVIDER` | `mymemory`, `mock`, or `gemini` |
+| `QUALITY_PROVIDER` | Quality model provider. `gemini` |
+| `GEMINI_API_KEY` | Server-only key for quality analysis |
+| `GEMINI_MODEL` | Gemini model. Default `gemini-3.5-flash-lite` |
+| `SERVICE_LOG_RETENTION_DAYS` | How many daily log files to keep. Default 7 |
 | `JOGET_EMBED_SECRET` | Shared secret for embed tokens and session cookies |
 | `LINGO_SUPERADMINS` | Comma-separated usernames, emails, or employee IDs |
 | `JOGET_FRAME_ANCESTORS` | Origins allowed to iframe the app. Default `*` |
@@ -481,6 +561,12 @@ Migrations, in order:
 7. `007_rewrite_uuidv7.sql` — rewrite existing primary keys to v7. Old URLs stop working
 8. `008_access_control.sql` — users, owners, members
 9. `009_password_sign_in.sql` — `password_hash` for email sign-in
+10. `010_content_list_meta.sql` — article market and submitted by
+11. `011_member_roles.sql` — Editor, HOD, and Admin on membership
+12. `012_org_role_map.sql` — group account titles into Editor or HOD and above
+13. `013_content_types.sql` — per-application content types
+14. `014_translation_quality.sql` — quality categories, terminology, boilerplate, runs, scores, findings, actions
+15. `015_quality_run_version.sql` — one quality run per saved translation version
 
 ```bash
 npm install
@@ -499,4 +585,6 @@ The Joget iframe host must be HTTPS so the session cookie is accepted inside a c
 - Database policies are open to the server. Authorization is the membership check in server actions. A future pass can mirror those rules in Postgres row-level security.
 - Article import always inserts. It does not update an article that is already in the hub. String import does update an existing key.
 - Export is an approved-language extract. Unapproved translations stay out of the file on purpose.
-- Version rows are history. Deleting a version removes that snapshot. It does not roll the current translation back by itself.
+- Version rows are history. Deleting a version removes that snapshot. It does not roll the current translation back by itself. Deleting a version also deletes the quality run attached to it.
+- Quality findings are a reference. They do not gate `PUBLISHED`.
+- Service logs are JSON lines in `logs/service-YYYY-MM-DD.jsonl` on the machine running the app. They are not in Postgres and they are not committed. Files older than `SERVICE_LOG_RETENTION_DAYS` (default 7) are deleted.

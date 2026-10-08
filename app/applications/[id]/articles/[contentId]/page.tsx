@@ -4,6 +4,7 @@ import { getApplication } from "@/lib/actions/applications";
 import { listContentTypes } from "@/lib/actions/content-types";
 import { listArticleComments } from "@/lib/actions/comments";
 import { listLanguages } from "@/lib/actions/languages";
+import { getArticlePublish } from "@/lib/actions/publish";
 import { getArticle } from "@/lib/actions/press";
 import { AppSubnav } from "@/components/app-subnav";
 import { ArticleComments } from "@/components/article-comments";
@@ -21,9 +22,10 @@ export default async function ArticleDetailPage({
   if (!app || app.model_type !== "CONTENT") notFound();
   const article = await getArticle(contentId);
   if (!article || article.application_id !== app.id) notFound();
-  const [languages, contentTypes] = await Promise.all([
+  const [languages, contentTypes, publish] = await Promise.all([
     listLanguages(),
     listContentTypes(app.id, { includeInactive: true }),
+    getArticlePublish(contentId),
   ]);
   const contentTypeName =
     contentTypes.find((type) => type.code === article.content_type)?.name ??
@@ -63,11 +65,19 @@ export default async function ArticleDetailPage({
         }
       />
       <AppSubnav application={app} />
+      {publish.notice ? (
+        <p className="mb-4 text-sm text-red-700">{publish.notice}</p>
+      ) : null}
       <ArticleView
         key={article.id}
         article={article}
         languages={languages}
         contentTypeName={contentTypeName}
+        applicationId={app.id}
+        canReview={app.access.can_edit}
+        publishVendors={publish.vendors}
+        publishTargets={publish.targets}
+        publications={publish.publications}
       />
       <ArticleComments
         applicationId={app.id}

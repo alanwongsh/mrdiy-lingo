@@ -6,18 +6,20 @@ import {
   autoTranslateArticleLanguages,
   deleteContentTranslationVersion,
   listContentTranslationVersions,
-  saveManualContentTranslation,
   setContentTranslationStatus,
   updateArticle,
 } from "@/lib/actions/press";
 import type {
   Content,
   ContentLifecycleStatus,
+  ContentPublication,
   ContentTranslation,
   ContentTranslationVersion,
   ContentTypeRecord,
   Language,
   ArticleComment,
+  PublishLanguageTarget,
+  PublishVendorChoice,
   SourceContentFields,
   TranslationStatus,
 } from "@/lib/types";
@@ -41,6 +43,13 @@ import { ArticleComments } from "@/components/article-comments";
 import { HtmlEditor, type HtmlEditorHandle } from "@/components/html-editor";
 import { MARKETS } from "@/lib/markets";
 import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
+import { PublishLanguagePicker } from "@/components/article-publish-panel";
+import { publishArticleNow } from "@/lib/actions/publish";
+import { FilterSelect } from "./filter-select";
+import { TranslationQualityPanel } from "@/components/translation-quality-panel";
+import { saveReviewedContentTranslation } from "@/lib/actions/quality";
+import { applyQualityAction } from "@/lib/translation-quality/apply-action";
+import type { QualityAction, QualityTargetField } from "@/lib/translation-quality/types";
 
 type ArticleWithTranslations = Content & {
   translations: ContentTranslation[];
@@ -120,6 +129,18 @@ function writeClipboard(text: string): Promise<void> {
   return Promise.reject(new Error("Could not copy."));
 }
 
+function formatStamp(iso: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kuala_Lumpur",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(iso));
+}
+
 function fromLocalInput(value: string): string | null {
   if (!value.trim()) return null;
   const d = new Date(value);
@@ -154,6 +175,16 @@ function findTranslation(
 
 const DRAFT_STATUSES = ["DRAFT", "TRANSLATING", "REVIEW"] as const;
 
+function isLifecycleStatus(value: string): value is ContentLifecycleStatus {
+  return (
+    value === "DRAFT" ||
+    value === "TRANSLATING" ||
+    value === "REVIEW" ||
+    value === "APPROVED" ||
+    value === "PUBLISHED"
+  );
+}
+
 function lifecycleChoices(
   canApprove: boolean,
   current: ContentLifecycleStatus
@@ -176,6 +207,12 @@ export function ArticleEditor({
   canApprove,
   comments,
   commentsError,
+  initialLanguage,
+  publishVendors,
+  publishTargets,
+  publications,
+  publishReady,
+  publishNotice,
 }: {
   applicationId: string;
   article: ArticleWithTranslations;
@@ -185,6 +222,12 @@ export function ArticleEditor({
   canApprove: boolean;
   comments: ArticleComment[];
   commentsError?: string;
+  initialLanguage?: string;
+  publishVendors: PublishVendorChoice[];
+  publishTargets: PublishLanguageTarget[];
+  publications: ContentPublication[];
+  publishReady: boolean;
+  publishNotice?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -199,6 +242,7 @@ export function ArticleEditor({
   const [scheduledPublishAt, setScheduledPublishAt] = useState(
     toLocalInput(article.scheduled_publish_at)
   );
+  const [languageVendors, setLanguageVendors] = useState(publishTargets);
   const [source, setSource] = useState(article.source_content);
   const [sourceLanguage, setSourceLanguage] = useState(article.source_language);
   const [market, setMarket] = useState(article.market ?? "");
@@ -207,7 +251,10 @@ export function ArticleEditor({
     languages,
     article.source_language
   );
-  const initialLang = initialTargets[0] ?? "";
+  const initialLang =
+    initialTargets.find((code) => languageKey(code) === languageKey(initialLanguage ?? "")) ??
+    initialTargets[0] ??
+    "";
   const [targetLanguages, setTargetLanguages] = useState<string[]>(initialTargets);
   const allTargets = useMemo(
     () =>
@@ -234,6 +281,19 @@ export function ArticleEditor({
   const [error, setError] = useState("");
   const [copied, setCopied] = useState("");
   const [historyError, setHistoryError] = useState("");
+  const [acceptedActionIds, setAcceptedActionIds] = useState<string[]>([]);
+  const [ignoredActionIds, setIgnoredActionIds] = useState<string[]>([]);
+  const [localHandledIds, setLocalHandledIds] = useState<string[]>([]);
+  const [qualityRunId, setQualityRunId] = useState<string | null>(null);
+  const [scorePreview, setScorePreview] = useState<{
+    field: QualityTargetField;
+    text: string;
+  } | null>(null);
+  const [scrollRequest, setScrollRequest] = useState(0);
+  const titleRef = useRef<HTMLInputElement>(null);
+  const summaryRef = useRef<HTMLTextAreaElement>(null);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   const sourceBodyRef = useRef<HtmlEditorHandle>(null);
   const historyRef = useRef<HTMLDivElement>(null);
 
@@ -301,6 +361,7 @@ export function ArticleEditor({
     setStatus(article.status);
     setContentType(article.content_type);
     setScheduledPublishAt(toLocalInput(article.scheduled_publish_at));
+    setLanguageVendors(publishTargets);
     setSource(article.source_content);
     setSourceLanguage(article.source_language);
     setMarket(article.market ?? "");
@@ -315,7 +376,7 @@ export function ArticleEditor({
       if (match) return match;
       return resolved[0] ?? "";
     });
-  }, [article, languages]);
+  }, [article, languages, publishTargets]);
 
   useEffect(() => {
     setTargetLanguages((prev) => {
@@ -344,6 +405,10 @@ export function ArticleEditor({
     setShowHistory(false);
     setVersions([]);
     setHistoryError("");
+    setAcceptedActionIds([]);
+    setIgnoredActionIds([]);
+    setLocalHandledIds([]);
+    setQualityRunId(null);
   }, [translationToken, targetTranslation]);
 
   useEffect(() => {
@@ -433,24 +498,162 @@ export function ArticleEditor({
     });
   }
 
-  function saveSourceMeta() {
+  function assignedProviders() {
+    const allowed = new Set(
+      [sourceLanguage, ...targetLanguages].map((code) => languageKey(code))
+    );
+    const rows = languageVendors.filter((row) => allowed.has(languageKey(row.language_code)));
+    for (const publication of publications) {
+      if (publication.status !== "PUBLISHED") continue;
+      if (!allowed.has(languageKey(publication.language_code))) continue;
+      const exists = rows.some(
+        (row) =>
+          row.vendor_id === publication.vendor_id &&
+          languageKey(row.language_code) === languageKey(publication.language_code)
+      );
+      if (!exists) {
+        rows.push({
+          language_code: publication.language_code,
+          vendor_id: publication.vendor_id,
+        });
+      }
+    }
+    return rows;
+  }
+
+  function publishNow() {
+    startTransition(async () => {
+      setError("");
+      try {
+        const result = await publishArticleNow(article.id, applicationId, assignedProviders());
+        if (result.notes.length > 0) setError(result.notes.join(" "));
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Publish failed");
+      }
+    });
+  }
+
+  function saveSettings() {
+    startTransition(async () => {
+      setError("");
+      try {
+        await updateArticle(article.id, applicationId, {
+          title: article.title,
+          slug: article.slug,
+          content_type: contentType,
+          source_language: sourceLanguage,
+          source_content: article.source_content,
+          status,
+          scheduled_publish_at: fromLocalInput(scheduledPublishAt),
+          target_languages: targetLanguages,
+          market: market || null,
+          ...(publishReady ? { publish_targets: assignedProviders() } : {}),
+        });
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Save failed");
+      }
+    });
+  }
+
+  function acceptQualityAction(action: QualityAction) {
+    try {
+      const next = applyQualityAction(draftRef.current, action);
+      draftRef.current = next;
+      setDraft(next);
+      if (action.targetField === "content") setBodyEpoch((n) => n + 1);
+      if (action.proposedText) {
+        setScorePreview({ field: action.targetField, text: action.proposedText });
+      }
+      setAcceptedActionIds((ids) =>
+        ids.includes(action.id) ? ids : [...ids, action.id]
+      );
+      setError("");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not apply the suggestion."
+      );
+    }
+  }
+
+  function showScorePreview(target: { field: QualityTargetField; text: string }) {
+    setScorePreview(target);
+    setScrollRequest((current) => current + 1);
+  }
+
+  useEffect(() => {
+    if (!scrollRequest || !scorePreview) return;
+    const phrase = scorePreview.text.trim();
+    const frame = requestAnimationFrame(() => {
+      if (scorePreview.field === "content") {
+        document.querySelector(".quality-locate")?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+        return;
+      }
+      const el = scorePreview.field === "title" ? titleRef.current : summaryRef.current;
+      if (!el) return;
+      const at = el.value.toLowerCase().indexOf(phrase.toLowerCase());
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (at >= 0) {
+        el.focus();
+        el.setSelectionRange(at, at + phrase.length);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [scrollRequest, scorePreview]);
+
+  function ignoreQualityAction(actionId: string, stored = true) {
+    const remember = (ids: string[]) => (ids.includes(actionId) ? ids : [...ids, actionId]);
+    if (stored) setIgnoredActionIds(remember);
+    else setLocalHandledIds(remember);
+  }
+
+  async function persistDraft() {
+    if (!editingCode) return;
+    const saved = await saveReviewedContentTranslation({
+      contentId: article.id,
+      languageCode: editingCode,
+      fields: {
+        ...draft,
+        seo_title: draft.seo_title || draft.title,
+        seo_description: draft.seo_description || draft.summary,
+      },
+      applicationId,
+      qualityRunId,
+      acceptedActionIds: qualityRunId ? acceptedActionIds : [],
+      ignoredActionIds: [],
+    });
+    setAcceptedActionIds([]);
+    setIgnoredActionIds([]);
+    setLocalHandledIds([]);
+    return saved;
+  }
+
+  function saveSource() {
+    const liveBody = sourceBodyRef.current?.getHTML() ?? source.body;
     startTransition(async () => {
       setError("");
       try {
         await updateArticle(article.id, applicationId, {
           title: source.title || article.title,
-          slug: null,
+          slug: article.slug,
           content_type: contentType,
           source_language: sourceLanguage,
           source_content: {
+            ...article.source_content,
             ...source,
-            seo_title: source.seo_title || source.title,
-            seo_description: source.seo_description || source.summary,
+            body: liveBody,
           },
           status,
           scheduled_publish_at: fromLocalInput(scheduledPublishAt),
           target_languages: targetLanguages,
           market: market || null,
+          ...(publishReady ? { publish_targets: assignedProviders() } : {}),
         });
         router.refresh();
       } catch (err) {
@@ -463,78 +666,52 @@ export function ArticleEditor({
     <div className="space-y-4">
       <Card className="space-y-4 p-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Content type">
-            <select
-              className={inputClass}
-              value={contentType}
-              onChange={(e) => setContentType(e.target.value)}
-            >
-              {contentTypes
-                .filter(
-                  (type) => type.status === "ACTIVE" || type.code === contentType
-                )
-                .map((type) => (
-                  <option key={type.id} value={type.code}>
-                    {type.status === "ACTIVE"
-                      ? type.name
-                      : `${type.name} (inactive)`}
-                  </option>
-                ))}
-              {contentTypes.some((type) => type.code === contentType) ? null : (
-                <option value={contentType}>{contentType}</option>
-              )}
-            </select>
-          </Field>
-          <Field label="Source language">
-            <select
-              className={inputClass}
-              value={sourceLanguage}
-              onChange={(e) => setSourceLanguage(e.target.value)}
-            >
-              {languages.map((l) => (
-                <option key={l.id} value={l.code}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Market">
-            <select
-              className={inputClass}
-              value={market}
-              onChange={(e) => setMarket(e.target.value)}
-            >
-              <option value="">No market</option>
-              {MARKETS.map((item) => (
-                <option key={item.code} value={item.code}>
-                  {item.code} · {item.name}
-                </option>
-              ))}
-              {market && !MARKETS.some((item) => item.code === market) ? (
-                <option value={market}>{market}</option>
-              ) : null}
-            </select>
-          </Field>
-          <Field label="Lifecycle status">
-            <select
-              className={inputClass}
-              value={status}
-              onChange={(e) =>
-                setStatus(e.target.value as ContentLifecycleStatus)
-              }
-            >
-              {lifecycleChoices(canApprove, article.status).map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-            {canApprove ? null : (
-              <p className="mt-1 text-xs text-[var(--hub-muted)]">
-                Approval and publishing are limited to HOD and above.
-              </p>
-            )}
-          </Field>
+          <FilterSelect
+            fullWidth
+            label="Content type"
+            value={contentType}
+            onChange={(value) => setContentType(value)}
+            options={contentTypes.map((type) => ({
+              value: type.code,
+              label: type.name,
+            }))}
+            placeholder="Select content type"
+          />
+          <FilterSelect
+            fullWidth
+            label="Source language"
+            value={sourceLanguage}
+            onChange={(value) => setSourceLanguage(value)}
+            options={languages.map((language) => ({
+              value: language.code,
+              label: language.name,
+            }))}
+            placeholder="Select source language"
+          />
+          <FilterSelect
+            fullWidth
+            label="Market"
+            value={market}
+            onChange={(value) => setMarket(value)}
+            options={MARKETS.map((market) => ({
+              value: market.code,
+              label: market.code + " · " + market.name,
+            }))}
+            placeholder="Select market"
+          />
+          <FilterSelect
+            fullWidth
+            label="Lifecycle status"
+            value={status}
+            onChange={(value) => {
+              if (isLifecycleStatus(value)) setStatus(value);
+            }}
+            options={lifecycleChoices(canApprove, article.status).map((status) => ({
+              value: status,
+              label: status,
+            }))}
+            placeholder="Select lifecycle status"
+          />
           <Field label="Estimated publish">
             <input
               type="datetime-local"
@@ -543,14 +720,28 @@ export function ArticleEditor({
               onChange={(e) => setScheduledPublishAt(e.target.value)}
             />
           </Field>
+          <div className="sm:col-span-2 lg:col-span-4">
+            <PublishLanguagePicker
+              applicationId={applicationId}
+              languages={languages}
+              sourceLanguage={sourceLanguage}
+              languageCodes={targetLanguages}
+              vendors={publishVendors}
+              selected={languageVendors}
+              publications={publications}
+              ready={publishReady}
+              notice={publishNotice}
+              publishing={pending}
+              onPublish={publishNow}
+              onChange={setLanguageVendors}
+            />
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
           <span>
             Published:{" "}
             <strong className="font-semibold text-slate-900">
-              {article.published_at
-                ? new Date(article.published_at).toLocaleString()
-                : "—"}
+              {article.published_at ? formatStamp(article.published_at) : "—"}
             </strong>
           </span>
           {/* <span className="text-slate-300">·</span>
@@ -563,7 +754,7 @@ export function ArticleEditor({
               type="button"
               variant="secondary"
               disabled={pending}
-              onClick={saveSourceMeta}
+              onClick={saveSettings}
             >
               Save settings
             </Button>
@@ -666,7 +857,7 @@ export function ArticleEditor({
 
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="space-y-4">
         <Card className="overflow-hidden">
           <div className="border-b border-[var(--hub-border)] bg-slate-50 px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -692,7 +883,7 @@ export function ArticleEditor({
                 type="button"
                 variant="secondary"
                 disabled={pending}
-                onClick={saveSourceMeta}
+                onClick={saveSource}
               >
                 Save source
               </Button>
@@ -735,6 +926,7 @@ export function ArticleEditor({
           </div>
         </Card>
 
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <Card className="overflow-hidden border-[var(--diy-red)]/20">
           <div className="border-b border-[var(--hub-border)] bg-[var(--diy-red-soft)] px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -770,7 +962,8 @@ export function ArticleEditor({
             <>
             <Field label="Title" action={copyField("target-title", draft.title, "Title")}>
               <input
-                className={inputClass}
+                ref={titleRef}
+                className={`${inputClass} ${scorePreview?.field === "title" ? "ring-2 ring-amber-400" : ""}`}
                 value={draft.title}
                 disabled={isTranslating}
                 onChange={(e) =>
@@ -785,7 +978,8 @@ export function ArticleEditor({
               action={copyField("target-description", draft.summary, "Description")}
             >
               <textarea
-                className={textareaClass}
+                ref={summaryRef}
+                className={`${textareaClass} ${scorePreview?.field === "summary" ? "ring-2 ring-amber-400" : ""}`}
                 rows={3}
                 value={draft.summary}
                 disabled={isTranslating}
@@ -799,6 +993,7 @@ export function ArticleEditor({
             <Field label="Body" action={copyField("target-body", draft.body, "Body")}>
               <HtmlEditor
                 revision={`target-${article.id}-${editingCode}-${bodyEpoch}`}
+                highlight={scorePreview?.field === "content" ? scorePreview.text : ""}
                 value={draft.body}
                 disabled={isTranslating}
                 onChange={(html) => setDraft((d) => ({ ...d, body: html }))}
@@ -807,37 +1002,32 @@ export function ArticleEditor({
             </Field>
             <div className="flex flex-wrap items-center gap-2 pt-1">
               {isDirty ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={pending || isTranslating || !draft.title.trim()}
-                  onClick={() =>
-                    startTransition(async () => {
-                      setError("");
-                      try {
-                        await saveManualContentTranslation({
-                          contentId: article.id,
-                          languageCode: editingCode,
-                          fields: {
-                            ...draft,
-                            seo_title: draft.seo_title || draft.title,
-                            seo_description:
-                              draft.seo_description || draft.summary,
-                          },
-                          applicationId,
-                        });
-                        router.refresh();
-                        if (showHistory) loadHistory();
-                      } catch (err) {
-                        setError(
-                          err instanceof Error ? err.message : "Save failed"
-                        );
-                      }
-                    })
-                  }
-                >
-                  Save changes
-                </Button>
+                <>
+                  <span className="text-xs font-semibold text-amber-800">
+                    Unsaved changes
+                  </span>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={pending || isTranslating || !draft.title.trim()}
+                    onClick={() =>
+                      startTransition(async () => {
+                        setError("");
+                        try {
+                          await persistDraft();
+                          router.refresh();
+                          if (showHistory) loadHistory();
+                        } catch (err) {
+                          setError(
+                            err instanceof Error ? err.message : "Save failed"
+                          );
+                        }
+                      })
+                    }
+                  >
+                    Save changes
+                  </Button>
+                </>
               ) : hasSavedContent ? (
                 <span className="text-xs font-medium text-emerald-700">
                   Saved
@@ -862,20 +1052,13 @@ export function ArticleEditor({
                         const changed =
                           draft.title !== current.title ||
                           draft.summary !== current.summary ||
-                          draft.body !== current.body;
+                          draft.body !== current.body ||
+                          acceptedActionIds.length > 0 ||
+                          ignoredActionIds.length > 0;
                         let contentTranslationId = targetTranslation?.id;
                         if (!contentTranslationId || changed) {
-                          const saved = await saveManualContentTranslation({
-                            contentId: article.id,
-                            languageCode: editingCode,
-                            fields: {
-                              ...draft,
-                              seo_title: draft.seo_title || draft.title,
-                              seo_description:
-                                draft.seo_description || draft.summary,
-                            },
-                            applicationId,
-                          });
+                          const saved = await persistDraft();
+                          if (!saved) throw new Error("Save the translation before approving it.");
                           contentTranslationId = saved.id;
                         }
                         await setContentTranslationStatus({
@@ -915,6 +1098,29 @@ export function ArticleEditor({
             )}
           </div>
         </Card>
+        {editingCode ? (
+          <TranslationQualityPanel
+            variant="rail"
+            applicationId={applicationId}
+            contentId={article.id}
+            languageCode={editingCode}
+            languageName={targetMeta?.name ?? editingCode}
+            sourceLanguage={sourceLanguage}
+            source={source}
+            draft={draft}
+            savedAt={targetTranslation?.updated_at ?? ""}
+            canReview
+            unsaved={isDirty}
+            acceptedActionIds={[...acceptedActionIds, ...localHandledIds]}
+            ignoredActionIds={ignoredActionIds}
+            onLatestRunId={setQualityRunId}
+            onAccept={acceptQualityAction}
+            onIgnore={ignoreQualityAction}
+            onPreview={setScorePreview}
+            onShow={showScorePreview}
+          />
+        ) : null}
+        </div>
       </div>
 
       <ArticleComments

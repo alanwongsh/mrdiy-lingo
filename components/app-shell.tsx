@@ -45,6 +45,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   if (user?.is_superadmin) {
     nav.push({ href: "/roles", label: "Roles" });
     nav.push({ href: "/languages", label: "Languages" });
+    nav.push({ href: "/logs", label: "Logs" });
   }
   if (setupOpen) {
     nav.push({ href: "/setup", label: "Setup" });

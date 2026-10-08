@@ -31,6 +31,7 @@ import { requireContentTypeCode } from "@/lib/actions/content-types";
 import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
 import { normalizeMarket } from "@/lib/markets";
 import { buildArticleWorkbook } from "@/lib/export/articles";
+import { replaceArticlePublishTargets } from "@/lib/publish/store";
 
 function asSourceContent(value: unknown): SourceContentFields {
   const v = (value ?? {}) as Partial<SourceContentFields>;
@@ -401,6 +402,8 @@ export async function updateArticle(
     scheduled_publish_at?: string | null;
     target_languages?: string[];
     market?: string | null;
+    /** Language and provider pairs. Omitted values leave the selection unchanged. */
+    publish_targets?: { language_code: string; vendor_id: string }[];
     /** Adding a language must not clear other approvals or drop the article to review. */
     keepApprovals?: boolean;
   }
@@ -422,13 +425,10 @@ export async function updateArticle(
     throw new Error("Approval is limited to HOD and above.");
   }
 
-  const sourceChanged =
-    String(current.source_language).trim().toLowerCase() !==
-      input.source_language.trim().toLowerCase() ||
-    sourceContentChanged(
-      asSourceContent(current.source_content),
-      input.source_content
-    );
+  const textChanged = sourceContentChanged(
+    asSourceContent(current.source_content),
+    input.source_content
+  );
   const currentTargets = normalizeTargetLanguages(
     current.target_languages,
     current.source_language
@@ -441,7 +441,7 @@ export async function updateArticle(
     input.target_languages !== undefined &&
     !sameCodeSet(currentTargets, nextTargets);
 
-  if (sourceChanged && !input.keepApprovals) {
+  if (textChanged && !input.keepApprovals) {
     await clearTargetApprovals(id, input.source_language);
   }
 
@@ -450,19 +450,8 @@ export async function updateArticle(
   const markingReleased =
     input.status === "APPROVED" || input.status === "PUBLISHED";
   let nextStatus = input.status;
-  if (!input.keepApprovals && sourceChanged && (released || markingReleased)) {
+  if (!input.keepApprovals && textChanged && (released || markingReleased)) {
     nextStatus = "REVIEW";
-  } else if (
-    !input.keepApprovals &&
-    targetsChanged &&
-    (released || markingReleased)
-  ) {
-    const allApproved = await targetsAllApproved(
-      id,
-      input.source_language,
-      nextTargets
-    );
-    if (!allApproved) nextStatus = "REVIEW";
   }
 
   const patch: Record<string, unknown> = {
@@ -503,8 +492,25 @@ export async function updateArticle(
     .select("*")
     .single();
   if (error) throw new Error(error.message);
-  if (targetsChanged && !input.keepApprovals) {
-    await syncArticleStatusFromApprovals(id, applicationId);
+  if (targetsChanged && !textChanged && !input.keepApprovals) {
+    const allApproved = await targetsAllApproved(
+      id,
+      input.source_language,
+      nextTargets
+    );
+    if (
+      allApproved &&
+      nextStatus !== "APPROVED" &&
+      nextStatus !== "PUBLISHED"
+    ) {
+      await persistArticleStatus(id, applicationId, "APPROVED");
+    }
+  }
+  if (input.publish_targets !== undefined) {
+    await replaceArticlePublishTargets(id, applicationId, input.publish_targets, [
+      input.source_language,
+      ...nextTargets,
+    ]);
   }
   revalidatePath(`/applications/${applicationId}`);
   revalidatePath(`/applications/${applicationId}/articles/${id}`);
@@ -827,11 +833,22 @@ export async function autoTranslateArticle(input: {
   }
 
   const service = getTranslationService();
-  const fields = await service.translateArticle({
-    fields: sourceFields,
-    sourceLanguage,
-    targetLanguage: input.targetLanguage,
-  });
+  const previousStatus = article.status;
+  let fields;
+  try {
+    fields = await service.translateArticle({
+      fields: sourceFields,
+      sourceLanguage,
+      targetLanguage: input.targetLanguage,
+    });
+  } catch (error) {
+    if (!input.approveTranslation && previousStatus !== "TRANSLATING") {
+      await persistArticleStatus(input.contentId, input.applicationId, previousStatus).catch(
+        () => undefined
+      );
+    }
+    throw error;
+  }
 
   if (!fields.body?.trim() && sourceFields.body?.trim()) {
     fields.body = await service.translateText({
@@ -931,7 +948,8 @@ export async function saveManualContentTranslation(input: {
   fields: SourceContentFields;
   applicationId: string;
 }): Promise<ContentTranslation> {
-  await requireContentAccess(input.contentId, "edit");
+  const grant = await requireContentAccess(input.contentId, "edit");
+  const approver = grant.access.can_approve;
   const db = await getDb();
   const { data: article, error: articleError } = await db
     .from("content")
@@ -952,10 +970,11 @@ export async function saveManualContentTranslation(input: {
     language_code: input.languageCode,
     fields: input.fields,
     source_type: "MANUAL",
-    status: "MANUALLY_MODIFIED",
+    status: approver ? "APPROVED" : "MANUALLY_MODIFIED",
   });
   const changed = !existing || existing.updated_at !== result.updated_at;
   if (
+    !approver &&
     changed &&
     (article.status === "APPROVED" || article.status === "PUBLISHED")
   ) {
@@ -1085,7 +1104,11 @@ export async function exportArticlesFile(input: {
   });
   const notice = describeExportGaps(skipped, blankCounts);
   if (ordered.length === 0) {
-    throw new Error(notice || "No matching articles to export.");
+    return {
+      filename: "",
+      base64: "",
+      notice: notice || "No matching articles to export.",
+    };
   }
 
   const { base64 } = buildArticleWorkbook(ordered);

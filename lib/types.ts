@@ -177,6 +177,46 @@ export type Content = {
   updated_at: string;
 };
 
+export type PublishVendor = {
+  id: string;
+  application_id: string;
+  name: string;
+  type_code: string;
+  /** Non-secret credentials. Secret values are omitted. */
+  config: Record<string, string>;
+  /** Secret credential keys that already have a stored value. */
+  saved_secrets: string[];
+  status: EntityStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PublishVendorChoice = {
+  id: string;
+  name: string;
+  status: EntityStatus;
+};
+
+/** One article language sent to one provider. */
+export type PublishLanguageTarget = {
+  language_code: string;
+  vendor_id: string;
+};
+
+export type PublicationStatus = "PENDING" | "PUBLISHED" | "FAILED";
+
+export type ContentPublication = {
+  id: string;
+  content_id: string;
+  vendor_id: string;
+  vendor_name: string;
+  language_code: string;
+  status: PublicationStatus;
+  external_url: string | null;
+  error_message: string | null;
+  published_at: string | null;
+};
+
 export type ContentTranslation = {
   id: string;
   content_id: string;

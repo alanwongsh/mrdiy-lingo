@@ -1,4 +1,5 @@
 import type { SourceContentFields } from "@/lib/types";
+import { GeminiTranslationProvider } from "@/lib/translation/gemini";
 
 export type TranslateTextInput = {
   text: string;
@@ -183,10 +184,10 @@ export class TranslationService {
 }
 
 export function getTranslationService(): TranslationService {
-  const providerName = process.env.TRANSLATION_PROVIDER ?? "mymemory";
-  const provider =
-    providerName === "mock"
-      ? new MockTranslationProvider()
-      : new MyMemoryTranslationProvider();
-  return new TranslationService(provider);
+  const providerName = (process.env.TRANSLATION_PROVIDER ?? "mymemory").trim().toLowerCase();
+  if (providerName === "mock") return new TranslationService(new MockTranslationProvider());
+  if (providerName === "gemini") {
+    return new TranslationService(new GeminiTranslationProvider());
+  }
+  return new TranslationService(new MyMemoryTranslationProvider());
 }

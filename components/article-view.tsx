@@ -1,12 +1,21 @@
 "use client";
 
-import { Fragment, useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { saveReviewedContentTranslation } from "@/lib/actions/quality";
+import { applyQualityAction } from "@/lib/translation-quality/apply-action";
+import type { QualityAction, QualityTargetField } from "@/lib/translation-quality/types";
+import { TranslationQualityPanel } from "@/components/translation-quality-panel";
+import { PublishLanguagePicker } from "@/components/article-publish-panel";
 import { Badge, Card, inputClass, statusTone } from "@/components/ui";
 import type {
   Content,
   ContentLifecycleStatus,
+  ContentPublication,
   ContentTranslation,
   Language,
+  PublishVendorChoice,
+  SourceContentFields,
   TranslationStatus,
 } from "@/lib/types";
 
@@ -53,10 +62,170 @@ type Pane = {
   summary: string;
   body: string;
   empty: boolean;
+  marks?: ReviewMark[];
+  locate?: { field: QualityTargetField; text: string } | null;
 };
+
+function marksFor(pane: Pane, field: QualityTargetField) {
+  return pane.marks?.filter((mark) => mark.field === field);
+}
+
+function locateFor(pane: Pane, field: QualityTargetField) {
+  return pane.locate?.field === field ? pane.locate.text : undefined;
+}
+
+type ReviewMark = {
+  field: QualityTargetField;
+  original: string;
+  proposed: string;
+};
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function sourceHtml(value: string) {
+  if (/<[a-z][\s\S]*>/i.test(value)) return value;
+  return escapeHtml(value).replace(/\n/g, "<br>");
+}
+
+/** Wrap the first plain-text match, leaving tags and surrounding formatting in place. */
+function wrapFirstText(html: string, phrase: string, wrap: (matched: string) => string) {
+  const needle = phrase.trim();
+  if (!needle || !html) return html;
+  const lower = needle.toLowerCase();
+  let index = 0;
+  let out = "";
+  while (index < html.length) {
+    if (html[index] === "<") {
+      const end = html.indexOf(">", index);
+      if (end === -1) return out + html.slice(index);
+      out += html.slice(index, end + 1);
+      index = end + 1;
+      continue;
+    }
+    const next = html.indexOf("<", index);
+    const end = next === -1 ? html.length : next;
+    const text = html.slice(index, end);
+    const at = text.toLowerCase().indexOf(lower);
+    if (at >= 0) {
+      const matched = text.slice(at, at + needle.length);
+      return (
+        out +
+        text.slice(0, at) +
+        wrap(matched) +
+        text.slice(at + needle.length) +
+        html.slice(end)
+      );
+    }
+    out += text;
+    index = end;
+  }
+  return html;
+}
+
+/** Highlight a sentence that is split by tags, such as a bold word in the middle. */
+function markAcrossTags(html: string, phrase: string) {
+  const needle = phrase.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!needle || !html) return html;
+  const segments: Array<{ start: number; end: number; text: string }> = [];
+  let cursor = 0;
+  while (cursor < html.length) {
+    if (html[cursor] === "<") {
+      const end = html.indexOf(">", cursor);
+      if (end < 0) break;
+      cursor = end + 1;
+      continue;
+    }
+    const next = html.indexOf("<", cursor);
+    const end = next < 0 ? html.length : next;
+    if (end > cursor) segments.push({ start: cursor, end, text: html.slice(cursor, end) });
+    cursor = end;
+  }
+  let flat = "";
+  const map: Array<{ segment: number; offset: number } | null> = [];
+  const pushChar = (segment: number | null, offset: number, char: string) => {
+    flat += char.toLowerCase();
+    map.push(segment == null ? null : { segment, offset });
+  };
+  for (let index = 0; index < segments.length; index += 1) {
+    const text = segments[index].text;
+    if (flat && !/\s$/.test(flat) && text && !/^\s/.test(text)) pushChar(null, 0, " ");
+    for (let offset = 0; offset < text.length; offset += 1) {
+      const char = text[offset];
+      if (/\s/.test(char) && /\s$/.test(flat)) continue;
+      pushChar(index, offset, /\s/.test(char) ? " " : char);
+    }
+  }
+  const at = flat.indexOf(needle);
+  if (at < 0) return html;
+  const covered = new Map<number, { from: number; to: number }>();
+  for (let index = at; index < at + needle.length && index < map.length; index += 1) {
+    const point = map[index];
+    if (!point) continue;
+    const current = covered.get(point.segment);
+    if (!current) covered.set(point.segment, { from: point.offset, to: point.offset + 1 });
+    else current.to = Math.max(current.to, point.offset + 1);
+  }
+  if (covered.size === 0) return html;
+  let out = "";
+  let written = 0;
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    out += html.slice(written, segment.start);
+    const range = covered.get(index);
+    if (!range) out += segment.text;
+    else {
+      const matched = segment.text.slice(range.from, range.to);
+      out +=
+        segment.text.slice(0, range.from) +
+        `<mark class="quality-locate" data-quality-change="">${matched}</mark>` +
+        segment.text.slice(range.to);
+    }
+    written = segment.end;
+  }
+  return out + html.slice(written);
+}
+
+function decorateField(value: string, marks: ReviewMark[], locateText?: string) {
+  let html = sourceHtml(value);
+  for (const mark of marks) {
+    if (!mark.proposed) continue;
+    html = wrapFirstText(
+      html,
+      mark.proposed,
+      (matched) =>
+        `<del class="quality-diff-remove" data-quality-change="">${escapeHtml(mark.original)}</del><mark class="quality-diff-add">${escapeHtml(matched)}</mark>`
+    );
+  }
+  if (locateText) {
+    const marked = wrapFirstText(
+      html,
+      locateText,
+      (matched) => `<mark class="quality-locate" data-quality-change="">${escapeHtml(matched)}</mark>`
+    );
+    html = marked === html ? markAcrossTags(html, locateText) : marked;
+  }
+  return html;
+}
 
 function isLayout(value: string | null): value is ViewLayout {
   return LAYOUTS.some((layout) => layout.id === value);
+}
+
+function formatStamp(iso: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kuala_Lumpur",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(iso));
 }
 
 function languageName(languages: Language[], code: string) {
@@ -69,6 +238,16 @@ function languageName(languages: Language[], code: string) {
 
 function hasText(value: string | null | undefined) {
   return Boolean(value?.replace(/<[^>]+>/g, "").trim());
+}
+
+function translationFields(translation: ContentTranslation | undefined): SourceContentFields {
+  return {
+    title: translation?.title ?? "",
+    summary: translation?.summary ?? "",
+    body: translation?.body ?? "",
+    seo_title: translation?.seo_title ?? "",
+    seo_description: translation?.seo_description ?? "",
+  };
 }
 
 function paneFor(article: Article, languages: Language[], code: string): Pane {
@@ -95,7 +274,24 @@ function paneFor(article: Article, languages: Language[], code: string): Pane {
   };
 }
 
-function FieldBody({ value }: { value: string }) {
+function FieldBody({
+  value,
+  marks = [],
+  locateText,
+}: {
+  value: string;
+  marks?: ReviewMark[];
+  locateText?: string;
+}) {
+  const decorated = marks.length > 0 || locateText;
+  if (decorated) {
+    return (
+      <div
+        className="html-editor-surface text-sm leading-relaxed text-[var(--hub-fg)]"
+        dangerouslySetInnerHTML={{ __html: decorateField(value, marks, locateText) }}
+      />
+    );
+  }
   if (!hasText(value)) {
     return <p className="text-sm text-[var(--hub-muted)]">Empty</p>;
   }
@@ -118,13 +314,17 @@ function FieldBody({ value }: { value: string }) {
 function ReadField({
   label,
   value,
+  marks,
+  locateText,
   compact,
 }: {
   label: string;
   value: string;
+  marks?: ReviewMark[];
+  locateText?: string;
   compact?: boolean;
 }) {
-  if (!hasText(value)) return null;
+  if (!hasText(value) && !marks?.length) return null;
   return (
     <div
       className={
@@ -136,7 +336,7 @@ function ReadField({
       <div className="text-xs font-semibold tracking-wide text-[var(--hub-muted)] uppercase">
         {label}
       </div>
-      <FieldBody value={value} />
+      <FieldBody value={value} marks={marks} locateText={locateText} />
     </div>
   );
 }
@@ -160,9 +360,9 @@ function ArticleBody({ pane, compact }: { pane: Pane; compact?: boolean }) {
   }
   return (
     <div className="space-y-3">
-      <ReadField label="Title" value={pane.title} compact={compact} />
-      <ReadField label="Summary" value={pane.summary} compact={compact} />
-      <ReadField label="Body" value={pane.body} compact={compact} />
+      <ReadField label="Title" value={pane.title} marks={marksFor(pane, "title")} locateText={locateFor(pane, "title")} compact={compact} />
+      <ReadField label="Summary" value={pane.summary} marks={marksFor(pane, "summary")} locateText={locateFor(pane, "summary")} compact={compact} />
+      <ReadField label="Body" value={pane.body} marks={marksFor(pane, "content")} locateText={locateFor(pane, "content")} compact={compact} />
     </div>
   );
 }
@@ -450,7 +650,11 @@ function FieldCompare({ panes }: { panes: Pane[] }) {
                 key={`${row.key}-${pane.code}`}
                 className="min-w-0 border-b border-l border-[var(--hub-border)] px-3 py-3"
               >
-                <FieldBody value={pane[row.key]} />
+                <FieldBody
+                  value={pane[row.key]}
+                  marks={marksFor(pane, row.key === "body" ? "content" : row.key)}
+                  locateText={locateFor(pane, row.key === "body" ? "content" : row.key)}
+                />
               </div>
             ))}
           </Fragment>
@@ -464,10 +668,20 @@ export function ArticleView({
   article,
   languages,
   contentTypeName,
+  applicationId,
+  canReview,
+  publishVendors,
+  publishTargets,
+  publications,
 }: {
   article: Article;
   languages: Language[];
   contentTypeName: string;
+  applicationId: string;
+  canReview: boolean;
+  publishVendors: PublishVendorChoice[];
+  publishTargets: { language_code: string; vendor_id: string }[];
+  publications: ContentPublication[];
 }) {
   const options = Array.from(
     new Set([
@@ -486,7 +700,9 @@ export function ArticleView({
     options.find((code) => code !== article.source_language) ??
     article.source_language;
 
-  const [layout, setLayout] = useState<ViewLayout>("source");
+  const router = useRouter();
+  const [saving, startSave] = useTransition();
+  const [layout, setLayout] = useState<ViewLayout>("split");
   const [left, setLeft] = useState(article.source_language);
   const [right, setRight] = useState(defaultRight);
   const [visibleCodes, setVisibleCodes] = useState(options);
@@ -540,8 +756,154 @@ export function ArticleView({
     setRight(leftCode);
   }
 
+  const targets = options.filter((code) => !sameCode(code, article.source_language));
+  const reviewCode =
+    targets.find((code) => sameCode(code, rightCode)) ??
+    targets.find((code) => sameCode(code, leftCode)) ??
+    targets[0];
+  const reviewTranslation = article.translations.find(
+    (row) => reviewCode && row.language_code.toLowerCase() === reviewCode.toLowerCase()
+  );
+
+  function focusReview(code: string) {
+    chooseLayout("split");
+    setLeft(article.source_language);
+    if (sameCode(code, article.source_language)) return;
+    setRight(code);
+  }
+
+  const savedFields = translationFields(reviewTranslation);
+  const savedKey = `${reviewCode ?? ""}:${reviewTranslation?.updated_at ?? ""}`;
+  const [draftKey, setDraftKey] = useState(savedKey);
+  const [reviewDraft, setReviewDraft] = useState<SourceContentFields>(savedFields);
+  const [acceptedActionIds, setAcceptedActionIds] = useState<string[]>([]);
+  const [ignoredActionIds, setIgnoredActionIds] = useState<string[]>([]);
+  const [localHandledIds, setLocalHandledIds] = useState<string[]>([]);
+  const [qualityRunId, setQualityRunId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState("");
+  const [reviewNote, setReviewNote] = useState("");
+  const [reviewMarks, setReviewMarks] = useState<ReviewMark[]>([]);
+  const [locate, setLocate] = useState<{ field: QualityTargetField; text: string } | null>(null);
+  const [scrollRequest, setScrollRequest] = useState(0);
+  if (draftKey !== savedKey) {
+    setDraftKey(savedKey);
+    setReviewDraft(savedFields);
+    setAcceptedActionIds([]);
+    setIgnoredActionIds([]);
+    setLocalHandledIds([]);
+    setQualityRunId(null);
+    setSaveError("");
+    setReviewNote("");
+    setReviewMarks([]);
+    setLocate(null);
+  }
+  const reviewTextChanged =
+    reviewDraft.title !== savedFields.title ||
+    reviewDraft.summary !== savedFields.summary ||
+    reviewDraft.body !== savedFields.body;
+  const reviewDirty =
+    reviewTextChanged ||
+    acceptedActionIds.length > 0 ||
+    ignoredActionIds.length > 0;
+  function showInArticle(target: { field: QualityTargetField; text: string }) {
+    setLocate(target);
+    setScrollRequest((current) => current + 1);
+  }
+
+  useEffect(() => {
+    if (!scrollRequest) return;
+    const frame = requestAnimationFrame(() => {
+      document.querySelector(".quality-locate")?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [scrollRequest]);
+
+  function withReviewDraft(pane: Pane): Pane {
+    if (!reviewCode || !sameCode(pane.code, reviewCode)) return pane;
+    return {
+      ...pane,
+      title: reviewDraft.title,
+      summary: reviewDraft.summary,
+      body: reviewDraft.body,
+      marks: reviewMarks,
+      locate,
+      empty:
+        !hasText(reviewDraft.title) &&
+        !hasText(reviewDraft.summary) &&
+        !hasText(reviewDraft.body),
+    };
+  }
+
+  function acceptReviewAction(action: QualityAction, stored = true) {
+    try {
+      setReviewDraft((current) => applyQualityAction(current, action));
+      const remember = (ids: string[]) => (ids.includes(action.id) ? ids : [...ids, action.id]);
+      if (stored) setAcceptedActionIds(remember);
+      else setLocalHandledIds(remember);
+      if (action.originalText && action.proposedText) {
+        setReviewMarks((current) => [
+          ...current,
+          {
+            field: action.targetField,
+            original: action.originalText ?? "",
+            proposed: action.proposedText ?? "",
+          },
+        ]);
+      }
+      setLocate(null);
+      setSaveError("");
+      const where =
+        action.targetField === "content"
+          ? "body"
+          : action.targetField === "summary"
+            ? "description"
+            : "title";
+      setReviewNote(`Updated the ${where}. Save changes to keep it.`);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Could not apply the suggestion.");
+      setReviewNote("");
+    }
+  }
+
+  function ignoreReviewAction(actionId: string, stored = true) {
+    const remember = (ids: string[]) => (ids.includes(actionId) ? ids : [...ids, actionId]);
+    if (stored) setIgnoredActionIds(remember);
+    else setLocalHandledIds(remember);
+    setSaveError("");
+    setReviewNote("Ignored. Analyze again if you want this finding back.");
+  }
+
+  function saveReview() {
+    if (!reviewCode) return;
+    setSaveError("");
+    startSave(async () => {
+      try {
+        await saveReviewedContentTranslation({
+          contentId: article.id,
+          languageCode: reviewCode,
+          applicationId,
+          fields: {
+            ...reviewDraft,
+            seo_title: reviewDraft.seo_title || reviewDraft.title,
+            seo_description: reviewDraft.seo_description || reviewDraft.summary,
+          },
+          qualityRunId,
+          acceptedActionIds: qualityRunId ? acceptedActionIds : [],
+          ignoredActionIds: [],
+        });
+        router.refresh();
+      } catch (err) {
+        setSaveError(err instanceof Error ? err.message : "Could not save the translation.");
+      }
+    });
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="min-w-0 space-y-4">
       <Card className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm text-[var(--hub-muted-strong)]">
         <span>{contentTypeName}</span>
         {article.market ? (
@@ -556,16 +918,23 @@ export function ArticleView({
         {article.scheduled_publish_at ? (
           <span>
             Due{" "}
-            {new Date(article.scheduled_publish_at).toLocaleString(undefined, {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-              hour: "numeric",
-              minute: "2-digit",
-            })}
+            {formatStamp(article.scheduled_publish_at)}
           </span>
         ) : null}
       </Card>
+
+      <PublishLanguagePicker
+        applicationId={applicationId}
+        languages={languages}
+        sourceLanguage={article.source_language}
+        languageCodes={article.target_languages ?? []}
+        vendors={publishVendors}
+        selected={publishTargets}
+        publications={publications}
+        ready
+        readOnly
+        onChange={() => {}}
+      />
 
       <Card className="overflow-visible">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--hub-border)] px-4 py-3">
@@ -577,6 +946,12 @@ export function ArticleView({
             </h2>
           )}
           {activeLayout === "source" ? <StatusBadge pane={sourcePane} /> : null}
+          {reviewMarks.length > 0 ? (
+            <div className="flex gap-3 text-[11px] text-slate-600">
+              <span className="rounded-sm bg-red-100 px-1 text-red-800 line-through">removed</span>
+              <span className="rounded-sm bg-emerald-100 px-1 font-medium text-emerald-900">added</span>
+            </div>
+          ) : null}
           {activeLayout === "split" ? (
             <button
               type="button"
@@ -597,12 +972,12 @@ export function ArticleView({
 
         {activeLayout === "source" ? (
           <div className="px-4 py-4">
-            <ArticleBody pane={sourcePane} />
+            <ArticleBody pane={withReviewDraft(sourcePane)} />
           </div>
         ) : null}
         {activeLayout === "split" ? (
           <PaneGrid
-            panes={splitPanes}
+            panes={splitPanes.map(withReviewDraft)}
             optionLabels={optionLabels}
             onChange={assignSide}
           />
@@ -613,12 +988,49 @@ export function ArticleView({
               Choose a language to show.
             </p>
           ) : activeLayout === "columns" ? (
-            <PaneGrid panes={shownPanes} optionLabels={optionLabels} scroll />
+            <PaneGrid panes={shownPanes.map(withReviewDraft)} optionLabels={optionLabels} scroll />
           ) : (
-            <FieldCompare panes={shownPanes} />
+            <FieldCompare panes={shownPanes.map(withReviewDraft)} />
           )
         ) : null}
       </Card>
+      </div>
+      {reviewCode ? (
+        <>
+        <TranslationQualityPanel
+          key={`${reviewCode}:${reviewTranslation?.updated_at ?? ""}`}
+          variant="rail"
+          applicationId={applicationId}
+          contentId={article.id}
+          languageCode={reviewCode}
+          languageName={languageName(languages, reviewCode)}
+          languageChoices={targets.map((code) => ({
+            code,
+            label: languageName(languages, code),
+          }))}
+          onLanguageChange={focusReview}
+          sourceLanguage={article.source_language}
+          source={article.source_content}
+          draft={reviewDraft}
+          savedAt={reviewTranslation?.updated_at ?? ""}
+          canReview={canReview}
+          canApply={canReview}
+          unsaved={reviewDirty}
+          saving={saving}
+          onSave={reviewDirty ? saveReview : undefined}
+          acceptedActionIds={[...acceptedActionIds, ...localHandledIds]}
+          ignoredActionIds={ignoredActionIds}
+          onLatestRunId={setQualityRunId}
+          onAccept={acceptReviewAction}
+          onIgnore={ignoreReviewAction}
+          onPreview={setLocate}
+          onShow={showInArticle}
+          showEditLink
+        />
+        {reviewNote ? <p className="mt-2 text-sm text-slate-600">{reviewNote}</p> : null}
+        {saveError ? <p className="mt-2 text-sm text-red-700">{saveError}</p> : null}
+        </>
+      ) : null}
     </div>
   );
 }

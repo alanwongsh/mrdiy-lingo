@@ -115,9 +115,10 @@ export function ArticleListFilters({
           </Button>
         </div>
         <div
-          className={`${filtersOpen ? "mt-3 grid" : "hidden"} grid-cols-1 gap-3 sm:mt-3 sm:flex sm:flex-wrap sm:items-center`}
+          className={`${filtersOpen ? "mt-3 grid" : "hidden"} grid-cols-1 gap-3 sm:mt-3 sm:flex sm:flex-wrap sm:items-end`}
         >
           <FilterMultiSelect
+            label="Source"
             value={source}
             onChange={setSource}
             placeholder="All source locales"
@@ -127,12 +128,14 @@ export function ArticleListFilters({
             }))}
           />
           <FilterSelect
+            label="Status"
             value={status}
             onChange={setStatus}
             placeholder="All statuses"
             options={STATUS_OPTIONS}
           />
           <FilterSelect
+            label="Type"
             value={type}
             onChange={setType}
             placeholder="All types"
@@ -161,7 +164,7 @@ export function ArticleListFilters({
                   <span />
                 )}
                 <Link
-                  href={`/applications/${applicationId}/types`}
+                  href={`/applications/${applicationId}/settings/types`}
                   className="text-sm text-slate-600 hover:underline"
                 >
                   Manage types
@@ -170,6 +173,7 @@ export function ArticleListFilters({
             }
           />
           <FilterSelect
+            label="Market"
             value={market}
             onChange={setMarket}
             placeholder="All markets"
@@ -179,6 +183,7 @@ export function ArticleListFilters({
             }))}
           />
           <FilterSelect
+            label="Due"
             value={due}
             onChange={setDue}
             placeholder="All due"

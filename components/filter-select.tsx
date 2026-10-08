@@ -36,34 +36,61 @@ function useMenuDismiss(open: boolean, setOpen: (v: boolean) => void) {
   return rootRef;
 }
 
+function FilterLabel({ id, label }: { id: string; label?: string }) {
+  if (!label) return null;
+  return (
+    <label
+      htmlFor={id}
+      className="mb-1.5 block text-xs font-semibold tracking-wide text-[var(--hub-muted-strong)]"
+    >
+      {label}
+    </label>
+  );
+}
+
 export function FilterSelect({
+  label,
   value,
   onChange,
   options,
   placeholder,
   onEditOption,
   footer,
+  fullWidth = false,
 }: {
+  label?: string;
   value: string;
   onChange: (value: string) => void;
   options: FilterOption[];
   placeholder: string;
   onEditOption?: (option: FilterOption) => void;
   footer?: React.ReactNode;
+  /** Stretch to the parent width. The filter bar keeps the compact width. */
+  fullWidth?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useMenuDismiss(open, setOpen);
   const listId = useId();
+  const buttonId = useId();
   const selected = options.find((o) => o.value === value);
   const summary = selected?.label ?? placeholder;
 
   return (
-    <div className="relative w-full sm:w-auto" ref={rootRef}>
+    <div
+      className={fullWidth ? "relative w-full" : "relative w-full sm:w-auto"}
+      ref={rootRef}
+    >
+      <FilterLabel id={buttonId} label={label} />
       <button
+        id={buttonId}
         type="button"
         aria-expanded={open}
         aria-controls={listId}
-        className={triggerClass}
+        className={
+          fullWidth
+            ? "inline-flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm hover:border-slate-400"
+            : triggerClass
+        }
         onClick={() => setOpen((v) => !v)}
       >
         <span className={`truncate ${value ? "" : "text-slate-500"}`}>
@@ -74,7 +101,15 @@ export function FilterSelect({
         </span>
       </button>
       {open ? (
-        <div id={listId} className={menuClass} role="listbox">
+        <div
+          id={listId}
+          className={
+            fullWidth
+              ? "absolute left-0 z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 shadow-lg"
+              : menuClass
+          }
+          role="listbox"
+        >
           <ul className="max-h-60 space-y-0.5 overflow-auto">
             <li>
               <button
@@ -142,11 +177,13 @@ export function FilterSelect({
 }
 
 export function FilterMultiSelect({
+  label,
   value,
   onChange,
   options,
   placeholder,
 }: {
+  label?: string;
   value: string[];
   onChange: (value: string[]) => void;
   options: FilterOption[];
@@ -155,6 +192,7 @@ export function FilterMultiSelect({
   const [open, setOpen] = useState(false);
   const rootRef = useMenuDismiss(open, setOpen);
   const listId = useId();
+  const buttonId = useId();
 
   function toggle(code: string) {
     if (value.includes(code)) {
@@ -173,7 +211,9 @@ export function FilterMultiSelect({
 
   return (
     <div className="relative w-full sm:w-auto" ref={rootRef}>
+      <FilterLabel id={buttonId} label={label} />
       <button
+        id={buttonId}
         type="button"
         aria-expanded={open}
         aria-controls={listId}

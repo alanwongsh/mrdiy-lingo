@@ -25,6 +25,9 @@ flowchart LR
     Mock[Mock provider]
     LLM[OpenAI planned]
   end
+  subgraph quality [Quality review]
+    Gemini[Google Gemini]
+  end
   Browser --> Proxy
   Joget -->|HMAC token| Proxy
   Proxy --> Next
@@ -32,6 +35,7 @@ flowchart LR
   Actions --> PG
   Actions --> MM
   Actions --> Mock
+  Actions --> Gemini
   LLM -.-> Actions
 ```
 
@@ -46,7 +50,8 @@ flowchart TB
   NS --> Keys[Translation keys]
   Keys --> Tr[Translation per language]
   Tr --> TV[Version history]
-  Content --> Article[Articles]
+  Content --> Types[Content types]
+  Types --> Article[Articles]
   Article --> CT[Translation per language]
   CT --> CV[Version history]
   Article --> Comments[Comments per language]
@@ -76,10 +81,10 @@ flowchart TD
   A([Dashboard]) --> B[New application]
   B --> C{Model}
   C -->|Strings| D[Namespaces and keys]
-  C -->|Content| E[Articles]
+  C -->|Content| E[General type and articles]
   B --> F[Creator becomes owner]
   F --> G[Invite by email or employee ID]
-  G --> H[Grant edit or approve]
+  G --> H[Assign an account role]
   H --> I([Invitee sees the app after sign-in])
 ```
 
@@ -87,34 +92,44 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  Create[Create or import] --> Draft[DRAFT]
-  Draft --> Edit[Edit source]
-  Edit --> Targets[Choose target languages]
-  Targets --> Auto[Auto-translate]
-  Auto --> Translating[TRANSLATING]
-  Translating --> Review[REVIEW]
-  Review --> Manual[Edit a language]
+  Create[Create or import] --> Start{Creator can approve?}
+  Start -->|No| Draft[DRAFT]
+  Start -->|Yes| Approved[APPROVED]
+  Draft --> Work[Edit source text and languages]
+  Work --> Auto[Auto-translate]
+  Auto --> AutoWho{Who ran it?}
+  AutoWho -->|Editor| Review[REVIEW]
+  AutoWho -->|HOD| LangOk[Language APPROVED]
+  Review --> SaveLang[Save a language]
+  SaveLang --> Actor{Who saved?}
+  Actor -->|Editor| Manual[MANUALLY_MODIFIED and article REVIEW]
+  Actor -->|HOD| LangOk
   Manual --> Review
-  Review --> ApproveLang[Approve each language]
-  ApproveLang --> All{All targets approved?}
-  All -->|No| Review
-  All -->|Yes| Approved[APPROVED]
+  LangOk --> All{All targets approved?}
+  All -->|No| Stay[Article status unchanged]
+  All -->|Yes| Approved
   Approved --> Publish[PUBLISHED]
-  Approved --> Change[Edit source or a translation]
-  Publish --> Change
-  Change --> Review
+  Publish --> SaveLang
+  Approved --> SourceEdit[Edit source text]
+  Publish --> SourceEdit
+  SourceEdit --> Cleared[Clear target approvals]
+  Cleared --> Review
+  Approved --> Settings[Type market schedule or language list]
+  Publish --> Settings
+  Settings --> Keep[Approval unchanged]
 ```
 
 ## 6. Translation status
 
 ```mermaid
 flowchart TD
-  Missing[MISSING] -->|Auto-translate| System[SYSTEM_GENERATED]
-  Missing -->|Type or import| Manual[MANUALLY_MODIFIED]
-  System -->|Edit| Manual
-  System -->|Approve| Approved[APPROVED]
-  Manual -->|Approve| Approved
-  Approved -->|Edit or source change| Manual
+  Missing[MISSING] -->|Editor auto-translate| System[SYSTEM_GENERATED]
+  Missing -->|Editor types or imports| Manual[MANUALLY_MODIFIED]
+  Missing -->|HOD saves translates or imports| Approved[APPROVED]
+  System -->|Editor saves| Manual
+  System -->|HOD saves or approves| Approved
+  Manual -->|HOD saves or approves| Approved
+  Approved -->|Editor saves or source text changes| Manual
 ```
 
 ## 7. Product string workflow
@@ -136,7 +151,8 @@ flowchart TD
   Pick[Choose application] --> File[Upload CSV or Excel]
   File --> Preview[Validate and preview]
   Preview --> Confirm[Confirm]
-  Confirm --> Opt{Translate missing languages?}
+  Confirm --> Created[Create missing namespace or content type]
+  Created --> Opt{Translate missing languages?}
   Opt -->|Yes| Run[Provider fills missing languages]
   Opt -->|No| Done([Stored as IMPORT])
   Run --> Done
@@ -148,12 +164,14 @@ flowchart TD
 flowchart TB
   subgraph people [People and languages]
     Users[hub_users]
+    Map[org_role_map]
     Lang[languages]
   end
   Apps[applications]
   Members[application_members]
   Users -->|owns| Apps
   Users --> Members
+  Users -->|account title| Map
   Apps --> Members
 
   subgraph strings [STRING]
@@ -170,16 +188,36 @@ flowchart TB
   Tr --> TV
 
   subgraph press [CONTENT]
+    Types[content_types]
     Content[content]
     CT[content_translations]
     CV[content_translation_versions]
     Comments[article_comments]
   end
+  Apps --> Types
+  Types --> Content
   Apps --> Content
   Content --> CT
   Lang --> CT
   CT --> CV
   Content --> Comments
+
+  subgraph quality [Quality]
+    Cats[quality_categories]
+    Terms[terminology]
+    Boiler[boilerplate_phrases]
+    Runs[quality_runs]
+    Scores[quality_scores]
+    Findings[quality_findings]
+    Actions[quality_actions]
+  end
+  CV --> Runs
+  Cats --> Scores
+  Runs --> Scores
+  Runs --> Findings
+  Findings --> Actions
+  Terms --> Runs
+  Boiler --> Runs
 ```
 
 ## 10. Export articles
@@ -197,4 +235,22 @@ flowchart TD
   Blank --> File
   Skip --> Notice[Report skipped and blank languages]
   File --> Notice
+```
+
+## 11. Quality review
+
+```mermaid
+flowchart TD
+  Open[Open a language] --> Analyze[Analyze]
+  Analyze --> Model[Gemini scores message tone structure and cross-language]
+  Analyze --> Rules[Rules score terminology and boilerplate]
+  Model --> Run[Store one quality run]
+  Rules --> Run
+  Run --> Rail[Show score and findings]
+  Rail --> Accept[Accept into the draft]
+  Rail --> Ignore[Ignore the finding]
+  Accept --> Save[Save translation and accepted actions]
+  Ignore --> Stay[Hidden until the next analysis]
+  Rail --> Again[Analyze again]
+  Again --> Analyze
 ```
