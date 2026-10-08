@@ -20,9 +20,6 @@
 # production
 /build
 
-# service logs (one file per day)
-/logs
-
 # misc
 .DS_Store
 *.pem
