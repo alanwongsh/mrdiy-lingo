@@ -192,7 +192,7 @@ export function LanguageMultiSelect({
             return (
               <span
                 key={code}
-                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-sm text-slate-700"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--hub-sidebar-active-border)] bg-[var(--diy-yellow-soft)] px-2.5 py-1 text-sm text-bold"
               >
                 <span className="font-medium">{lang?.name ?? code}</span>
                 {status ? (
