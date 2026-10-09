@@ -5,6 +5,7 @@ import { listActiveBoilerplate, listActiveTerminology } from "@/lib/translation-
 import { htmlToText } from "@/lib/translation-quality/text";
 import type { BoilerplatePhrase, TerminologyEntry } from "@/lib/translation-quality/types";
 import { glossaryPrompt } from "@/lib/translation/glossary";
+import { markSegments, unmarkSegment, type MarkedSegment } from "@/lib/translation/segments";
 import { keepWordGaps, textNodes, type TextNode } from "@/lib/translation/spacing";
 import type { SourceContentFields } from "@/lib/types";
 import type {
@@ -74,6 +75,24 @@ const PARTS_SCHEMA = {
 };
 
 type Glossary = { terminology: TerminologyEntry[]; boilerplate: BoilerplatePhrase[] };
+
+/** Paragraphs per request: few enough that one bad reply costs little to redo. */
+function segmentBatches(segments: MarkedSegment[]) {
+  const batches: MarkedSegment[][] = [];
+  let current: MarkedSegment[] = [];
+  let size = 0;
+  for (const segment of segments) {
+    if (current.length > 0 && (current.length >= 6 || size + segment.marked.length > 5000)) {
+      batches.push(current);
+      current = [];
+      size = 0;
+    }
+    current.push(segment);
+    size += segment.marked.length;
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
 
 /** The visible text from the first to the last run in a batch, tags removed. */
 function sourceRun(parts: string[], batch: TextNode[]) {
@@ -255,33 +274,104 @@ export class GeminiTranslationProvider implements TranslationProvider {
     return fields;
   }
 
-  /** Translate the words between tags and put the original tags back. */
+  /**
+   * Translate the body one paragraph at a time with its inline tags kept, so word order can
+   * follow the target language. A paragraph whose tags do not come back intact is translated
+   * run by run instead, which keeps the formatting but not the reordering.
+   */
   private async translateBodyParts(html: string, input: TranslateArticleInput): Promise<string> {
     const parts = html.split(/(<[^>]+>)/g);
-    const nodes = textNodes(parts, (core) => /[\p{L}\p{N}]/u.test(core));
-    if (nodes.length === 0) return html;
+    const segments = markSegments(parts);
+    if (segments.length === 0) return html;
 
-    const translated: string[] = [];
-    for (let index = 0; index < nodes.length; index += 8) {
-      const batch = nodes.slice(index, index + 8);
-      translated.push(
-        ...(await this.translateCores(
-          batch.map((node) => node.core),
-          input,
-          sourceRun(parts, batch)
-        ))
+    const results: Array<string | null> = [];
+    for (const batch of segmentBatches(segments)) {
+      results.push(...(await this.translateSegments(batch, input)));
+    }
+
+    const next = [...parts];
+    for (const [index, segment] of segments.entries()) {
+      const translated = results[index];
+      if (translated !== null && translated !== undefined) {
+        next[segment.start] = `${segment.leading}${translated}${segment.trailing}`;
+        for (let at = segment.start + 1; at < segment.end; at += 1) next[at] = "";
+        continue;
+      }
+      const nodes = textNodes(parts, (core) => /[\p{L}\p{N}]/u.test(core)).filter(
+        (node) => node.index >= segment.start && node.index < segment.end
+      );
+      const values: string[] = [];
+      for (let at = 0; at < nodes.length; at += 8) {
+        const batch = nodes.slice(at, at + 8);
+        values.push(
+          ...(await this.translateCores(
+            batch.map((node) => node.core),
+            input,
+            sourceRun(parts, batch)
+          ))
+        );
+      }
+      const spaced = keepWordGaps(
+        parts,
+        nodes,
+        nodes.map((node, at) => (values[at]?.trim() ? values[at] : node.core))
+      );
+      nodes.forEach((node, at) => {
+        next[node.index] = `${node.leading}${spaced[at]}${node.trailing}`;
+      });
+    }
+    return next.join("");
+  }
+
+  /** One request per batch of paragraphs. Null marks a paragraph whose markers did not survive. */
+  private async translateSegments(
+    segments: MarkedSegment[],
+    input: TranslateArticleInput
+  ): Promise<Array<string | null>> {
+    if (segments.length === 0) return [];
+    const glossary = await this.loadGlossary();
+    let output = "";
+    try {
+      output = await this.request(
+        [
+          `Translate each part from ${input.sourceLanguage} to ${input.targetLanguage}.`,
+          `Return JSON {"parts":[...]} with exactly ${segments.length} strings, in the same order.`,
+          "Each part is one paragraph, heading, or list item of an article.",
+          "Write natural, fluent text with the word order a native speaker would use. Do not keep the source word order when the target language orders words differently, for example a noun before the brand that describes it.",
+          "Markers such as <t1>…</t1> stand for bold, italic, and links. <t2/> stands for a line break.",
+          "Keep every marker exactly once. A marker pair must wrap the translation of the same words it wraps in the source, and it moves with those words.",
+          "Do not add HTML tags or new markers.",
+          "Keep brand marks such as MR.DIY, numbers, and web addresses unchanged.",
+          ...glossaryFor(glossary, input, segments.map((segment) => segment.plain).join("\n")),
+          "",
+          "Parts:",
+          ...segments.map((segment, index) => `${index}: ${segment.marked}`),
+        ].join("\n"),
+        true,
+        PARTS_SCHEMA
+      );
+    } catch (error) {
+      if (segments.length === 1) return [null];
+      throw error;
+    }
+    const translated = parsePartList(output);
+    if (!translated || translated.length !== segments.length) {
+      if (segments.length === 1) return [null];
+      const mid = Math.ceil(segments.length / 2);
+      return [
+        ...(await this.translateSegments(segments.slice(0, mid), input)),
+        ...(await this.translateSegments(segments.slice(mid), input)),
+      ];
+    }
+    const results: Array<string | null> = [];
+    for (const [index, segment] of segments.entries()) {
+      const restored = unmarkSegment(segment, translated[index]);
+      // In a batch, give a paragraph with broken markers one retry on its own.
+      results.push(
+        restored ?? (segments.length > 1 ? (await this.translateSegments([segment], input))[0] : null)
       );
     }
-    const values = keepWordGaps(
-      parts,
-      nodes,
-      nodes.map((node, index) => (translated[index]?.trim() ? translated[index] : node.core))
-    );
-    const next = [...parts];
-    nodes.forEach((node, index) => {
-      next[node.index] = `${node.leading}${values[index]}${node.trailing}`;
-    });
-    return next.join("");
+    return results;
   }
 
   private async translateCores(
@@ -308,7 +398,7 @@ export class GeminiTranslationProvider implements TranslationProvider {
         "Keep brand marks such as MR.DIY, numbers, and web addresses unchanged.",
         "The parts are consecutive pieces of one passage, split where bold, italic, or a link starts or ends.",
         "A part can start or end in the middle of a sentence. Translate each part so the parts read correctly when joined in order.",
-        "Keep the words of each part in that part. Do not move words between parts or merge parts.",
+        "Do not merge parts or leave a part empty.",
         ...glossaryFor(glossary, input, context),
         "",
         "The whole passage, for context:",
