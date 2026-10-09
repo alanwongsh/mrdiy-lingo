@@ -1,6 +1,11 @@
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { writeServiceLog } from "@/lib/service-log";
 import { qualityConfig } from "@/lib/translation-quality/config";
+import { listActiveBoilerplate, listActiveTerminology } from "@/lib/translation-quality/repository";
+import { htmlToText } from "@/lib/translation-quality/text";
+import type { BoilerplatePhrase, TerminologyEntry } from "@/lib/translation-quality/types";
+import { glossaryPrompt } from "@/lib/translation/glossary";
+import { keepWordGaps, textNodes, type TextNode } from "@/lib/translation/spacing";
 import type { SourceContentFields } from "@/lib/types";
 import type {
   TranslateArticleInput,
@@ -68,7 +73,24 @@ const PARTS_SCHEMA = {
   },
 };
 
-function articlePrompt(input: TranslateArticleInput) {
+type Glossary = { terminology: TerminologyEntry[]; boilerplate: BoilerplatePhrase[] };
+
+/** The visible text from the first to the last run in a batch, tags removed. */
+function sourceRun(parts: string[], batch: TextNode[]) {
+  const first = batch[0]?.index ?? 0;
+  const last = batch[batch.length - 1]?.index ?? first;
+  return htmlToText(parts.slice(first, last + 1).join(""));
+}
+
+function glossaryFor(
+  glossary: Glossary,
+  input: { sourceLanguage: string; targetLanguage: string },
+  sourceText: string
+) {
+  return glossaryPrompt({ ...glossary, ...input, sourceText });
+}
+
+function articlePrompt(input: TranslateArticleInput, glossary: Glossary, sourceText: string) {
   const fields = input.fields;
   return [
     `Translate this article from ${input.sourceLanguage} to ${input.targetLanguage}.`,
@@ -76,6 +98,7 @@ function articlePrompt(input: TranslateArticleInput) {
     "Translate only the visible words. If a field is empty, return an empty string for that key.",
     "In body, keep every HTML tag, attribute, and URL unchanged. Do not add or remove tags.",
     "Keep brand marks such as MR.DIY, numbers, and web addresses unchanged.",
+    ...glossaryFor(glossary, input, sourceText),
     "",
     `title:\n${fields.title}`,
     "",
@@ -145,11 +168,12 @@ function parsePartList(output: string): string[] | null {
   return strings.every((item) => item !== null) ? strings : null;
 }
 
-function promptFor(input: TranslateTextInput) {
+function promptFor(input: TranslateTextInput, glossary: Glossary) {
   return [
     "Translate this text. Return only the translation.",
     `From ${input.sourceLanguage} to ${input.targetLanguage}.`,
     "Keep brand marks such as MR.DIY, numbers, and web addresses unchanged.",
+    ...glossaryFor(glossary, input, input.text),
     "",
     input.text,
   ].join("\n");
@@ -185,13 +209,22 @@ async function generate(
 
 export class GeminiTranslationProvider implements TranslationProvider {
   readonly name = "gemini";
+  private glossary: Promise<Glossary> | null = null;
+
+  /** Loaded once per request. Translation still runs if the glossary tables cannot be read. */
+  private loadGlossary(): Promise<Glossary> {
+    this.glossary ??= Promise.all([listActiveTerminology(), listActiveBoilerplate()])
+      .then(([terminology, boilerplate]) => ({ terminology, boilerplate }))
+      .catch(() => ({ terminology: [], boilerplate: [] }));
+    return this.glossary;
+  }
 
   async translateText(input: TranslateTextInput): Promise<string> {
     if (!input.text.trim()) return "";
     if (input.sourceLanguage.trim().toLowerCase() === input.targetLanguage.trim().toLowerCase()) {
       return input.text;
     }
-    return this.request(promptFor(input), false);
+    return this.request(promptFor(input, await this.loadGlossary()), false);
   }
 
   async translateArticle(input: TranslateArticleInput): Promise<SourceContentFields> {
@@ -210,7 +243,13 @@ export class GeminiTranslationProvider implements TranslationProvider {
     }
     const htmlBody = /<[a-z!/?]/i.test(source.body);
     const promptFields = htmlBody ? { ...source, body: "" } : source;
-    const output = await this.request(articlePrompt({ ...input, fields: promptFields }), true);
+    const glossary = await this.loadGlossary();
+    // The glossary covers the whole article, so a body split into parts uses the same terms.
+    const sourceText = [source.title, source.summary, source.body, source.seo_title, source.seo_description].join("\n");
+    const output = await this.request(
+      articlePrompt({ ...input, fields: promptFields }, glossary, sourceText),
+      true
+    );
     const fields = articleFields(output, promptFields);
     if (htmlBody) fields.body = await this.translateBodyParts(source.body, input);
     return fields;
@@ -219,35 +258,37 @@ export class GeminiTranslationProvider implements TranslationProvider {
   /** Translate the words between tags and put the original tags back. */
   private async translateBodyParts(html: string, input: TranslateArticleInput): Promise<string> {
     const parts = html.split(/(<[^>]+>)/g);
-    const nodes: { index: number; leading: string; core: string; trailing: string }[] = [];
-    parts.forEach((part, index) => {
-      if (!part || part.startsWith("<")) return;
-      const leading = part.match(/^\s*/)?.[0] ?? "";
-      const trailing = part.match(/\s*$/)?.[0] ?? "";
-      const core = part.slice(leading.length, part.length - trailing.length);
-      if (!core || !/[\p{L}\p{N}]/u.test(core)) return;
-      nodes.push({ index, leading, core, trailing });
-    });
+    const nodes = textNodes(parts, (core) => /[\p{L}\p{N}]/u.test(core));
     if (nodes.length === 0) return html;
 
     const translated: string[] = [];
     for (let index = 0; index < nodes.length; index += 8) {
+      const batch = nodes.slice(index, index + 8);
       translated.push(
         ...(await this.translateCores(
-          nodes.slice(index, index + 8).map((node) => node.core),
-          input
+          batch.map((node) => node.core),
+          input,
+          sourceRun(parts, batch)
         ))
       );
     }
+    const values = keepWordGaps(
+      parts,
+      nodes,
+      nodes.map((node, index) => (translated[index]?.trim() ? translated[index] : node.core))
+    );
     const next = [...parts];
     nodes.forEach((node, index) => {
-      const value = translated[index]?.trim() ? translated[index] : node.core;
-      next[node.index] = `${node.leading}${value}${node.trailing}`;
+      next[node.index] = `${node.leading}${values[index]}${node.trailing}`;
     });
     return next.join("");
   }
 
-  private async translateCores(cores: string[], input: TranslateArticleInput): Promise<string[]> {
+  private async translateCores(
+    cores: string[],
+    input: TranslateArticleInput,
+    context: string
+  ): Promise<string[]> {
     if (cores.length === 0) return [];
     if (cores.length === 1) {
       const text = await this.translateText({
@@ -258,13 +299,22 @@ export class GeminiTranslationProvider implements TranslationProvider {
       return [text.trim() ? text : cores[0]];
     }
 
+    const glossary = await this.loadGlossary();
     const output = await this.request(
       [
         `Translate each part from ${input.sourceLanguage} to ${input.targetLanguage}.`,
         `Return JSON {"parts":[...]} with exactly ${cores.length} strings, in the same order.`,
         "Do not add HTML tags.",
         "Keep brand marks such as MR.DIY, numbers, and web addresses unchanged.",
+        "The parts are consecutive pieces of one passage, split where bold, italic, or a link starts or ends.",
+        "A part can start or end in the middle of a sentence. Translate each part so the parts read correctly when joined in order.",
+        "Keep the words of each part in that part. Do not move words between parts or merge parts.",
+        ...glossaryFor(glossary, input, context),
         "",
+        "The whole passage, for context:",
+        context,
+        "",
+        "Parts:",
         ...cores.map((core, index) => `${index}: ${core}`),
       ].join("\n"),
       true,
@@ -274,8 +324,8 @@ export class GeminiTranslationProvider implements TranslationProvider {
     if (!translated || translated.length !== cores.length) {
       const mid = Math.ceil(cores.length / 2);
       return [
-        ...(await this.translateCores(cores.slice(0, mid), input)),
-        ...(await this.translateCores(cores.slice(mid), input)),
+        ...(await this.translateCores(cores.slice(0, mid), input, context)),
+        ...(await this.translateCores(cores.slice(mid), input, context)),
       ];
     }
     return translated.map((value, index) => (value.trim() ? value : cores[index]));
