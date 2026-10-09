@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { escapeIlike, getDb } from "@/lib/db/client";
-import { applyQualityAction } from "@/lib/translation-quality/apply-action";
+import { applyQualityAction, qualityActionStillOpen } from "@/lib/translation-quality/apply-action";
 import type {
   BoilerplatePhrase,
   QualityAction,
   QualityActionStatus,
   QualityCategoryConfig,
   QualityFinding,
+  QualityReviewDecision,
   QualityRunStatus,
   QualityRunSummary,
   QualityScore,
@@ -509,6 +510,8 @@ export async function attachDraftQualityRun(input: {
     for (const actionId of input.acceptedActionIds ?? []) {
       const row = await getQualityActionRow(actionId);
       if (row.runId !== input.runId) return false;
+      // Accept all marks a suggestion done when an earlier one already replaced its wording.
+      if (!qualityActionStillOpen(expected, row.action)) continue;
       try {
         expected = applyQualityAction(expected, row.action);
       } catch {
@@ -842,6 +845,73 @@ export async function listQualityRunSummaries(
       createdAt: row.created_at as string,
       completedAt: (row.completed_at as string | null) ?? undefined,
       versionId: versionId ?? undefined,
+    }];
+  });
+}
+
+/** Accepted and ignored suggestions from recent analyses, so the model does not raise them again. */
+export async function listReviewDecisions(
+  contentId: string,
+  targetLanguage: string,
+  limit = 40
+): Promise<QualityReviewDecision[]> {
+  const db = await getDb();
+  const { data: runs, error } = await db
+    .from("quality_runs")
+    .select("id")
+    .eq("content_id", contentId)
+    .eq("target_language", targetLanguage)
+    .eq("status", "completed")
+    .order("created_at", { ascending: false })
+    .limit(10);
+  if (error) throw new Error(qualitySchemaMessage(error));
+  const runIds = (runs ?? []).map((row) => row.id as string);
+  if (runIds.length === 0) return [];
+  const { data: actions, error: actionError } = await db
+    .from("quality_actions")
+    .select("status, original_text, proposed_text, created_at")
+    .in("quality_run_id", runIds)
+    .in("status", ["applied", "ignored"])
+    .order("created_at", { ascending: false })
+    .limit(limit * 2);
+  if (actionError) throw new Error(qualitySchemaMessage(actionError));
+  const seen = new Set<string>();
+  const decisions: QualityReviewDecision[] = [];
+  for (const row of actions ?? []) {
+    const translatedText = ((row.original_text as string | null) ?? "").trim();
+    if (!translatedText) continue;
+    const status = row.status as QualityReviewDecision["status"];
+    const suggestedText = ((row.proposed_text as string | null) ?? "").trim() || undefined;
+    const key = `${status}\n${translatedText.toLowerCase()}\n${(suggestedText ?? "").toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    decisions.push({ status, translatedText: translatedText.slice(0, 400), suggestedText: suggestedText?.slice(0, 400) });
+    if (decisions.length >= limit) break;
+  }
+  return decisions;
+}
+
+/** Suggestions accepted in the editor but not saved yet. They count as decided for the next analysis. */
+export async function listAcceptedDecisions(
+  contentId: string,
+  actionIds: string[]
+): Promise<QualityReviewDecision[]> {
+  if (actionIds.length === 0) return [];
+  const db = await getDb();
+  const { data, error } = await db
+    .from("quality_actions")
+    .select("original_text, proposed_text, run:quality_runs!inner(content_id)")
+    .in("id", actionIds.slice(0, 80))
+    .eq("run.content_id", contentId);
+  if (error) throw new Error(qualitySchemaMessage(error));
+  return (data ?? []).flatMap((row) => {
+    const translatedText = ((row.original_text as string | null) ?? "").trim();
+    if (!translatedText) return [];
+    const suggestedText = ((row.proposed_text as string | null) ?? "").trim() || undefined;
+    return [{
+      status: "applied" as const,
+      translatedText: translatedText.slice(0, 400),
+      suggestedText: suggestedText?.slice(0, 400),
     }];
   });
 }

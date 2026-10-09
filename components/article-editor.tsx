@@ -48,7 +48,7 @@ import { publishArticleNow } from "@/lib/actions/publish";
 import { FilterSelect } from "./filter-select";
 import { TranslationQualityPanel } from "@/components/translation-quality-panel";
 import { saveReviewedContentTranslation } from "@/lib/actions/quality";
-import { applyQualityAction } from "@/lib/translation-quality/apply-action";
+import { applyQualityAction, qualityActionStillOpen } from "@/lib/translation-quality/apply-action";
 import type { QualityAction, QualityTargetField } from "@/lib/translation-quality/types";
 
 type ArticleWithTranslations = Content & {
@@ -573,13 +573,18 @@ export function ArticleEditor({
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Could not apply the suggestion.";
-      if (quiet && message.includes("no longer matches")) {
+      // Accept all: an earlier suggestion may already have replaced this wording.
+      if (quiet && !qualityActionStillOpen(draftRef.current, action)) {
         setAcceptedActionIds((ids) =>
           ids.includes(action.id) ? ids : [...ids, action.id]
         );
         return;
       }
-      setError(message);
+      setError(
+        quiet
+          ? "Some suggestions could not be applied automatically. They are still open, so edit them by hand."
+          : message
+      );
     }
   }
 

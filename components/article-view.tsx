@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveReviewedContentTranslation } from "@/lib/actions/quality";
-import { applyQualityAction } from "@/lib/translation-quality/apply-action";
+import { applyQualityAction, qualityActionStillOpen } from "@/lib/translation-quality/apply-action";
 import type { QualityAction, QualityTargetField } from "@/lib/translation-quality/types";
 import { TranslationQualityPanel } from "@/components/translation-quality-panel";
 import { PublishLanguagePicker } from "@/components/article-publish-panel";
@@ -907,13 +907,18 @@ export function ArticleView({
       setReviewNote(`Updated the ${where}. Save changes to keep it.`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not apply the suggestion.";
-      if (quiet && message.includes("no longer matches")) {
+      // Accept all: an earlier suggestion may already have replaced this wording.
+      if (quiet && !qualityActionStillOpen(reviewDraftRef.current, action)) {
         const remember = (ids: string[]) => (ids.includes(action.id) ? ids : [...ids, action.id]);
         if (stored) setAcceptedActionIds(remember);
         else setLocalHandledIds(remember);
         return;
       }
-      setSaveError(message);
+      setSaveError(
+        quiet
+          ? "Some suggestions could not be applied automatically. They are still open, so edit them by hand."
+          : message
+      );
       setReviewNote("");
     }
   }

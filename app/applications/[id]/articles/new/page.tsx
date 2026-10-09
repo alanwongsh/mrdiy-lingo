@@ -29,7 +29,7 @@ import { HtmlEditor, type HtmlEditorHandle } from "@/components/html-editor";
 import { MARKETS } from "@/lib/markets";
 import { languageKey } from "@/lib/target-languages";
 import { TranslationQualityPanel } from "@/components/translation-quality-panel";
-import { applyQualityAction } from "@/lib/translation-quality/apply-action";
+import { applyQualityAction, qualityActionStillOpen } from "@/lib/translation-quality/apply-action";
 import type { QualityAction, QualityTargetField } from "@/lib/translation-quality/types";
 
 type HeldTranslation = {
@@ -233,13 +233,18 @@ export default function NewArticlePage() {
       setError("");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not apply the suggestion.";
-      if (quiet && message.includes("no longer matches")) {
+      // Accept all: an earlier suggestion may already have replaced this wording.
+      if (quiet && !qualityActionStillOpen(fields, action)) {
         setAcceptedActionIds((ids) =>
           ids.includes(action.id) ? ids : [...ids, action.id]
         );
         return;
       }
-      setError(message);
+      setError(
+        quiet
+          ? "Some suggestions could not be applied automatically. They are still open, so edit them by hand."
+          : message
+      );
     }
   }
 

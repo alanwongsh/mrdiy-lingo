@@ -454,7 +454,7 @@ From the article list, an editor selects rows and exports `.xlsx`.
 
 ### 6.8 Review translation quality
 
-Quality review is available on an article translation. It does not change article status and does not block publish.
+Quality review is available on an article translation. It does not change article status and does not block publish. File-by-file behavior for analyze and apply is in `docs/translation-quality.md`.
 
 ```mermaid
 flowchart TD
@@ -492,12 +492,12 @@ On the review rail, an `info` finding is a Note, a `warning` is a Check, and `er
 | --- | --- | --- |
 | `mymemory` (default) | Development | `https://api.mymemory.translated.net/get`, language pair `source\|target`. Text longer than 450 characters is cut and the result is marked with `[…]`. A failed call falls back to a `[lang] ` prefix so the editor still receives text |
 | `mock` | Offline demos | Prefixes the source with `[lang] ` and does not call the network |
-| `gemini` | Testing with the quality key | Sends one article in one call. The reply is JSON with title, summary, body, SEO title, and SEO description kept separate. HTML tags in the body must match the source. A failed call is reported and is not stored. The prompt and reply are written to the service log |
+| `gemini` | Testing with the quality key | Title, summary, and SEO fields go out in one JSON call. An HTML body is not rewritten by the model: tags stay in place and the words between them are translated in small batches. A failed call is reported and is not stored. The prompt and reply are written to the service log |
 | OpenAI | QAT / production | Planned. Same interface, so screens and version history stay unchanged when the provider is swapped |
 
 Language codes sent to MyMemory are normalized: `zh-Hans` → `zh-CN`, `zh-Hant` → `zh-TW`. Other codes use the part before the hyphen when they are not in the map.
 
-HTML bodies from MyMemory are split on tags. Only text nodes are translated. Attributes and markup are copied through. If that pass returns no visible text, the service strips tags and translates the plain text once. Gemini translates the article in one call and keeps the body HTML inside that reply.
+HTML bodies from MyMemory are split on tags. Only text nodes are translated. Attributes and markup are copied through. If that pass returns no visible text, the service strips tags and translates the plain text once. Gemini does the same for an HTML body: the original tags are copied back around the translated words.
 
 Auto-translate prefers text currently in the editor over the last saved copy, and it ignores an empty editor field so a blank TipTap state cannot wipe a saved body.
 

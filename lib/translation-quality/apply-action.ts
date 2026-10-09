@@ -48,7 +48,50 @@ const NAMED_ENTITIES: Record<string, string> = {
   quot: '"',
   apos: "'",
   nbsp: " ",
+  rsquo: "’",
+  lsquo: "‘",
+  rdquo: "”",
+  ldquo: "“",
+  ndash: "–",
+  mdash: "—",
+  hellip: "…",
+  copy: "©",
+  reg: "®",
+  trade: "™",
 };
+
+const QUOTE_FOLD: Record<string, string> = {
+  "‘": "'",
+  "’": "'",
+  "‚": "'",
+  "‛": "'",
+  "′": "'",
+  "“": '"',
+  "”": '"',
+  "„": '"',
+  "″": '"',
+};
+
+const INVISIBLE = /[­​-‍⁠﻿]/;
+
+/** One character as the matcher sees it: lower case, plain quotes, any space as " ". */
+function foldChar(ch: string) {
+  if (INVISIBLE.test(ch)) return "";
+  if (/\s/.test(ch)) return " ";
+  return QUOTE_FOLD[ch] ?? ch.toLowerCase();
+}
+
+function foldText(value: string) {
+  let out = "";
+  for (const ch of value) out += foldChar(ch);
+  return out.replace(/ +/g, " ").trim();
+}
+
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
+function isWord(ch: string | undefined) {
+  return Boolean(ch) && WORD_CHAR.test(ch as string);
+}
 
 function decodeEntityAt(html: string, index: number): { char: string; end: number } | null {
   if (html[index] !== "&") return null;
@@ -107,49 +150,85 @@ function visibleUnits(html: string): VisibleUnit[] {
   return units;
 }
 
-/** Same plain text `htmlToText` produces, mapped back to visible units. */
+/**
+ * Visible text folded for matching, with each UTF-16 position mapped back to a unit.
+ * Runs of spaces, line breaks and block breaks become one space, because the model
+ * quotes words, not the HTML spacing between them.
+ */
 function plainTextMap(units: VisibleUnit[]): { text: string; units: number[] } {
-  const chars: Array<{ ch: string; unit: number }> = [];
-  for (let index = 0; index < units.length; index += 1) {
-    if (units[index].ch !== "\r") chars.push({ ch: units[index].ch, unit: index });
-  }
-  const collapsed: typeof chars = [];
-  for (let index = 0; index < chars.length; index += 1) {
-    if (/[ \t]/.test(chars[index].ch)) {
-      let next = index;
-      while (next < chars.length && /[ \t]/.test(chars[next].ch)) next += 1;
-      if (next < chars.length && chars[next].ch === "\n") {
-        index = next - 1;
-        continue;
-      }
-    }
-    collapsed.push(chars[index]);
-  }
-  const squeezed: typeof chars = [];
-  let newlines = 0;
-  for (const item of collapsed) {
-    if (item.ch === "\n") {
-      newlines += 1;
-      if (newlines <= 2) squeezed.push(item);
-      continue;
-    }
-    newlines = 0;
-    squeezed.push(item);
-  }
-  let start = 0;
-  let end = squeezed.length;
-  while (start < end && /\s/.test(squeezed[start].ch)) start += 1;
-  while (end > start && /\s/.test(squeezed[end - 1].ch)) end -= 1;
-  const slice = squeezed.slice(start, end);
   let text = "";
   const mapped: number[] = [];
-  for (const item of slice) {
-    for (const ch of item.ch.toLowerCase()) {
-      text += ch;
-      mapped.push(item.unit);
+  for (let index = 0; index < units.length; index += 1) {
+    for (const ch of units[index].ch) {
+      const folded = foldChar(ch);
+      if (!folded) continue;
+      if (folded === " ") {
+        if (!text || text.endsWith(" ")) continue;
+        text += " ";
+        mapped.push(index);
+        continue;
+      }
+      text += folded;
+      for (let at = 0; at < folded.length; at += 1) mapped.push(index);
     }
   }
+  if (text.endsWith(" ")) {
+    text = text.slice(0, -1);
+    mapped.pop();
+  }
   return { text, units: mapped };
+}
+
+/** True when a match edge sits inside a word, such as "here" in "where" or "MR.DIY" in "MR.DIY's". */
+function splitsWord(text: string, at: number, length: number) {
+  const first = text[at];
+  const last = text[at + length - 1];
+  const before = text[at - 1];
+  const after = text[at + length];
+  const startInside =
+    isWord(first) && (isWord(before) || (before === "'" && isWord(text[at - 2])));
+  const endInside =
+    isWord(last) && (isWord(after) || (after === "'" && isWord(text[at + length + 1])));
+  return startInside || endInside;
+}
+
+/** First whole-word occurrence, else the first occurrence. */
+function pickMatch(text: string, needle: string) {
+  let first = -1;
+  for (let at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + 1)) {
+    if (first < 0) first = at;
+    if (!splitsWord(text, at, needle.length)) return at;
+  }
+  return first;
+}
+
+/**
+ * Keep words apart at the edges of a replacement. The model often quotes from an
+ * apostrophe ("’s Bazaar") and suggests text that starts with a letter ("Bazar"),
+ * which would otherwise produce "MR.DIYBazar".
+ */
+function fitReplacement(
+  before: string | undefined,
+  after: string | undefined,
+  needle: string,
+  replacement: string
+) {
+  let out = replacement;
+  if (before === undefined || before === " ") out = out.replace(/^\s+/, "");
+  if (after === undefined || after === " ") out = out.replace(/\s+$/, "");
+  if (!out) return out;
+  if (isWord(before) && isWord(out[0]) && !isWord(needle[0])) out = ` ${out}`;
+  if (isWord(after) && isWord(out[out.length - 1]) && !isWord(needle[needle.length - 1])) {
+    out = `${out} `;
+  }
+  return out;
+}
+
+/** Whether the phrase is still in the visible text, ignoring case, spacing and quote style. */
+export function containsVisibleText(html: string, phrase: string): boolean {
+  const needle = foldText(phrase);
+  if (!needle) return false;
+  return plainTextMap(visibleUnits(html)).text.includes(needle);
 }
 
 function escapeHtmlText(value: string) {
@@ -188,8 +267,8 @@ function readTag(html: string, index: number) {
 
 function visibleString(html: string) {
   return visibleUnits(html)
-    .filter((unit) => !unit.block && unit.ch !== "\n" && unit.ch !== "\r")
-    .map((unit) => unit.ch)
+    .filter((unit) => !unit.block)
+    .map((unit) => (/[\r\n\t]/.test(unit.ch) ? " " : unit.ch))
     .join("");
 }
 
@@ -376,15 +455,34 @@ function putText(html: string, start: number, end: number, text: string, escape:
   return { start, end, text: escape ? escapeHtmlText(text) : text };
 }
 
-function replaceAcrossTags(html: string, phrase: string, replacement: string): string | null {
-  const needle = phrase.trim().toLowerCase();
+/**
+ * Replace a phrase in the visible text only. Tags, attributes such as alt text, and
+ * entities such as &amp; are never matched as words.
+ */
+function replaceVisible(html: string, phrase: string, proposed: string): string | null {
+  const needle = foldText(phrase);
   if (!needle) return null;
   const units = visibleUnits(html);
   const plain = plainTextMap(units);
-  const at = plain.text.indexOf(needle);
+  let at = pickMatch(plain.text, needle);
   if (at < 0 || at + needle.length > plain.units.length) return null;
+  let length = needle.length;
+  const replacement = fitReplacement(
+    plain.text[at - 1],
+    plain.text[at + length],
+    needle,
+    proposed
+  );
+  if (!replacement && plain.text[at - 1] === " ") {
+    const after = plain.text[at + length];
+    // Removing a word also removes one space beside it, so "a foo b" becomes "a b".
+    if (after === undefined || after === " " || /[.,;:!?)\]]/.test(after)) {
+      at -= 1;
+      length += 1;
+    }
+  }
   const from = plain.units[at];
-  const to = plain.units[at + needle.length - 1];
+  const to = plain.units[at + length - 1];
   const groups: number[][] = [];
   let group: number[] = [];
   for (let index = from; index <= to; index += 1) {
@@ -399,30 +497,34 @@ function replaceAcrossTags(html: string, phrase: string, replacement: string): s
   if (!groups.length) return null;
 
   const inMarkup = html.slice(0, units[groups[0][0]].start).includes("<");
+  const span = (group: number[]) => ({
+    start: units[group[0]].start,
+    end: units[group[group.length - 1]].end,
+  });
+  const put = (group: number[], text: string) => {
+    const { start, end } = span(group);
+    return putText(html, start, end, text, inMarkup);
+  };
   if (groups.length === 1) {
-    const first = units[groups[0][0]];
-    const last = units[groups[0][groups[0].length - 1]];
-    return spliceHtml(html, [putText(html, first.start, last.end, replacement, inMarkup)]);
+    return spliceHtml(html, [put(groups[0], replacement)]);
   }
 
+  // The quote crosses paragraphs. One line per paragraph keeps each paragraph.
+  const lines = replacement.split(/[ \t]*\n+[ \t]*/);
+  if (lines.length === groups.length) {
+    return spliceHtml(html, groups.map((group, index) => put(group, lines[index])));
+  }
+
+  // A suggestion that repeats the heading keeps the heading and rewrites the paragraph after it.
   const firstText = groups[0].map((index) => units[index].ch).join("");
-  const remainder = textAfterPrefix(replacement, firstText) ?? replacement;
-  const next = groups[1];
-  const edits: Array<{ start: number; end: number; text: string }> = [
-    putText(
-      html,
-      units[next[0]].start,
-      units[next[next.length - 1]].end,
-      remainder,
-      inMarkup
-    ),
-  ];
-  for (const extra of groups.slice(2)) {
-    edits.push({
-      start: units[extra[0]].start,
-      end: units[extra[extra.length - 1]].end,
-      text: "",
-    });
+  const remainder = textAfterPrefix(replacement, firstText);
+  const edits: Array<{ start: number; end: number; text: string }> = [];
+  if (remainder !== null) {
+    edits.push(put(groups[1], remainder));
+    for (const extra of groups.slice(2)) edits.push({ ...span(extra), text: "" });
+  } else {
+    edits.push(put(groups[0], replacement));
+    for (const extra of groups.slice(1)) edits.push({ ...span(extra), text: "" });
   }
   return spliceHtml(html, edits);
 }
@@ -435,26 +537,13 @@ function applyToText(current: string, action: QualityAction): string {
     (action.actionType === "replace" || action.actionType === "rewrite") &&
     original
   ) {
-    const exact = current.indexOf(original);
-    const folded =
-      exact >= 0 ? -1 : current.toLowerCase().indexOf(original.toLowerCase());
-    const index = exact >= 0 ? exact : folded;
-    if (index >= 0) {
-      return (
-        current.slice(0, index) +
-        proposed +
-        current.slice(index + original.length)
-      );
-    }
-    const across = replaceAcrossTags(current, original, proposed);
-    if (across && across !== current) return across;
+    const replaced = replaceVisible(current, original, proposed);
+    if (replaced !== null && replaced !== current) return replaced;
   }
 
   if (action.actionType === "delete" && original) {
-    const index = current.indexOf(original);
-    if (index >= 0) {
-      return current.slice(0, index) + current.slice(index + original.length);
-    }
+    const removed = replaceVisible(current, original, "");
+    if (removed !== null && removed !== current) return removed;
   }
 
   if (action.actionType === "insert" && proposed) {
@@ -466,13 +555,15 @@ function applyToText(current: string, action: QualityAction): string {
     return `${current}${current.endsWith("\n") ? "" : "\n"}${proposed}`;
   }
 
+  // Raw offsets only when there is no quote to find. A quote that is missing from the
+  // visible text may still sit inside a tag, and editing it there changes nothing a reader sees.
   if (
+    !original &&
     typeof action.startOffset === "number" &&
     typeof action.endOffset === "number" &&
     action.startOffset >= 0 &&
     action.endOffset >= action.startOffset &&
-    action.endOffset <= current.length &&
-    (!original || current.slice(action.startOffset, action.endOffset) === original)
+    action.endOffset <= current.length
   ) {
     return (
       current.slice(0, action.startOffset) +
@@ -496,4 +587,13 @@ export function applyQualityAction(
     throw new Error("This suggestion no longer matches the translation.");
   }
   return { ...fields, [key]: next };
+}
+
+/** False when an earlier accepted suggestion already replaced this wording. */
+export function qualityActionStillOpen(
+  fields: SourceContentFields,
+  action: QualityAction
+): boolean {
+  if (!action.originalText) return true;
+  return containsVisibleText(fields[fieldKey(action.targetField)] ?? "", action.originalText);
 }

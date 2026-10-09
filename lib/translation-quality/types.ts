@@ -64,6 +64,14 @@ export interface TranslationQualityInput {
   enabledCategories: QualityCategoryConfig[];
   /** When set, the model reviews only these leftover passages. */
   passageFocus?: Array<{ source: string; translated: string }>;
+  /** Suggestions a reviewer already accepted or ignored in earlier analyses of this article. */
+  reviewHistory?: QualityReviewDecision[];
+}
+
+export interface QualityReviewDecision {
+  status: "applied" | "ignored";
+  translatedText: string;
+  suggestedText?: string;
 }
 
 export interface QualityScore {

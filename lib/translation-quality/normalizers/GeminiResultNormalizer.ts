@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import type { ProviderQualityResult } from "@/lib/translation-quality/providers/provider";
 import type { RuleEvaluationResult } from "@/lib/translation-quality/rules/types";
 import { overallScore, severityForScore } from "@/lib/translation-quality/scoring/ScoreCalculator";
+import { containsVisibleText } from "@/lib/translation-quality/apply-action";
 import { htmlToText } from "@/lib/translation-quality/text";
 import type {
   QualityAction,
@@ -52,8 +53,20 @@ function fieldContains(text: string, quote: string) {
   if (!needle) return false;
   return (
     text.toLowerCase().includes(needle) ||
-    htmlToText(text).toLowerCase().includes(needle)
+    htmlToText(text).toLowerCase().includes(needle) ||
+    containsVisibleText(text, quote)
   );
+}
+
+/** Same words once spacing and quote style are ignored. Readers cannot see that difference in HTML. */
+function sameWording(left: string | undefined, right: string | undefined) {
+  const squash = (value: string) =>
+    value
+      .replace(/[‘’‚‛′]/g, "'")
+      .replace(/[“”„″]/g, '"')
+      .replace(/\s+/g, " ")
+      .trim();
+  return Boolean(left && right) && squash(left ?? "") === squash(right ?? "");
 }
 
 function locateQuote(
@@ -147,6 +160,7 @@ export function normalizeGeminiResult(
       const id = randomUUID();
       const quote = finding.translatedText;
       if (quote?.trim() && !locateQuote(fields, quote, finding.targetField)) continue;
+      if (sameWording(quote, finding.suggestedText)) continue;
       const located = locateQuote(fields, quote, finding.targetField);
       const targetField = located?.field ?? finding.targetField;
       const range = offsetsFor(fields, targetField, quote);

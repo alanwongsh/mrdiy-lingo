@@ -12,6 +12,7 @@ import {
   recheckTranslationRules,
 } from "@/lib/actions/quality";
 import { Badge, Button, Card } from "@/components/ui";
+import { containsVisibleText } from "@/lib/translation-quality/apply-action";
 import { htmlToText, readableQualityError, termHitContext } from "@/lib/translation-quality/text";
 import type { SourceContentFields } from "@/lib/types";
 import type {
@@ -88,7 +89,11 @@ function locateFinding(
     seen.add(field);
     const raw = fieldText(draft, field);
     const plain = htmlToText(raw);
-    if (!plain.toLowerCase().includes(needle.toLowerCase()) && !raw.toLowerCase().includes(needle.toLowerCase())) {
+    if (
+      !plain.toLowerCase().includes(needle.toLowerCase()) &&
+      !raw.toLowerCase().includes(needle.toLowerCase()) &&
+      !containsVisibleText(raw, needle)
+    ) {
       continue;
     }
     const index = raw.toLowerCase().indexOf(needle.toLowerCase());
@@ -398,6 +403,7 @@ export function TranslationQualityPanel({
               translatedTitle: draft.title,
               translatedSummary: draft.summary,
               translatedContent: draft.body,
+              acceptedActionIds,
             });
         if (!loaded.result) {
           setError(loaded.error || "Quality analysis failed. Please try again.");

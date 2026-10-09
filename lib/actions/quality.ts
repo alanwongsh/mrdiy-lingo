@@ -48,6 +48,7 @@ export async function analyzeTranslationQuality(input: {
   translatedTitle: string;
   translatedSummary: string;
   translatedContent: string;
+  acceptedActionIds?: string[];
 }) {
   try {
     return { result: await analyze(input), error: "" };

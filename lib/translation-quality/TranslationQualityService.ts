@@ -16,7 +16,9 @@ import {
   latestTranslationVersion,
   listActiveBoilerplate,
   listActiveTerminology,
+  listAcceptedDecisions,
   listQualityCategories,
+  listReviewDecisions,
   persistQualityDetails,
   replaceRuleCheck,
 } from "@/lib/translation-quality/repository";
@@ -44,6 +46,8 @@ export interface AnalyzeArticleInput {
   translatedTitle: string;
   translatedSummary: string;
   translatedContent: string;
+  /** Accepted in the editor since the last save. */
+  acceptedActionIds?: string[];
 }
 
 function failedAiScores(
@@ -81,10 +85,13 @@ export class TranslationQualityService {
     if (categories.length === 0) {
       throw new Error("No quality categories are enabled.");
     }
-    const [terminology, boilerplate] = await Promise.all([
+    const [terminology, boilerplate, savedDecisions, unsavedDecisions] = await Promise.all([
       listActiveTerminology(),
       listActiveBoilerplate(),
+      listReviewDecisions(request.contentId, request.targetLanguage).catch(() => []),
+      listAcceptedDecisions(request.contentId, request.acceptedActionIds ?? []).catch(() => []),
     ]);
+    const reviewHistory = [...unsavedDecisions, ...savedDecisions];
     const input: TranslationQualityInput = {
       sourceLanguage: request.sourceLanguage,
       targetLanguage: request.targetLanguage,
@@ -97,6 +104,7 @@ export class TranslationQualityService {
       terminology,
       boilerplate,
       enabledCategories: categories,
+      reviewHistory,
     };
     const config = qualityConfig();
     const aiCategories = categories.filter((category) => category.categoryType === "ai");

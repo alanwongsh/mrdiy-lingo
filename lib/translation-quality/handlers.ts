@@ -102,9 +102,12 @@ export async function analyzeTranslationQuality(input: {
   translatedTitle: string;
   translatedSummary: string;
   translatedContent: string;
+  /** Accepted in the editor since the last save. */
+  acceptedActionIds?: string[];
 }) {
   assertUuid(input.applicationId, "application");
   assertUuid(input.contentId, "article");
+  const acceptedActionIds = uniqueIds(input.acceptedActionIds);
   const sourceLanguage = assertLanguage(input.sourceLanguage, "source language");
   const targetLanguage = assertLanguage(input.targetLanguage, "target language");
   if (sourceLanguage.toLowerCase() === targetLanguage.toLowerCase()) {
@@ -131,6 +134,7 @@ export async function analyzeTranslationQuality(input: {
     translatedTitle,
     translatedSummary,
     translatedContent,
+    acceptedActionIds,
   });
 }
 

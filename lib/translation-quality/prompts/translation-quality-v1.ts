@@ -1,7 +1,7 @@
 import type { TranslationQualityInput } from "@/lib/translation-quality/types";
 import { htmlToText, languageCompatible } from "@/lib/translation-quality/text";
 
-export const PROMPT_VERSION = "translation-quality-v1";
+export const PROMPT_VERSION = "translation-quality-v1.1";
 
 function articleText(value: string | undefined): string {
   return htmlToText(value ?? "") || "(empty)";
@@ -60,9 +60,14 @@ Preferred terms:
 ${terms || "- (none)"}
 
 Quote translatedText and sourceText as exact plain-text snippets from the articles. Do not include HTML tags.
+Start and end translatedText on whole words. Never start a quote in the middle of a word or at an apostrophe such as "’s"; include the whole word "MR.DIY’s".
 When you suggest a change, set suggestedText to the replacement plain text and targetField to title, summary, or content.
+suggestedText replaces exactly the words in translatedText, so cover the same span and keep the spaces between words.
 Use actionType replace when suggestedText should replace translatedText.
 Leave findings empty when a category has no concrete issue.
+Report only changes a professional reviewer would require. Do not report an alternative that is equally correct, a matter of taste, or a rewording of text that is already accurate and natural.
+The articles were extracted from HTML. Line breaks, double spaces and quote styles are not visible to readers, so do not report them. Do report two words that run together without a space.
+${historyBlock(input)}
 
 When a passage is untranslated, mixed with the source language, or still contains a leftover language tag such as [zh-Hans]:
 - Put those rewrites in cross_language.
@@ -90,6 +95,20 @@ Translated article:
 ${articleText(input.translatedContent)}
 ${focusBlock(input)}
 Return only the requested structured JSON.`;
+}
+
+function historyBlock(input: TranslationQualityInput): string {
+  const decisions = input.reviewHistory ?? [];
+  if (decisions.length === 0) return "";
+  const lines = decisions.map((decision) =>
+    decision.status === "applied" && decision.suggestedText
+      ? `- Accepted: "${decision.translatedText}" was changed to "${decision.suggestedText}".`
+      : `- Kept as written: "${decision.translatedText}".`
+  );
+  return `
+A reviewer already decided these in earlier analyses of this article. Do not report them again, do not suggest reversing an accepted change, and do not suggest changing wording that was kept. Report only issues these decisions do not cover.
+${lines.join("\n")}
+`;
 }
 
 function focusBlock(input: TranslationQualityInput): string {
