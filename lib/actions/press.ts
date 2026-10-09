@@ -32,6 +32,9 @@ import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
 import { normalizeMarket } from "@/lib/markets";
 import { buildArticleWorkbook } from "@/lib/export/articles";
 import { replaceArticlePublishTargets } from "@/lib/publish/store";
+import { publishSchemaError } from "@/lib/publish/errors";
+import { syncArticlePublishStatus } from "@/lib/publish/run";
+import { isPublishable, normalizeLanguageSchedule } from "@/lib/publish/schedule";
 
 function asSourceContent(value: unknown): SourceContentFields {
   const v = (value ?? {}) as Partial<SourceContentFields>;
@@ -136,16 +139,9 @@ async function syncArticleStatusFromApprovals(
     data.source_language,
     data.target_languages ?? []
   );
-  if (
-    allApproved &&
-    data.status !== "APPROVED" &&
-    data.status !== "PUBLISHED"
-  ) {
+  if (allApproved && !isPublishable(data.status)) {
     await persistArticleStatus(contentId, applicationId, "APPROVED");
-  } else if (
-    !allApproved &&
-    (data.status === "APPROVED" || data.status === "PUBLISHED")
-  ) {
+  } else if (!allApproved && isPublishable(data.status)) {
     await persistArticleStatus(contentId, applicationId, "REVIEW");
   }
 }
@@ -155,6 +151,7 @@ function mapContentRow(data: Content): Content {
     ...data,
     slug: data.slug ?? null,
     scheduled_publish_at: data.scheduled_publish_at ?? null,
+    language_publish_at: normalizeLanguageSchedule(data.language_publish_at),
     published_at: data.published_at ?? null,
     target_languages: normalizeTargetLanguages(
       data.target_languages,
@@ -333,13 +330,10 @@ export async function createArticle(input: {
   let status: ContentLifecycleStatus = input.status ?? "DRAFT";
   if (input.keepAsDraft) {
     status = "DRAFT";
-  } else if (grant.access.can_approve && status !== "PUBLISHED") {
+  } else if (grant.access.can_approve && !isPublishable(status)) {
     status = "APPROVED";
   }
-  if (
-    (status === "APPROVED" || status === "PUBLISHED") &&
-    !grant.access.can_approve
-  ) {
+  if (isPublishable(status) && !grant.access.can_approve) {
     throw new Error("Approval is limited to HOD and above.");
   }
   const db = await getDb();
@@ -383,10 +377,7 @@ export async function createArticle(input: {
     language_code: input.source_language,
     fields: source_content,
     source_type: "MANUAL",
-    status:
-      status === "APPROVED" || status === "PUBLISHED"
-        ? "APPROVED"
-        : "MANUALLY_MODIFIED",
+    status: isPublishable(status) ? "APPROVED" : "MANUALLY_MODIFIED",
   });
 
   revalidatePath(`/applications/${input.application_id}`);
@@ -528,6 +519,8 @@ export async function updateArticle(
     source_content: SourceContentFields;
     status: ContentLifecycleStatus;
     scheduled_publish_at?: string | null;
+    /** Language -> ISO time. Omitted leaves the per-language times unchanged. */
+    language_publish_at?: Record<string, string>;
     target_languages?: string[];
     market?: string | null;
     /** Language and provider pairs. Omitted values leave the selection unchanged. */
@@ -547,8 +540,7 @@ export async function updateArticle(
     .single();
   if (currentError) throw new Error(currentError.message);
 
-  const releasing =
-    input.status === "APPROVED" || input.status === "PUBLISHED";
+  const releasing = isPublishable(input.status);
   if (releasing && input.status !== current.status && !grant.access.can_approve) {
     throw new Error("Approval is limited to HOD and above.");
   }
@@ -573,10 +565,8 @@ export async function updateArticle(
     await clearTargetApprovals(id, input.source_language);
   }
 
-  const released =
-    current.status === "APPROVED" || current.status === "PUBLISHED";
-  const markingReleased =
-    input.status === "APPROVED" || input.status === "PUBLISHED";
+  const released = isPublishable(current.status);
+  const markingReleased = isPublishable(input.status);
   let nextStatus = input.status;
   if (!input.keepApprovals && textChanged && (released || markingReleased)) {
     nextStatus = "REVIEW";
@@ -599,6 +589,9 @@ export async function updateArticle(
   if (input.scheduled_publish_at !== undefined) {
     patch.scheduled_publish_at = input.scheduled_publish_at || null;
   }
+  if (input.language_publish_at !== undefined) {
+    patch.language_publish_at = normalizeLanguageSchedule(input.language_publish_at);
+  }
   if (input.target_languages !== undefined) {
     patch.target_languages = nextTargets;
   }
@@ -619,18 +612,14 @@ export async function updateArticle(
     .eq("id", id)
     .select("*")
     .single();
-  if (error) throw new Error(error.message);
+  if (error) throw publishSchemaError(error) ?? new Error(error.message);
   if (targetsChanged && !textChanged && !input.keepApprovals) {
     const allApproved = await targetsAllApproved(
       id,
       input.source_language,
       nextTargets
     );
-    if (
-      allApproved &&
-      nextStatus !== "APPROVED" &&
-      nextStatus !== "PUBLISHED"
-    ) {
+    if (allApproved && !isPublishable(nextStatus)) {
       await persistArticleStatus(id, applicationId, "APPROVED");
     }
   }
@@ -640,8 +629,14 @@ export async function updateArticle(
       ...nextTargets,
     ]);
   }
+  // A language ticked after the rest went live moves the article back to PUBLISHING.
+  const resynced = isPublishable(nextStatus) && (await syncArticlePublishStatus(id));
   revalidatePath(`/applications/${applicationId}`);
   revalidatePath(`/applications/${applicationId}/articles/${id}`);
+  if (resynced) {
+    const { data: fresh } = await db.from("content").select("*").eq("id", id).single();
+    if (fresh) return mapContentRow(fresh as Content);
+  }
   return mapContentRow(data as Content);
 }
 
@@ -1154,7 +1149,7 @@ export async function saveManualContentTranslation(input: {
   if (
     !approver &&
     changed &&
-    (article.status === "APPROVED" || article.status === "PUBLISHED")
+    isPublishable(article.status)
   ) {
     await setArticleStatus(input.contentId, input.applicationId, "REVIEW");
   }
@@ -1302,6 +1297,7 @@ export async function getPressStats(applicationId: string) {
     "TRANSLATING",
     "REVIEW",
     "APPROVED",
+    "PUBLISHING",
     "PUBLISHED",
   ];
   const counts: Record<string, number> = { total: 0 };
@@ -1322,5 +1318,6 @@ export async function getPressStats(applicationId: string) {
     draft: counts.DRAFT ?? 0,
     translating: counts.TRANSLATING ?? 0,
     approved: counts.APPROVED ?? 0,
+    publishing: counts.PUBLISHING ?? 0,
   };
 }

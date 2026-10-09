@@ -198,11 +198,12 @@ textarea {
 }
 
 .html-editor-surface img {
-  display: block;
+  display: inline-block;
   max-width: 100%;
   height: auto;
   margin: 0.75em 0;
   border-radius: 0.5rem;
+  vertical-align: bottom;
 }
 
 .tiptap img.ProseMirror-selectednode {

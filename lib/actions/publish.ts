@@ -7,6 +7,7 @@ import { publishSchemaError, throwPublishError } from "@/lib/publish/errors";
 import { readConfig } from "@/lib/publish/integrations/integration";
 import { getPublishIntegration, listPublishIntegrations } from "@/lib/publish/integrations/registry";
 import { publishContentNow, type PublishRunResult } from "@/lib/publish/run";
+import { isPublishable } from "@/lib/publish/schedule";
 import {
   listPublicationRows,
   listPublishTargets,
@@ -207,7 +208,7 @@ export async function publishArticleNow(
     .eq("id", contentId)
     .single();
   if (error) throw new Error(error.message);
-  if (data.status !== "APPROVED" && data.status !== "PUBLISHED") {
+  if (!isPublishable(data.status)) {
     throw new Error("Approve the article before publishing.");
   }
   await replaceArticlePublishTargets(contentId, applicationId, targets, [

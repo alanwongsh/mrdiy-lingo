@@ -5,6 +5,7 @@ import { listActiveBoilerplate, listActiveTerminology } from "@/lib/translation-
 import { htmlToText } from "@/lib/translation-quality/text";
 import type { BoilerplatePhrase, TerminologyEntry } from "@/lib/translation-quality/types";
 import { glossaryPrompt } from "@/lib/translation/glossary";
+import { cleanSourceHtml } from "@/lib/translation/cleanup";
 import { markSegments, unmarkSegment, type MarkedSegment } from "@/lib/translation/segments";
 import { keepWordGaps, textNodes, type TextNode } from "@/lib/translation/spacing";
 import type { SourceContentFields } from "@/lib/types";
@@ -279,7 +280,8 @@ export class GeminiTranslationProvider implements TranslationProvider {
    * follow the target language. A paragraph whose tags do not come back intact is translated
    * run by run instead, which keeps the formatting but not the reordering.
    */
-  private async translateBodyParts(html: string, input: TranslateArticleInput): Promise<string> {
+  private async translateBodyParts(sourceHtml: string, input: TranslateArticleInput): Promise<string> {
+    const html = cleanSourceHtml(sourceHtml);
     const parts = html.split(/(<[^>]+>)/g);
     const segments = markSegments(parts);
     if (segments.length === 0) return html;
@@ -342,6 +344,7 @@ export class GeminiTranslationProvider implements TranslationProvider {
           "Keep every marker exactly once. A marker pair must wrap the translation of the same words it wraps in the source, and it moves with those words.",
           "Do not add HTML tags or new markers.",
           "Keep brand marks such as MR.DIY, numbers, and web addresses unchanged.",
+          "A name made of several words, such as MR.DIY Club or Bersama Satu Bazaar, is one name. Keep its words together and in order, and place the whole name where the target grammar needs it, for example ahli MR.DIY Club.",
           ...glossaryFor(glossary, input, segments.map((segment) => segment.plain).join("\n")),
           "",
           "Parts:",

@@ -332,6 +332,7 @@ export function statusTone(
     case "SYSTEM_GENERATED":
     case "TRANSLATING":
     case "REVIEW":
+    case "PUBLISHING":
     case "UPDATED":
       return "info";
     case "MANUALLY_MODIFIED":

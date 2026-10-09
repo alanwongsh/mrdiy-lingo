@@ -20,6 +20,15 @@ export function getPublishDueState(
   countdown: string;
   tone: "neutral" | "good" | "warn" | "bad" | "info";
 } {
+  if (status === "PUBLISHING") {
+    return {
+      kind: "scheduled",
+      label: "Publishing",
+      countdown: "Live in some languages",
+      tone: "info",
+    };
+  }
+
   if (status === "PUBLISHED" || publishedAt) {
     return {
       kind: "published",

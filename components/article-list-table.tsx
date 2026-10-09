@@ -16,6 +16,7 @@ const STATUS_LABEL: Record<ContentLifecycleStatus, string> = {
   TRANSLATING: "Translating",
   REVIEW: "Review",
   APPROVED: "Approved",
+  PUBLISHING: "Publishing",
   PUBLISHED: "Published",
 };
 

@@ -210,7 +210,7 @@ export async function requireSuperadmin(): Promise<HubUser> {
 }
 
 export function capabilityForReleaseStatus(status: string): AppCapability {
-  if (status === "APPROVED" || status === "PUBLISHED") return "approve";
+  if (status === "APPROVED" || status === "PUBLISHING" || status === "PUBLISHED") return "approve";
   return "edit";
 }
 

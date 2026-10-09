@@ -1,4 +1,11 @@
+export const LANGUAGE_SCHEDULE_MIGRATION =
+  "Run migration 018_language_publish_schedule.sql from Setup for per-language publish times.";
+
 export function publishSchemaError(error: { message: string }): Error | null {
+  // Before 018: the column is missing, or the status rule rejects PUBLISHING.
+  if (/language_publish_at|content_status_check/i.test(error.message)) {
+    return new Error(LANGUAGE_SCHEDULE_MIGRATION);
+  }
   const missing =
     /does not exist|schema cache|Could not find/i.test(error.message);
   if (!missing) return null;

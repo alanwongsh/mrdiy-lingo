@@ -28,7 +28,7 @@ export function startPublishScheduler() {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Publish scheduler failed.";
-      if (/016_publish_vendors|017_publish_language_targets/.test(message)) {
+      if (/016_publish_vendors|017_publish_language_targets|018_language_publish_schedule/.test(message)) {
         if (!schemaWarned) {
           console.error(`[publish] ${message}`);
           schemaWarned = true;

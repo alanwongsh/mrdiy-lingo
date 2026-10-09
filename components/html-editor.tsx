@@ -16,6 +16,7 @@ import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Underline from "@tiptap/extension-underline";
 import Placeholder from "@tiptap/extension-placeholder";
+import TextAlign from "@tiptap/extension-text-align";
 
 function ToolbarButton({
   label,
@@ -156,6 +157,61 @@ function normalizeEditorHtml(html: string) {
   return trimmed;
 }
 
+const ALIGNMENTS = new Set(["left", "center", "right", "justify"]);
+
+/** linkify turns the brand MR.DIY into http://MR.DIY. That is not a pasted address. */
+function isBrandShapedLink(href: string, text: string) {
+  const plain = text.replace(/\s+/g, " ").trim();
+  if (!plain || !href || /\s/.test(plain)) return false;
+  try {
+    const url = new URL(href);
+    if ((url.pathname !== "/" && url.pathname !== "") || url.search || url.hash) return false;
+    const host = url.hostname.toLowerCase();
+    // www.mrdiy.com has three labels. MR.DIY is only a name plus .diy.
+    if (host.split(".").length !== 2) return false;
+    return host === plain.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+function alignmentOf(element: HTMLElement) {
+  const fromStyle = element.style.textAlign.trim().toLowerCase();
+  if (ALIGNMENTS.has(fromStyle)) return fromStyle;
+  const fromAttr = (element.getAttribute("align") ?? "").trim().toLowerCase();
+  return ALIGNMENTS.has(fromAttr) ? fromAttr : "";
+}
+
+/** Keep centered captions with their image, and drop brand names that were turned into links. */
+function transformPastedHtml(html: string) {
+  if (!html || typeof DOMParser === "undefined") return html;
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const styled = doc.body.querySelectorAll<HTMLElement>(
+    "p, h1, h2, h3, h4, h5, h6, div, figure, figcaption, td"
+  );
+  styled.forEach((element) => {
+    const alignment = alignmentOf(element);
+    if (alignment && !element.style.textAlign) element.style.textAlign = alignment;
+  });
+  doc.body.querySelectorAll<HTMLElement>("p, h2, h3").forEach((element) => {
+    if (element.style.textAlign) return;
+    let parent = element.parentElement;
+    while (parent && parent !== doc.body) {
+      const alignment = parent.style.textAlign.trim().toLowerCase();
+      if (ALIGNMENTS.has(alignment) && alignment !== "left") {
+        element.style.textAlign = alignment;
+        return;
+      }
+      parent = parent.parentElement;
+    }
+  });
+  Array.from(doc.body.querySelectorAll("a")).forEach((anchor) => {
+    if (!isBrandShapedLink(anchor.getAttribute("href") ?? "", anchor.textContent ?? "")) return;
+    anchor.replaceWith(...Array.from(anchor.childNodes));
+  });
+  return doc.body.innerHTML;
+}
+
 const locatePluginKey = new PluginKey("qualityLocate");
 
 function findTextRange(
@@ -192,6 +248,74 @@ function findTextRange(
   if (from < 0 || to <= from) return null;
   return { from, to };
 }
+
+function paragraphIsBlank(node: ProseNode) {
+  let blank = true;
+  node.descendants((child) => {
+    if (child.type.name === "image") blank = false;
+    if (child.isText && child.text?.trim()) blank = false;
+  });
+  return blank;
+}
+
+/** Paste splits a centered image caption into an empty centered paragraph plus a left-aligned one, and linkify marks MR.DIY. Put the alignment back and drop that brand link. */
+const RepairPastedHtml = Extension.create({
+  name: "repairPastedHtml",
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        appendTransaction(transactions, _oldState, state) {
+          if (!transactions.some((transaction) => transaction.docChanged)) return null;
+          let tr = state.tr;
+          let changed = false;
+          const link = state.schema.marks.link;
+          if (link) {
+            const removals: { from: number; to: number }[] = [];
+            tr.doc.descendants((node, pos) => {
+              if (!node.isText) return;
+              const mark = link.isInSet(node.marks);
+              if (!mark) return;
+              if (!isBrandShapedLink(String(mark.attrs.href ?? ""), node.text ?? "")) return;
+              removals.push({ from: pos, to: pos + node.nodeSize });
+            });
+            removals.reverse().forEach((range) => {
+              tr = tr.removeMark(range.from, range.to, link);
+              changed = true;
+            });
+          }
+
+          const blanks: { pos: number; align: string }[] = [];
+          tr.doc.descendants((node, pos) => {
+            if (node.type.name !== "paragraph") return;
+            const align = String(node.attrs.textAlign ?? "");
+            if (!ALIGNMENTS.has(align) || align === "left") return;
+            if (!paragraphIsBlank(node)) return;
+            blanks.push({ pos, align });
+          });
+          blanks.reverse().forEach((blank) => {
+            const $pos = tr.doc.resolve(blank.pos);
+            const parent = $pos.parent;
+            const index = $pos.index();
+            if (index + 1 >= parent.childCount) return;
+            let next = parent.child(index + 1);
+            let nextPos = blank.pos + $pos.parent.child(index).nodeSize;
+            if (next.type.name === "image" && index + 2 < parent.childCount) {
+              const caption = parent.child(index + 2);
+              if (caption.type.name !== "paragraph") return;
+              nextPos += next.nodeSize;
+              next = caption;
+            }
+            if (next.type.name !== "paragraph" || next.attrs.textAlign) return;
+            tr = tr.setNodeMarkup(nextPos, undefined, { ...next.attrs, textAlign: blank.align });
+            tr = tr.delete(blank.pos, blank.pos + $pos.parent.child(index).nodeSize);
+            changed = true;
+          });
+          return changed ? tr : null;
+        },
+      }),
+    ];
+  },
+});
 
 const QualityLocate = Extension.create<{ getPhrase: () => string }>({
   name: "qualityLocate",
@@ -266,11 +390,22 @@ export const HtmlEditor = forwardRef<
         heading: { levels: [2, 3] },
       }),
       Underline,
+      TextAlign.configure({
+        types: ["heading", "paragraph"],
+      }),
       Image.configure({
+        inline: true,
         allowBase64: true,
       }),
       Link.configure({
         openOnClick: false,
+        // MR.DIY is a brand. linkify treats .diy as a domain and would mark every mention.
+        shouldAutoLink: (url) => {
+          const asHref = url.includes("://") ? url : `http://${url}`;
+          const label = url.split(/[/?#]/).pop() ?? url;
+          if (isBrandShapedLink(asHref, label)) return false;
+          return /^(?:https?:\/\/|www\.)/i.test(url) || /^[^\s/]+\.[^\s/]+\//.test(url);
+        },
         HTMLAttributes: {
           class: "text-[var(--diy-red)] underline",
         },
@@ -278,6 +413,7 @@ export const HtmlEditor = forwardRef<
       Placeholder.configure({
         placeholder: placeholder ?? "Write…",
       }),
+      RepairPastedHtml,
       QualityLocate.configure({ getPhrase: () => highlightRef.current }),
     ],
     // Seed once — after that only `revision` pushes external content in.
@@ -291,6 +427,7 @@ export const HtmlEditor = forwardRef<
         autocorrect: "off",
         autocomplete: "off",
       },
+      transformPastedHTML: transformPastedHtml,
       handlePaste: (view, event) => {
         if (!view.editable) return false;
         const html = event.clipboardData?.getData("text/html") ?? "";
@@ -436,6 +573,32 @@ export const HtmlEditor = forwardRef<
             editor.chain().focus().toggleHeading({ level: 2 }).run()
           }
         />
+        {(
+          [
+            ["left", "Left", "Align left"],
+            ["center", "Center", "Align center"],
+            ["right", "Right", "Align right"],
+          ] as const
+        ).map(([alignment, label, title]) => (
+          <ToolbarButton
+            key={alignment}
+            label={label}
+            title={title}
+            active={
+              alignment === "left"
+                ? !editor.isActive({ textAlign: "center" }) &&
+                  !editor.isActive({ textAlign: "right" }) &&
+                  !editor.isActive({ textAlign: "justify" })
+                : editor.isActive({ textAlign: alignment })
+            }
+            disabled={disabled}
+            onClick={() =>
+              alignment === "left"
+                ? editor.chain().focus().unsetTextAlign().run()
+                : editor.chain().focus().setTextAlign(alignment).run()
+            }
+          />
+        ))}
         <ToolbarButton
           label="• List"
           title="Bullet list"

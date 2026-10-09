@@ -14,6 +14,7 @@ const STATUS_OPTIONS = [
   { value: "TRANSLATING", label: "TRANSLATING" },
   { value: "REVIEW", label: "REVIEW" },
   { value: "APPROVED", label: "APPROVED" },
+  { value: "PUBLISHING", label: "PUBLISHING" },
   { value: "PUBLISHED", label: "PUBLISHED" },
 ];
 

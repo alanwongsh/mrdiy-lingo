@@ -1,5 +1,6 @@
 import type { SourceContentFields } from "@/lib/types";
 import { GeminiTranslationProvider } from "@/lib/translation/gemini";
+import { cleanSourceHtml } from "@/lib/translation/cleanup";
 import { keepWordGaps, textNodes } from "@/lib/translation/spacing";
 
 export type TranslateTextInput = {
@@ -24,10 +25,11 @@ export interface TranslationProvider {
  * Translate only text between HTML tags; leave markup/attributes intact.
  */
 export async function translateHtmlPreservingMarkup(
-  html: string,
+  sourceHtml: string,
   translatePlain: (text: string) => Promise<string>
 ): Promise<string> {
-  if (!html.trim()) return "";
+  if (!sourceHtml.trim()) return "";
+  const html = cleanSourceHtml(sourceHtml);
   // If it doesn't look like HTML, translate as plain text.
   if (!/<[a-z!/?]/i.test(html)) {
     return translatePlain(html);

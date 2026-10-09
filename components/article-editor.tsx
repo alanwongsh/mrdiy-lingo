@@ -44,6 +44,7 @@ import { HtmlEditor, type HtmlEditorHandle } from "@/components/html-editor";
 import { MARKETS } from "@/lib/markets";
 import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
 import { PublishLanguagePicker } from "@/components/article-publish-panel";
+import { fromLocalInput, toLocalInput } from "@/lib/publish/schedule";
 import { publishArticleNow } from "@/lib/actions/publish";
 import { FilterSelect } from "./filter-select";
 import { TranslationQualityPanel } from "@/components/translation-quality-panel";
@@ -66,14 +67,6 @@ function fieldsFromTranslation(
     seo_title: t.seo_title,
     seo_description: t.seo_description,
   };
-}
-
-function toLocalInput(iso: string | null | undefined) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function CopyFieldButton({
@@ -141,13 +134,6 @@ function formatStamp(iso: string) {
   }).format(new Date(iso));
 }
 
-function fromLocalInput(value: string): string | null {
-  if (!value.trim()) return null;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString();
-}
-
 function resolveTargets(
   codes: string[],
   languages: Language[],
@@ -181,6 +167,7 @@ function isLifecycleStatus(value: string): value is ContentLifecycleStatus {
     value === "TRANSLATING" ||
     value === "REVIEW" ||
     value === "APPROVED" ||
+    value === "PUBLISHING" ||
     value === "PUBLISHED"
   );
 }
@@ -191,8 +178,11 @@ function lifecycleChoices(
 ): ContentLifecycleStatus[] {
   const choices: ContentLifecycleStatus[] = [...DRAFT_STATUSES];
   if (canApprove) {
-    choices.push("APPROVED", "PUBLISHED");
-  } else if (current === "APPROVED" || current === "PUBLISHED") {
+    choices.push("APPROVED");
+    // The scheduler sets PUBLISHING. It is listed only so the current value shows.
+    if (current === "PUBLISHING") choices.push("PUBLISHING");
+    choices.push("PUBLISHED");
+  } else if (current === "APPROVED" || current === "PUBLISHING" || current === "PUBLISHED") {
     choices.push(current);
   }
   return choices;
@@ -243,6 +233,7 @@ export function ArticleEditor({
     toLocalInput(article.scheduled_publish_at)
   );
   const [languageVendors, setLanguageVendors] = useState(publishTargets);
+  const [languageSchedule, setLanguageSchedule] = useState(article.language_publish_at);
   const [source, setSource] = useState(article.source_content);
   const [sourceLanguage, setSourceLanguage] = useState(article.source_language);
   const [market, setMarket] = useState(article.market ?? "");
@@ -361,6 +352,7 @@ export function ArticleEditor({
     setStatus(article.status);
     setContentType(article.content_type);
     setScheduledPublishAt(toLocalInput(article.scheduled_publish_at));
+    setLanguageSchedule(article.language_publish_at);
     setLanguageVendors(publishTargets);
     setSource(article.source_content);
     setSourceLanguage(article.source_language);
@@ -546,6 +538,7 @@ export function ArticleEditor({
           source_content: article.source_content,
           status,
           scheduled_publish_at: fromLocalInput(scheduledPublishAt),
+          ...scheduleChange(),
           target_languages: targetLanguages,
           market: market || null,
           ...(publishReady ? { publish_targets: assignedProviders() } : {}),
@@ -555,6 +548,12 @@ export function ArticleEditor({
         setError(err instanceof Error ? err.message : "Save failed");
       }
     });
+  }
+
+  /** Send per-language times only when they changed, so saving works before migration 018. */
+  function scheduleChange(): { language_publish_at?: Record<string, string> } {
+    const before = JSON.stringify(article.language_publish_at ?? {});
+    return JSON.stringify(languageSchedule) === before ? {} : { language_publish_at: languageSchedule };
   }
 
   function acceptQualityAction(action: QualityAction, _stored?: boolean, quiet = false) {
@@ -665,6 +664,7 @@ export function ArticleEditor({
           },
           status,
           scheduled_publish_at: fromLocalInput(scheduledPublishAt),
+          ...scheduleChange(),
           target_languages: targetLanguages,
           market: market || null,
           ...(publishReady ? { publish_targets: assignedProviders() } : {}),
@@ -726,7 +726,7 @@ export function ArticleEditor({
             }))}
             placeholder="Select lifecycle status"
           />
-          <Field label="Estimated publish">
+          <Field label="Publish time (all languages)">
             <input
               type="datetime-local"
               className={inputClass}
@@ -748,6 +748,13 @@ export function ArticleEditor({
               publishing={pending}
               onPublish={publishNow}
               onChange={setLanguageVendors}
+              articleStatus={article.status}
+              scheduledPublishAt={fromLocalInput(scheduledPublishAt)}
+              languageSchedule={languageSchedule}
+              approvedLanguages={article.translations
+                .filter((row) => row.status === "APPROVED")
+                .map((row) => row.language_code)}
+              onScheduleChange={setLanguageSchedule}
             />
           </div>
         </div>

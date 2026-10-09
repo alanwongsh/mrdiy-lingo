@@ -24,6 +24,7 @@ const STATUS_LABEL: Record<ContentLifecycleStatus, string> = {
   TRANSLATING: "Translating",
   REVIEW: "Review",
   APPROVED: "Approved",
+  PUBLISHING: "Publishing",
   PUBLISHED: "Published",
 };
 
@@ -989,6 +990,12 @@ export function ArticleView({
         ready
         readOnly
         onChange={() => {}}
+        articleStatus={article.status}
+        scheduledPublishAt={article.scheduled_publish_at}
+        languageSchedule={article.language_publish_at}
+        approvedLanguages={article.translations
+          .filter((row) => row.status === "APPROVED")
+          .map((row) => row.language_code)}
       />
 
       <Card className="overflow-visible">

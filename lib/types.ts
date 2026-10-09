@@ -38,6 +38,8 @@ export type ContentLifecycleStatus =
   | "TRANSLATING"
   | "REVIEW"
   | "APPROVED"
+  /** Live in some ticked languages and still waiting in others. */
+  | "PUBLISHING"
   | "PUBLISHED";
 
 export type SourceType = "SYSTEM" | "MANUAL" | "IMPORT";
@@ -171,7 +173,10 @@ export type Content = {
   submitted_by_username: string | null;
   status: ContentLifecycleStatus;
   target_languages: string[];
+  /** Default publish time for languages without their own. */
   scheduled_publish_at: string | null;
+  /** Language key -> ISO publish time. Overrides scheduled_publish_at for that language. */
+  language_publish_at: Record<string, string>;
   published_at: string | null;
   created_at: string;
   updated_at: string;

@@ -151,7 +151,17 @@ export default async function SetupPage() {
                               message =
                                 "Publish vendors OK, but run migration 017 so each language can go to its own provider.";
                             } else {
-                              message = "Tables are reachable.";
+                              const probeLanguageSchedule = await db
+                                .from("content")
+                                .select("language_publish_at")
+                                .limit(1);
+                              if (probeLanguageSchedule.error) {
+                                needsMigration = "018_language_publish_schedule.sql";
+                                message =
+                                  "Language providers OK, but run migration 018 for per-language publish times and the Publishing status.";
+                              } else {
+                                message = "Tables are reachable.";
+                              }
                             }
                           }
                         }
@@ -186,6 +196,7 @@ export default async function SetupPage() {
   const sql15 = await readMigration("015_quality_run_version.sql");
   const sql16 = await readMigration("016_publish_vendors.sql");
   const sql17 = await readMigration("017_publish_language_targets.sql");
+  const sql18 = await readMigration("018_language_publish_schedule.sql");
 
   return (
     <div>
@@ -225,6 +236,7 @@ export default async function SetupPage() {
           <li>Run migration 015 so each saved translation version is analyzed once.</li>
           <li>Run migration 016 for per-app publish vendors.</li>
           <li>Run migration 017 so each article language can go to its own provider.</li>
+          <li>Run migration 018 for per-language publish times and the Publishing status.</li>
           <li>Refresh this page.</li>
         </ol>
       </Card>
@@ -249,6 +261,7 @@ export default async function SetupPage() {
             ["15", "015_quality_run_version.sql", sql15],
             ["16", "016_publish_vendors.sql", sql16],
             ["17", "017_publish_language_targets.sql", sql17],
+            ["18", "018_language_publish_schedule.sql", sql18],
           ] as const
         ).map(([n, name, sql]) => (
           <Card key={name} className="overflow-hidden">
