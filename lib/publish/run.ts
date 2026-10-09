@@ -159,13 +159,13 @@ export async function runDuePublications(applicationId?: string): Promise<Publis
   }
   if (result.due === 0 && result.notes.length === 0) {
     result.notes.push(
-      "No approved articles with a language assigned to a provider are due. Approve the article, choose a provider for each language, and set the estimated publish time to now or earlier."
+      "No approved articles with a language assigned to a provider are due. Approve the article, choose a provider for each language, and set its publish time to now or earlier."
     );
   }
   return result;
 }
 
-/** Sends one article's ticked languages now. The estimated time is not required. */
+/** Sends one article's ticked languages now. The publish time is not required. */
 export async function publishContentNow(contentId: string): Promise<PublishRunResult> {
   const result: PublishRunResult = { due: 0, delivered: 0, failed: 0, skipped: 0, notes: [] };
   const db = await getDb();

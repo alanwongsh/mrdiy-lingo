@@ -17,6 +17,7 @@ import Link from "@tiptap/extension-link";
 import Underline from "@tiptap/extension-underline";
 import Placeholder from "@tiptap/extension-placeholder";
 import TextAlign from "@tiptap/extension-text-align";
+import { looksLikeTypedAddress } from "@/lib/translation/cleanup";
 
 function ToolbarButton({
   label,
@@ -159,22 +160,6 @@ function normalizeEditorHtml(html: string) {
 
 const ALIGNMENTS = new Set(["left", "center", "right", "justify"]);
 
-/** linkify turns the brand MR.DIY into http://MR.DIY. That is not a pasted address. */
-function isBrandShapedLink(href: string, text: string) {
-  const plain = text.replace(/\s+/g, " ").trim();
-  if (!plain || !href || /\s/.test(plain)) return false;
-  try {
-    const url = new URL(href);
-    if ((url.pathname !== "/" && url.pathname !== "") || url.search || url.hash) return false;
-    const host = url.hostname.toLowerCase();
-    // www.mrdiy.com has three labels. MR.DIY is only a name plus .diy.
-    if (host.split(".").length !== 2) return false;
-    return host === plain.toLowerCase();
-  } catch {
-    return false;
-  }
-}
-
 function alignmentOf(element: HTMLElement) {
   const fromStyle = element.style.textAlign.trim().toLowerCase();
   if (ALIGNMENTS.has(fromStyle)) return fromStyle;
@@ -204,10 +189,6 @@ function transformPastedHtml(html: string) {
       }
       parent = parent.parentElement;
     }
-  });
-  Array.from(doc.body.querySelectorAll("a")).forEach((anchor) => {
-    if (!isBrandShapedLink(anchor.getAttribute("href") ?? "", anchor.textContent ?? "")) return;
-    anchor.replaceWith(...Array.from(anchor.childNodes));
   });
   return doc.body.innerHTML;
 }
@@ -258,7 +239,12 @@ function paragraphIsBlank(node: ProseNode) {
   return blank;
 }
 
-/** Paste splits a centered image caption into an empty centered paragraph plus a left-aligned one, and linkify marks MR.DIY. Put the alignment back and drop that brand link. */
+/**
+ * Paste splits a centered image caption into an empty centered paragraph plus a left-aligned one.
+ * Put the alignment back. Links are left alone: shouldAutoLink keeps bare words such as MR.DIY
+ * from being linked, and a real link like <a href="http://yayasanmrdiy.com">yayasanmrdiy.com</a>
+ * has the same shape, so it cannot be told apart afterwards.
+ */
 const RepairPastedHtml = Extension.create({
   name: "repairPastedHtml",
   addProseMirrorPlugins() {
@@ -268,21 +254,6 @@ const RepairPastedHtml = Extension.create({
           if (!transactions.some((transaction) => transaction.docChanged)) return null;
           let tr = state.tr;
           let changed = false;
-          const link = state.schema.marks.link;
-          if (link) {
-            const removals: { from: number; to: number }[] = [];
-            tr.doc.descendants((node, pos) => {
-              if (!node.isText) return;
-              const mark = link.isInSet(node.marks);
-              if (!mark) return;
-              if (!isBrandShapedLink(String(mark.attrs.href ?? ""), node.text ?? "")) return;
-              removals.push({ from: pos, to: pos + node.nodeSize });
-            });
-            removals.reverse().forEach((range) => {
-              tr = tr.removeMark(range.from, range.to, link);
-              changed = true;
-            });
-          }
 
           const blanks: { pos: number; align: string }[] = [];
           tr.doc.descendants((node, pos) => {
@@ -399,13 +370,9 @@ export const HtmlEditor = forwardRef<
       }),
       Link.configure({
         openOnClick: false,
-        // MR.DIY is a brand. linkify treats .diy as a domain and would mark every mention.
-        shouldAutoLink: (url) => {
-          const asHref = url.includes("://") ? url : `http://${url}`;
-          const label = url.split(/[/?#]/).pop() ?? url;
-          if (isBrandShapedLink(asHref, label)) return false;
-          return /^(?:https?:\/\/|www\.)/i.test(url) || /^[^\s/]+\.[^\s/]+\//.test(url);
-        },
+        // Bare words with a dot, such as the brand MR.DIY, look like domains to linkify.
+        // Auto-link only text written as an address.
+        shouldAutoLink: looksLikeTypedAddress,
         HTMLAttributes: {
           class: "text-[var(--diy-red)] underline",
         },

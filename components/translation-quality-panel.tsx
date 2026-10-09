@@ -23,6 +23,7 @@ import type {
   QualityScore,
   TranslationQualityResult,
 } from "@/lib/translation-quality/types";
+import { FilterSelect } from "./filter-select";
 
 function formatRunWhen(iso: string) {
   const date = new Date(iso);
@@ -600,17 +601,18 @@ export function TranslationQualityPanel({
         {languageChoices && languageChoices.length > 1 ? (
           <label className="mb-3 block text-xs font-semibold tracking-wide text-slate-500 uppercase">
             Review
-            <select
-              className="mt-1 h-9 w-full rounded-lg border border-[var(--hub-border-strong)] bg-white px-2 text-sm font-medium text-slate-900 normal-case"
+            <FilterSelect
+              fullWidth
+              label="Content type"
               value={languageCode}
-              onChange={(event) => onLanguageChange?.(event.target.value)}
-            >
-              {languageChoices.map((choice) => (
-                <option key={choice.code} value={choice.code}>
-                  {choice.label}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => onLanguageChange?.(value)}
+              options={languageChoices.map((type) => ({
+                value: type.code,
+                label: type.label,
+              }))}
+              placeholder="Select content type"
+              hideEmptyOption
+            />
           </label>
         ) : null}
         <div className="flex items-end justify-between gap-3">

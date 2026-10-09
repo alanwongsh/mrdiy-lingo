@@ -1,29 +1,15 @@
 /**
- * The editor's link detector treats "MR.DIY" as a web address because .diy is a real
- * domain ending, so pasting an article turned every brand mention into <a href="http://MR.DIY">.
- * Those links also split bold text into pieces the translator cannot reorder.
+ * Source HTML tidy-up before translation, and the editor's auto-link rule.
+ *
+ * Links are never removed here. The editor's detector used to link bare words with a dot,
+ * such as the brand MR.DIY (.diy is a real domain ending), as http://MR.DIY. A real link
+ * such as <a href="http://yayasanmrdiy.com">yayasanmrdiy.com</a> has exactly the same shape,
+ * so the two cannot be told apart afterwards. The editor prevents the accidental ones instead.
  */
 
-/** Matches a link whose address is just its own text, such as <a href="http://MR.DIY">MR.DIY</a>. */
-const LINK = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
-const HREF = /\bhref\s*=\s*(["'])(.*?)\1/i;
-
-function visible(html: string) {
-  return html.replace(/<[^>]+>/g, "").replace(/&amp;/gi, "&").trim();
-}
-
-/** A link the editor made from a bare word with a dot, not one someone added on purpose. */
-export function isAccidentalLink(href: string, text: string) {
-  const bare = href.trim().replace(/^https?:\/\//i, "").replace(/\/$/, "");
-  if (!bare || /^www\./i.test(bare) || bare.includes("/")) return false;
-  return bare.toLowerCase() === text.trim().toLowerCase();
-}
-
-export function unwrapAccidentalLinks(html: string): string {
-  return html.replace(LINK, (whole, attributes: string, inner: string) => {
-    const href = attributes.match(HREF)?.[2] ?? "";
-    return isAccidentalLink(href, visible(inner)) ? inner : whole;
-  });
+/** Auto-link only text that is written as an address: http(s)://, www., or a path. */
+export function looksLikeTypedAddress(text: string) {
+  return /^(?:https?:\/\/|www\.)/i.test(text) || /^[^\s/]+\.[^\s/]+\//.test(text);
 }
 
 /** `<strong>a </strong><strong>b</strong>` becomes `<strong>a b</strong>`. */
@@ -39,5 +25,5 @@ export function mergeAdjacentMarks(html: string): string {
 
 /** Tidy source HTML before it is split for translation. */
 export function cleanSourceHtml(html: string): string {
-  return mergeAdjacentMarks(unwrapAccidentalLinks(html));
+  return mergeAdjacentMarks(html);
 }

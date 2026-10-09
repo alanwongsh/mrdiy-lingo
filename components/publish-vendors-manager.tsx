@@ -41,7 +41,7 @@ export function PublishVendorsManager({
     <div className="space-y-4">
       <Card className="space-y-3 p-4 text-sm text-[var(--hub-muted-strong)]">
         <p>
-          The server publishes an approved article after its estimated time. An article can
+          The server publishes an approved article at its publish time. An article can
           go to more than one connection.
         </p>
         {!canConfigure ? <p>HOD and above can add connections.</p> : null}

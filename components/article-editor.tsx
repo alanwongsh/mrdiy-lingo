@@ -44,7 +44,7 @@ import { HtmlEditor, type HtmlEditorHandle } from "@/components/html-editor";
 import { MARKETS } from "@/lib/markets";
 import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
 import { PublishLanguagePicker } from "@/components/article-publish-panel";
-import { fromLocalInput, toLocalInput } from "@/lib/publish/schedule";
+import { fromLocalInput, isPublishable, toLocalInput } from "@/lib/publish/schedule";
 import { publishArticleNow } from "@/lib/actions/publish";
 import { FilterSelect } from "./filter-select";
 import { TranslationQualityPanel } from "@/components/translation-quality-panel";
@@ -327,6 +327,17 @@ export function ArticleEditor({
     targetTranslation &&
       (savedFields.title || savedFields.summary || savedFields.body)
   );
+
+  // Approving the article approves languages that have a translation. The rest will not publish.
+  const releasedNow = isPublishable(article.status);
+  const heldBack = isPublishable(status)
+    ? article.target_languages.filter((code) => {
+        const row = findTranslation(article.translations, code);
+        if (!row) return true;
+        if (row.status === "APPROVED") return false;
+        return releasedNow || !(row.title.trim() || row.summary.trim() || row.body.trim());
+      })
+    : [];
 
   const statuses = useMemo(
     () =>
@@ -713,19 +724,31 @@ export function ArticleEditor({
             }))}
             placeholder="Select market"
           />
-          <FilterSelect
-            fullWidth
-            label="Lifecycle status"
-            value={status}
-            onChange={(value) => {
-              if (isLifecycleStatus(value)) setStatus(value);
-            }}
-            options={lifecycleChoices(canApprove, article.status).map((status) => ({
-              value: status,
-              label: status,
-            }))}
-            placeholder="Select lifecycle status"
-          />
+          <div className="space-y-1.5">
+            <FilterSelect
+              fullWidth
+              label="Lifecycle status"
+              value={status}
+              onChange={(value) => {
+                if (isLifecycleStatus(value)) setStatus(value);
+              }}
+              options={lifecycleChoices(canApprove, article.status).map((status) => ({
+                value: status,
+                label: status,
+              }))}
+              placeholder="Select lifecycle status"
+            />
+            {heldBack.length > 0 ? (
+              <p className="text-xs text-amber-800">
+                {releasedNow
+                  ? "Not approved, so these will not publish: "
+                  : "No translation yet, so these will not publish: "}
+                {heldBack
+                  .map((code) => findLanguage(languages, code)?.name ?? code)
+                  .join(", ")}
+              </p>
+            ) : null}
+          </div>
           <Field label="Publish time (all languages)">
             <input
               type="datetime-local"
@@ -733,6 +756,9 @@ export function ArticleEditor({
               value={scheduledPublishAt}
               onChange={(e) => setScheduledPublishAt(e.target.value)}
             />
+            <p className="text-xs text-[var(--hub-muted)]">
+              Goes live at this time once approved.
+            </p>
           </Field>
           <div className="sm:col-span-2 lg:col-span-4">
             <PublishLanguagePicker

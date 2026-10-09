@@ -57,6 +57,7 @@ export function FilterSelect({
   onEditOption,
   footer,
   fullWidth = false,
+  hideEmptyOption = false,
 }: {
   label?: string;
   value: string;
@@ -67,6 +68,8 @@ export function FilterSelect({
   footer?: React.ReactNode;
   /** Stretch to the parent width. The filter bar keeps the compact width. */
   fullWidth?: boolean;
+  /** Leave the placeholder out of the menu so one of the options must be picked. */
+  hideEmptyOption?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useMenuDismiss(open, setOpen);
@@ -111,22 +114,26 @@ export function FilterSelect({
           role="listbox"
         >
           <ul className="max-h-60 space-y-0.5 overflow-auto">
-            <li>
-              <button
-                type="button"
-                role="option"
-                aria-selected={!value}
-                className={`flex w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-50 ${
-                  !value ? "bg-slate-50 font-semibold text-slate-900" : "text-slate-700"
-                }`}
-                onClick={() => {
-                  onChange("");
-                  setOpen(false);
-                }}
-              >
-                {placeholder}
-              </button>
-            </li>
+            {hideEmptyOption ? null : (
+              <li>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={!value}
+                  className={`flex w-full rounded-md px-2 py-1.5 text-left text-sm ${
+                    !value
+                      ? "bg-[var(--diy-red)] font-semibold text-white"
+                      : "text-slate-700 hover:bg-[var(--diy-yellow-soft)] hover:text-slate-900"
+                  }`}
+                  onClick={() => {
+                    onChange("");
+                    setOpen(false);
+                  }}
+                >
+                  {placeholder}
+                </button>
+              </li>
+            )}
             {options.map((o) => {
               const active = o.value === value;
               return (
@@ -135,10 +142,10 @@ export function FilterSelect({
                     type="button"
                     role="option"
                     aria-selected={active}
-                    className={`flex min-w-0 flex-1 rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-50 ${
+                    className={`flex min-w-0 flex-1 rounded-md px-2 py-1.5 text-left text-sm ${
                       active
-                        ? "bg-slate-50 font-semibold text-slate-900"
-                        : "text-slate-700"
+                        ? "bg-[var(--diy-red)] font-semibold text-white"
+                        : "text-slate-700 hover:bg-[var(--diy-yellow-soft)] hover:text-slate-900"
                     }`}
                     onClick={() => {
                       onChange(o.value);
@@ -250,9 +257,10 @@ export function FilterMultiSelect({
               const checked = value.includes(o.value);
               return (
                 <li key={o.value}>
-                  <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-slate-50">
+                  <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[var(--diy-yellow-soft)]">
                     <input
                       type="checkbox"
+                      className="accent-[var(--diy-red)]"
                       checked={checked}
                       onChange={() => toggle(o.value)}
                     />

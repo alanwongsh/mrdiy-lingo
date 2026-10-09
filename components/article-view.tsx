@@ -18,6 +18,7 @@ import type {
   SourceContentFields,
   TranslationStatus,
 } from "@/lib/types";
+import { FilterSelect } from "./filter-select";
 
 const STATUS_LABEL: Record<ContentLifecycleStatus, string> = {
   DRAFT: "Draft",
@@ -576,19 +577,31 @@ function LanguageSelect({
   onChange: (code: string) => void;
 }) {
   return (
-    <select
-      id={id}
-      aria-label={label}
-      className={`${inputClass} w-full min-w-0 sm:w-auto sm:min-w-48`}
+    <FilterSelect
+      fullWidth
+      label="Content type"
       value={value}
-      onChange={(event) => onChange(event.target.value)}
-    >
-      {options.map((option) => (
-        <option key={option.code} value={option.code}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+      onChange={(value) => onChange(value)}
+      options={options.map((type) => ({
+        value: type.code,
+        label: type.label,
+      }))}
+      placeholder="Select content type"
+      hideEmptyOption
+    />
+    // <select
+    //   id={id}
+    //   aria-label={label}
+    //   className={`${inputClass} w-full min-w-0 sm:w-auto sm:min-w-48`}
+    //   value={value}
+    //   onChange={(event) => onChange(event.target.value)}
+    // >
+    //   {options.map((option) => (
+    //     <option key={option.code} value={option.code}>
+    //       {option.label}
+    //     </option>
+    //   ))}
+    // </select>
   );
 }
 

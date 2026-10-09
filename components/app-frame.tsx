@@ -167,7 +167,7 @@ export function AppFrame({
                 <aside className="relative flex h-full w-[min(18rem,88vw)] flex-col overflow-hidden border-r border-[var(--hub-border)] bg-[var(--hub-sidebar)] text-[var(--hub-sidebar-fg)]">
                   <SidebarBody
                     nav={nav}
-                    appLinks={appLinks}
+                              appLinks={appLinks}
                     actor={actor}
                     isSuperadmin={isSuperadmin}
                     embedded={embedded}

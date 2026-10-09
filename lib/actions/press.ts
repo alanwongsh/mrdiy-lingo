@@ -123,9 +123,14 @@ async function targetsAllApproved(
   return targets.every((code) => approved.has(code.toLowerCase()));
 }
 
+/**
+ * Approving a language can only raise the article to APPROVED, and taking an approval
+ * away can only drop it to REVIEW, so an approval never sends the article backwards.
+ */
 async function syncArticleStatusFromApprovals(
   contentId: string,
-  applicationId: string
+  applicationId: string,
+  direction: "promote" | "demote"
 ) {
   const db = await getDb();
   const { data, error } = await db
@@ -139,11 +144,44 @@ async function syncArticleStatusFromApprovals(
     data.source_language,
     data.target_languages ?? []
   );
-  if (allApproved && !isPublishable(data.status)) {
+  if (direction === "promote" && allApproved && !isPublishable(data.status)) {
     await persistArticleStatus(contentId, applicationId, "APPROVED");
-  } else if (!allApproved && isPublishable(data.status)) {
+  } else if (direction === "demote" && !allApproved && isPublishable(data.status)) {
     await persistArticleStatus(contentId, applicationId, "REVIEW");
   }
+}
+
+/** Approving the article approves every target language that already has a translation. */
+async function approveTargetTranslations(
+  contentId: string,
+  sourceLanguage: string,
+  targetLanguages: string[],
+  userId: string
+) {
+  const targets = new Set(
+    normalizeTargetLanguages(targetLanguages, sourceLanguage).map(languageKey)
+  );
+  if (targets.size === 0) return;
+  const db = await getDb();
+  const { data, error } = await db
+    .from("content_translations")
+    .select("id, language_code, status, title, summary, body")
+    .eq("content_id", contentId);
+  if (error) throw new Error(error.message);
+  const ids = (data ?? [])
+    .filter(
+      (row) =>
+        row.status !== "APPROVED" &&
+        targets.has(languageKey(String(row.language_code))) &&
+        [row.title, row.summary, row.body].some((value) => String(value ?? "").trim())
+    )
+    .map((row) => row.id as string);
+  if (ids.length === 0) return;
+  const { error: updateError } = await db
+    .from("content_translations")
+    .update({ status: "APPROVED", ...(await approvalStamp("APPROVED", userId)) })
+    .in("id", ids);
+  if (updateError) throw new Error(updateError.message);
 }
 
 function mapContentRow(data: Content): Content {
@@ -395,7 +433,8 @@ export async function saveNewArticle(input: {
   market?: string | null;
   targetLanguages?: string[];
   scheduledPublishAt?: string | null;
-  mode: "draft" | "approve";
+  /** draft keeps it for later, review hands it to an approver, approve releases it. */
+  mode: "draft" | "review" | "approve";
   translations?: Array<{
     languageCode: string;
     fields: SourceContentFields;
@@ -403,6 +442,8 @@ export async function saveNewArticle(input: {
   }>;
 }): Promise<{ id: string }> {
   const approve = input.mode === "approve";
+  const unapprovedStatus: ContentLifecycleStatus =
+    input.mode === "review" ? "REVIEW" : "DRAFT";
   if (approve) {
     await requireAppCapability(input.applicationId, "approve");
   }
@@ -416,7 +457,7 @@ export async function saveNewArticle(input: {
       input.sourceFields.summary?.trim() ||
       "",
   };
-  const status: ContentLifecycleStatus = approve ? "APPROVED" : "DRAFT";
+  const status: ContentLifecycleStatus = approve ? "APPROVED" : unapprovedStatus;
   let articleId = input.contentId?.trim() || "";
   if (!articleId) {
     const article = await createArticle({
@@ -452,7 +493,7 @@ export async function saveNewArticle(input: {
     const db = await getDb();
     const { error } = await db
       .from("content")
-      .update({ status: "DRAFT", published_at: null })
+      .update({ status: unapprovedStatus, published_at: null })
       .eq("id", articleId);
     if (error) throw new Error(error.message);
     const { error: sourceError } = await db
@@ -613,6 +654,9 @@ export async function updateArticle(
     .select("*")
     .single();
   if (error) throw publishSchemaError(error) ?? new Error(error.message);
+  if (isPublishable(nextStatus) && !released && grant.access.can_approve) {
+    await approveTargetTranslations(id, input.source_language, nextTargets, grant.user.id);
+  }
   if (targetsChanged && !textChanged && !input.keepApprovals) {
     const allApproved = await targetsAllApproved(
       id,
@@ -869,7 +913,11 @@ export async function setContentTranslationStatus(input: {
     .update({ status: input.status, ...approval })
     .eq("id", input.contentTranslationId);
   if (error) throw new Error(error.message);
-  await syncArticleStatusFromApprovals(input.contentId, input.applicationId);
+  await syncArticleStatusFromApprovals(
+    input.contentId,
+    input.applicationId,
+    input.status === "APPROVED" ? "promote" : "demote"
+  );
   revalidatePath(`/applications/${input.applicationId}`);
   revalidatePath(
     `/applications/${input.applicationId}/articles/${input.contentId}`
@@ -1060,7 +1108,7 @@ export async function autoTranslateArticleLanguages(input: {
     );
   }
   if (approveTranslations) {
-    await syncArticleStatusFromApprovals(input.contentId, input.applicationId);
+    await syncArticleStatusFromApprovals(input.contentId, input.applicationId, "promote");
   }
   return results;
 }

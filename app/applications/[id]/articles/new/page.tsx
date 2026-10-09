@@ -63,7 +63,7 @@ export default function NewArticlePage() {
     text: string;
   } | null>(null);
   const [scrollRequest, setScrollRequest] = useState(0);
-  const [savingIntent, setSavingIntent] = useState<"draft" | "approve" | null>(null);
+  const [savingIntent, setSavingIntent] = useState<"draft" | "review" | "approve" | null>(null);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const sourceBodyRef = useRef<HtmlEditorHandle>(null);
@@ -276,7 +276,7 @@ export default function NewArticlePage() {
     return () => cancelAnimationFrame(frame);
   }, [scrollRequest]);
 
-  function save(mode: "draft" | "approve") {
+  function save(mode: "draft" | "review" | "approve") {
     if (!title.trim()) {
       setError("Add a title first.");
       return;
@@ -390,12 +390,15 @@ export default function NewArticlePage() {
                 ))}
               </select>
             </Field>
-            <Field label="Estimated publish (optional)">
+            <Field label="Publish time (optional)">
               <input
                 type="datetime-local"
                 name="scheduled_publish_at"
                 className={inputClass}
               />
+              <p className="text-xs text-[var(--hub-muted)]">
+                Goes live at this time once approved.
+              </p>
             </Field>
           </div>
           <Field label="Description">
@@ -535,24 +538,27 @@ export default function NewArticlePage() {
           </p>
         ) : (
           <p className="text-sm text-[var(--hub-muted)]">
-            Translate and analyze a language before you create the article. It is saved as a draft, and HOD and above approve it.
+            Save as draft to keep working on it. Submit for review when it is ready, and HOD and above approve it.
           </p>
         )}
         {error ? <p className="text-sm text-red-700">{error}</p> : null}
         <div className="flex flex-wrap gap-2">
-          <Button
-            type="submit"
-            variant={canApprove ? "secondary" : "primary"}
-            disabled={pending}
-          >
+          <Button type="submit" variant="secondary" disabled={pending}>
             {isTranslating
               ? "Translating…"
               : pending && savingIntent === "draft"
                 ? "Saving…"
-                : canApprove
-                  ? "Save as draft"
-                  : "Create article"}
+                : "Save as draft"}
           </Button>
+          {canApprove ? null : (
+            <Button type="button" disabled={pending} onClick={() => save("review")}>
+              {isTranslating
+                ? "Translating…"
+                : pending && savingIntent === "review"
+                  ? "Submitting…"
+                  : "Submit for review"}
+            </Button>
+          )}
           {canApprove ? (
             <Button type="button" disabled={pending} onClick={() => save("approve")}>
               {isTranslating
