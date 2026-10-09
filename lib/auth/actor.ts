@@ -302,6 +302,7 @@ export function isAnonymousPath(path: string): boolean {
     path === "/embed" ||
     path.startsWith("/embed/") ||
     path.startsWith("/published/") ||
-    path === "/api/cron/publish"
+    path === "/api/cron/publish" ||
+    path === "/api/cron/notifications"
   );
 }
