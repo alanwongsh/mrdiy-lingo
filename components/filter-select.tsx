@@ -58,8 +58,13 @@ export function FilterSelect({
   footer,
   fullWidth = false,
   hideEmptyOption = false,
+  disabled = false,
+  ariaLabel,
 }: {
   label?: string;
+  /** Accessible name when there is no visible label. */
+  ariaLabel?: string;
+  disabled?: boolean;
   value: string;
   onChange: (value: string) => void;
   options: FilterOption[];
@@ -87,13 +92,15 @@ export function FilterSelect({
       <button
         id={buttonId}
         type="button"
+        aria-label={label ? undefined : ariaLabel}
         aria-expanded={open}
         aria-controls={listId}
-        className={
+        disabled={disabled}
+        className={`${
           fullWidth
             ? "inline-flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm hover:border-slate-400"
             : triggerClass
-        }
+        } disabled:cursor-not-allowed disabled:opacity-60`}
         onClick={() => setOpen((v) => !v)}
       >
         <span className={`truncate ${value ? "" : "text-slate-500"}`}>
@@ -103,7 +110,7 @@ export function FilterSelect({
           ▾
         </span>
       </button>
-      {open ? (
+      {open && !disabled ? (
         <div
           id={listId}
           className={

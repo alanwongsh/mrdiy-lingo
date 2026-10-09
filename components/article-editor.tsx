@@ -934,22 +934,18 @@ export function ArticleEditor({
                   </span>
                 </button>
                 {targetLanguages.length > 0 ? (
-                  <select
-                    aria-label="Editing language"
-                    className={`${inputClass} w-auto min-w-48`}
+                  <FilterSelect
+                    ariaLabel="Editing language"
                     value={editingCode}
                     disabled={isTranslating}
-                    onChange={(e) => setTargetLang(e.target.value)}
-                  >
-                    {targetLanguages.map((code) => {
-                      const lang = findLanguage(languages, code);
-                      return (
-                        <option key={code} value={code}>
-                          {lang?.name ?? code}
-                        </option>
-                      );
-                    })}
-                  </select>
+                    onChange={(value) => setTargetLang(value)}
+                    options={targetLanguages.map((code) => ({
+                      value: code,
+                      label: findLanguage(languages, code)?.name ?? code,
+                    }))}
+                    placeholder="Select language"
+                    hideEmptyOption
+                  />
                 ) : (
                   <span className="font-semibold text-slate-900">
                     Choose a language

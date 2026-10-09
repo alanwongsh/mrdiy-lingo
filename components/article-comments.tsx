@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { addArticleComment } from "@/lib/actions/comments";
 import type { ArticleComment, Language } from "@/lib/types";
 import { Button, textareaClass } from "@/components/ui";
+import { FilterSelect } from "@/components/filter-select";
 
 function formatWhen(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
@@ -139,21 +140,20 @@ export function ArticleComments({
           </div>
 
           <div className="border-b border-[var(--hub-border)] px-4 py-3">
-            <label className="mb-1 block text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
-              Language
-            </label>
-            <select
-              className="h-9 w-full rounded-lg border border-[var(--hub-border-strong)] bg-white px-2 text-sm"
+            <FilterSelect
+              fullWidth
+              label="Language"
               value={languageCode}
-              onChange={(event) => setLanguageCode(event.target.value)}
-            >
-              {languages.map((language) => (
-                <option key={language.code} value={language.code}>
-                  {language.name}
-                  {language.code === activeLanguage ? " · editing" : ""}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setLanguageCode(value)}
+              options={languages.map((language) => ({
+                value: language.code,
+                label:
+                  language.name +
+                  (language.code === activeLanguage ? " · editing" : ""),
+              }))}
+              placeholder="Select language"
+              hideEmptyOption
+            />
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">

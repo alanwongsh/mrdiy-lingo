@@ -579,14 +579,14 @@ function LanguageSelect({
   return (
     <FilterSelect
       fullWidth
-      label="Content type"
+      ariaLabel={label}
       value={value}
       onChange={(value) => onChange(value)}
-      options={options.map((type) => ({
-        value: type.code,
-        label: type.label,
+      options={options.map((option) => ({
+        value: option.code,
+        label: option.label,
       }))}
-      placeholder="Select content type"
+      placeholder="Select language"
       hideEmptyOption
     />
     // <select
