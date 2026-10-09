@@ -1,5 +1,6 @@
 import type { TranslationQualityInput } from "@/lib/translation-quality/types";
-import { htmlToText, languageCompatible } from "@/lib/translation-quality/text";
+import { htmlToText } from "@/lib/translation-quality/text";
+import { glossaryLines } from "@/lib/translation/glossary";
 
 export const PROMPT_VERSION = "translation-quality-v1.1";
 
@@ -15,20 +16,8 @@ export function buildTranslationQualityPrompt(
     .map((category) => `- ${category.code}: ${category.description}`)
     .join("\n");
 
-  const terms = (input.terminology ?? [])
-    .filter(
-      (entry) =>
-        entry.isActive &&
-        languageCompatible(entry.sourceLanguage, input.sourceLanguage) &&
-        languageCompatible(entry.targetLanguage, input.targetLanguage)
-    )
-    .map((entry) => {
-      const preferred = entry.preferredTranslation || entry.term;
-      const forbidden = entry.forbiddenTranslations.map((item) => item.trim()).filter(Boolean);
-      const avoid = forbidden.length > 0 ? `; do not use ${forbidden.join(", ")} for this term` : "";
-      return `- When the source says "${entry.term}", use "${preferred}"${avoid}.`;
-    })
-    .join("\n");
+  // Same lines the translator receives, so translation and review follow one glossary.
+  const terms = glossaryLines(input.terminology, input.sourceLanguage, input.targetLanguage).join("\n");
 
   return `You are a professional translation quality evaluator.
 

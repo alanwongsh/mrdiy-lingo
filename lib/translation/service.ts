@@ -1,5 +1,6 @@
 import type { SourceContentFields } from "@/lib/types";
 import { GeminiTranslationProvider } from "@/lib/translation/gemini";
+import { keepWordGaps, textNodes } from "@/lib/translation/spacing";
 
 export type TranslateTextInput = {
   text: string;
@@ -33,36 +34,21 @@ export async function translateHtmlPreservingMarkup(
   }
 
   const parts = html.split(/(<[^>]+>)/g);
-  const out: string[] = [];
-
-  for (const part of parts) {
-    if (!part) continue;
-    if (part.startsWith("<")) {
-      out.push(part);
-      continue;
-    }
-
-    const leading = part.match(/^\s*/)?.[0] ?? "";
-    const trailing = part.match(/\s*$/)?.[0] ?? "";
-    const core = part.slice(leading.length, part.length - trailing.length);
-    if (!core) {
-      out.push(part);
-      continue;
-    }
-
-    // Skip translating pure entities / punctuation-only crumbs.
-    if (!/[A-Za-z0-9\u00C0-\u024F]/.test(core)) {
-      out.push(part);
-      continue;
-    }
-
+  // Skip translating pure entities / punctuation-only crumbs.
+  const nodes = textNodes(parts, (core) => /[A-Za-z0-9\u00C0-\u024F]/.test(core));
+  const translated: string[] = [];
+  for (const node of nodes) {
     try {
-      const translated = await translatePlain(core);
-      out.push(`${leading}${translated || core}${trailing}`);
+      translated.push((await translatePlain(node.core)) || node.core);
     } catch {
-      out.push(part);
+      translated.push(node.core);
     }
   }
+  const values = keepWordGaps(parts, nodes, translated);
+  const out = [...parts];
+  nodes.forEach((node, index) => {
+    out[node.index] = `${node.leading}${values[index]}${node.trailing}`;
+  });
 
   const result = out.join("");
   // Guard: never return empty if source had visible text.
