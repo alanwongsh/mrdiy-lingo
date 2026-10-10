@@ -60,6 +60,8 @@ export type Application = {
   status: EntityStatus;
   model_type: ApplicationModelType;
   owner_user_id: string | null;
+  /** Email approvers when an article enters review. Missing before migration 020. */
+  notify_review_email?: boolean;
   created_at: string;
   updated_at: string;
 };

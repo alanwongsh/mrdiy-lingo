@@ -26,7 +26,12 @@ type ReviewArticle = {
   title: string;
   status: string;
   submitted_by_name: string | null;
-  application: { id: string; name: string; owner_user_id: string | null } | null;
+  application: {
+    id: string;
+    name: string;
+    owner_user_id: string | null;
+    notify_review_email: boolean;
+  } | null;
 };
 
 const BATCH = 20;
@@ -112,7 +117,7 @@ async function deliverReviewNotice(row: OutboxRow, result: OutboxRunResult) {
   const { data, error } = await db
     .from("content")
     .select(
-      "id, application_id, title, status, submitted_by_name, application:applications(id, name, owner_user_id)"
+      "id, application_id, title, status, submitted_by_name, application:applications(id, name, owner_user_id, notify_review_email)"
     )
     .eq("id", row.content_id)
     .maybeSingle();
@@ -122,6 +127,12 @@ async function deliverReviewNotice(row: OutboxRow, result: OutboxRunResult) {
   // Approved or sent back before the queue got to it: nothing left to review.
   if (!article?.application || article.status !== "REVIEW") {
     await settle(row.id, { status: "SKIPPED", last_error: "Article is no longer in review." });
+    result.skipped += 1;
+    return;
+  }
+  // Switched off after the notice was queued.
+  if (!article.application.notify_review_email) {
+    await settle(row.id, { status: "SKIPPED", last_error: "Review emails are off for this application." });
     result.skipped += 1;
     return;
   }

@@ -175,6 +175,25 @@ export async function setApplicationStatus(
   revalidateApplication(id);
 }
 
+export async function setReviewEmailNotifications(
+  id: string,
+  enabled: boolean
+): Promise<void> {
+  await requireAppCapability(id, "approve");
+  const db = await getDb();
+  const { error } = await db
+    .from("applications")
+    .update({ notify_review_email: enabled })
+    .eq("id", id);
+  if (error) {
+    if (error.code === "42703") {
+      throw new Error("Run migration 020_review_email_setting.sql first.");
+    }
+    throw new Error(error.message);
+  }
+  revalidatePath(`/applications/${id}/settings/notifications`);
+}
+
 export async function listApplicationPeople(applicationId: string): Promise<{
   owner: ApplicationMemberView | null;
   members: ApplicationMemberView[];

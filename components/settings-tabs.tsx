@@ -10,6 +10,7 @@ export function SettingsTabs({ applicationId }: { applicationId: string }) {
     { href: `${base}/types`, label: "Types" },
     { href: `${base}/publish`, label: "Publish" },
     { href: `${base}/quality`, label: "Quality" },
+    { href: `${base}/notifications`, label: "Notifications" },
   ];
 
   return (
