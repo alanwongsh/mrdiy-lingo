@@ -23,7 +23,7 @@ import {
   requireContentVersionAccess,
   requireUser,
 } from "@/lib/auth/access";
-import { emptySourceContent } from "@/lib/types";
+import { emptySourceContent, manualSaveStatus } from "@/lib/types";
 import { getTranslationService } from "@/lib/translation/service";
 import { normalizeSlug } from "@/lib/slug";
 import { DUE_SOON_MS, type PublishDueKind } from "@/lib/publish-due";
@@ -1237,7 +1237,7 @@ export async function saveManualContentTranslation(input: {
   if (articleError) throw new Error(articleError.message);
   const { data: existing, error: existingError } = await db
     .from("content_translations")
-    .select("updated_at")
+    .select("updated_at, status")
     .eq("content_id", input.contentId)
     .eq("language_code", input.languageCode)
     .maybeSingle();
@@ -1248,7 +1248,7 @@ export async function saveManualContentTranslation(input: {
     language_code: input.languageCode,
     fields: input.fields,
     source_type: "MANUAL",
-    status: approver ? "APPROVED" : "MANUALLY_MODIFIED",
+    status: manualSaveStatus(approver, existing?.status as TranslationStatus | undefined),
   });
   const changed = !existing || existing.updated_at !== result.updated_at;
   if (

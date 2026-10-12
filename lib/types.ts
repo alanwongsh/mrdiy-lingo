@@ -18,6 +18,17 @@ export type TranslationStatus =
   | "MANUALLY_MODIFIED"
   | "APPROVED";
 
+/**
+ * Status after a manual save. Saving never approves; an approver keeps an existing
+ * approval, anyone else's edit needs approving again. Approve is a separate step.
+ */
+export function manualSaveStatus(
+  approver: boolean,
+  current: TranslationStatus | null | undefined
+): TranslationStatus {
+  return approver && current === "APPROVED" ? "APPROVED" : "MANUALLY_MODIFIED";
+}
+
 /** Stable code defined per application in content_types. */
 export type ContentType = string;
 

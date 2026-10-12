@@ -6,7 +6,12 @@ import {
 } from "@/lib/auth/access";
 import { saveManualContentTranslation } from "@/lib/actions/press";
 import { getDb } from "@/lib/db/client";
-import type { ContentTranslation, SourceContentFields } from "@/lib/types";
+import {
+  manualSaveStatus,
+  type ContentTranslation,
+  type SourceContentFields,
+  type TranslationStatus,
+} from "@/lib/types";
 import { applyQualityAction } from "@/lib/translation-quality/apply-action";
 import { qualitySchemaMessage } from "@/lib/translation-quality/repository";
 import {
@@ -305,14 +310,21 @@ export async function saveReviewedContentTranslation(input: {
     throw new Error("Article not found.");
   }
   const approver = grant.access.can_approve;
-  const status = approver ? "APPROVED" : "MANUALLY_MODIFIED";
-  const approval = await approvalStamp(status, grant.user.id);
-  const actor = await versionAuthorFields("MANUAL");
   if (input.qualityRunId) assertUuid(input.qualityRunId, "analysis");
   const overlap = accepted.some((id) => ignored.includes(id));
   if (overlap) throw new Error("An action cannot be both accepted and ignored.");
 
   const db = await getDb();
+  const { data: existing, error: existingError } = await db
+    .from("content_translations")
+    .select("status")
+    .eq("content_id", input.contentId)
+    .eq("language_code", input.languageCode)
+    .maybeSingle();
+  if (existingError) throw new Error(existingError.message);
+  const status = manualSaveStatus(approver, existing?.status as TranslationStatus | undefined);
+  const approval = await approvalStamp(status, grant.user.id);
+  const actor = await versionAuthorFields("MANUAL");
   const { data, error } = await db.rpc("commit_content_translation_quality", {
     p_content_id: input.contentId,
     p_language_code: input.languageCode,

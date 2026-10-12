@@ -201,7 +201,7 @@ Creates or updates one language and records a new version. It's also used inside
 
 #### `saveManualContentTranslation(input)`
 - **Input:** `{ contentId; languageCode; fields; applicationId }`
-- **Permission:** `edit`. Saves by an approver are approved automatically. When a non-approver edits a released article, it goes back to REVIEW.
+- **Permission:** `edit`. Saving never approves. An approver's save keeps an existing approval; anyone else's edit is stored as MANUALLY_MODIFIED. When a non-approver edits a released article, it goes back to REVIEW. Approving is a separate call (`setContentTranslationStatus`).
 - **Returns:** `ContentTranslation`
 
 #### `setContentTranslationStatus(input)`
