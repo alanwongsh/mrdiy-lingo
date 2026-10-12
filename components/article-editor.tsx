@@ -916,8 +916,13 @@ export function ArticleEditor({
         </Card>
 
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <Card className="overflow-hidden border-[var(--diy-red)]/20">
-          <div className="border-b border-[var(--hub-border)] bg-[var(--diy-red-soft)] px-4 py-3">
+        {/* Not overflow-hidden: the language menu must be able to open past a collapsed card. */}
+        <Card className="border-[var(--diy-red)]/20">
+          <div
+            className={`rounded-t-xl bg-[var(--diy-red-soft)] px-4 py-3 ${
+              editingOpen ? "border-b border-[var(--hub-border)]" : "rounded-b-xl"
+            }`}
+          >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <button

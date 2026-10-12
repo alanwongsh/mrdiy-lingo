@@ -80,7 +80,7 @@ export function ArticleActivity({
         <p className="mt-3 text-sm text-red-700">{loadError}.</p>
       ) : events.length === 0 ? (
         <p className="mt-3 text-sm text-slate-600">
-          No activity recorded yet. Changes are tracked from when the audit trail was turned on.
+          No activity recorded yet.
         </p>
       ) : (
         <ol className="mt-4 space-y-0">
