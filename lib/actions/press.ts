@@ -308,12 +308,18 @@ export async function countArticlesNeedingReview(
   const ids = [...new Set(applicationIds.map((id) => id.trim()).filter(Boolean))];
   if (ids.length === 0) return {};
   await requireUser();
+  // Only count applications this user can see.
+  const allowed = await Promise.all(
+    ids.map((id) => allowAppCapability(id, "view"))
+  );
+  const visible = ids.filter((_, index) => allowed[index]);
+  if (visible.length === 0) return {};
   const db = await getDb();
   const { data, error } = await db
     .from("content")
     .select("application_id")
     .eq("status", "REVIEW")
-    .in("application_id", ids);
+    .in("application_id", visible);
   if (error) throw new Error(error.message);
   const counts: Record<string, number> = {};
   for (const row of data ?? []) {

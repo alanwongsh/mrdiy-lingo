@@ -83,7 +83,7 @@ export class TranslationQualityService {
 
   async analyze(request: AnalyzeArticleInput): Promise<TranslationQualityResult> {
     const started = Date.now();
-    const categories = await listQualityCategories(true);
+    const categories = await listQualityCategories(request.applicationId, true);
     if (categories.length === 0) {
       throw new Error("No quality categories are enabled.");
     }
@@ -336,7 +336,7 @@ export class TranslationQualityService {
     request: Omit<AnalyzeArticleInput, "contentId">
   ): Promise<TranslationQualityResult> {
     const started = Date.now();
-    const categories = await listQualityCategories(true);
+    const categories = await listQualityCategories(request.applicationId, true);
     if (categories.length === 0) {
       throw new Error("No quality categories are enabled.");
     }
@@ -392,7 +392,7 @@ export class TranslationQualityService {
     if (!run || run.status !== "completed") {
       throw new Error("Analyze this version before rechecking wording.");
     }
-    const categories = await listQualityCategories(false);
+    const categories = await listQualityCategories(request.applicationId, false);
     const [terminology, boilerplate] = await Promise.all([
       listActiveTerminology(request.applicationId),
       listActiveBoilerplate(),

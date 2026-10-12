@@ -21,6 +21,9 @@ export function qualitySchemaMessage(error: { message?: string; code?: string } 
   if (/content_translation_version_id/i.test(message)) {
     return "Run migration 015_quality_run_version.sql from Setup.";
   }
+  if (/application_quality_settings/i.test(message)) {
+    return "Run migration 022_quality_settings_per_application.sql from Setup.";
+  }
   if (error?.code === "42703" && /application_id/i.test(message)) {
     return "Run migration 021_terminology_per_application.sql from Setup.";
   }
@@ -121,13 +124,32 @@ function mapBoilerplate(row: {
   };
 }
 
-export async function listQualityCategories(enabledOnly = false) {
+/** An application's checks. Its own on/off and share override the shared defaults. */
+export async function listQualityCategories(applicationId: string, enabledOnly = false) {
   const db = await getDb();
-  let query = db.from("quality_categories").select("*").order("sort_order");
-  if (enabledOnly) query = query.eq("enabled", true);
-  const { data, error } = await query;
-  if (error) throw new Error(qualitySchemaMessage(error));
-  return (data ?? []).map((row) => mapCategory(row));
+  const [categories, settings] = await Promise.all([
+    db.from("quality_categories").select("*").order("sort_order"),
+    db
+      .from("application_quality_settings")
+      .select("category_id, enabled, weight")
+      .eq("application_id", applicationId),
+  ]);
+  if (categories.error) throw new Error(qualitySchemaMessage(categories.error));
+  // Before migration 022 every application uses the shared defaults.
+  if (settings.error && settings.error.code !== "42P01") {
+    throw new Error(qualitySchemaMessage(settings.error));
+  }
+  const own = new Map(
+    (settings.data ?? []).map((row) => [row.category_id as string, row])
+  );
+  const merged = (categories.data ?? []).map((row) => {
+    const category = mapCategory(row);
+    const setting = own.get(category.id);
+    return setting
+      ? { ...category, enabled: Boolean(setting.enabled), weight: Number(setting.weight) }
+      : category;
+  });
+  return enabledOnly ? merged.filter((category) => category.enabled) : merged;
 }
 
 export async function listActiveTerminology(applicationId: string) {

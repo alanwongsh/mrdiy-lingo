@@ -1,0 +1,484 @@
+openapi: 3.0.3
+info:
+  title: MR.DIY Lingo API
+  version: 0.1.0
+  description: |
+    HTTP routes under `app/api/`.
+
+    **Authentication.** Every route except `/api/cron/*` needs a signed-in session.
+    The session is the `lingo_actor` cookie set by sign-in or the embed flow.
+    A request without a valid cookie is redirected (307) to `/sign-in` by `proxy.ts`
+    before it reaches the route. After that, the route checks access to the article
+    or application and returns 403 if the user lacks it.
+
+    Cron routes take `Authorization: Bearer <CRON_SECRET>`. When `CRON_SECRET` is
+    not set, they accept only Vercel Cron (`VERCEL=1` and `User-Agent: vercel-cron/1.0`).
+
+    **Errors.** Failures return `{ "error": "<message>" }`. The route picks the status
+    from the message: "not found" → 404; "permission", "sign in" or "access" → 403;
+    anything else → 400.
+
+servers:
+  - url: http://localhost:3000
+    description: Local dev
+
+tags:
+  - name: Translation quality
+  - name: Articles
+  - name: Cron
+
+paths:
+  /api/translation-quality/analyze:
+    post:
+      tags: [Translation quality]
+      summary: Analyze a saved article's translation
+      description: |
+        Runs the enabled quality categories (AI and rule-based) against the translation
+        and stores the run. Needs edit access to the article. The source and target
+        languages must differ, and at least one translated field must be non-empty.
+      operationId: analyzeTranslationQuality
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnalyzeRequest" }
+      responses:
+        "200":
+          description: Analysis result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TranslationQualityResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/translation-quality/runs/{id}:
+    get:
+      tags: [Translation quality]
+      summary: Get an analysis run
+      description: Needs view access to the run's article.
+      operationId: getTranslationQualityRun
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: The run, including scores, findings and actions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/TranslationQualityResult"
+                  - type: object
+                    required: [contentId]
+                    properties:
+                      contentId: { type: string, format: uuid }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/translation-quality/runs/{id}/findings:
+    get:
+      tags: [Translation quality]
+      summary: List a run's findings and suggested actions
+      description: Needs view access to the run's article.
+      operationId: getTranslationQualityFindings
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: Findings and actions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [findings, actions]
+                properties:
+                  findings:
+                    type: array
+                    items: { $ref: "#/components/schemas/QualityFinding" }
+                  actions:
+                    type: array
+                    items: { $ref: "#/components/schemas/QualityAction" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/translation-quality/actions/{id}/preview:
+    post:
+      tags: [Translation quality]
+      summary: Preview a suggested action against the current text
+      description: |
+        Applies the action to the text you send and returns the resulting text of the
+        targeted field. Nothing is saved. Needs view access to the article.
+        Returns 409 when the text no longer matches what the action expects.
+      operationId: previewQualityAction
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActionId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Current editor text. Missing fields are treated as empty.
+              properties:
+                title: { type: string }
+                summary: { type: string }
+                content: { type: string, description: Article body }
+      responses:
+        "200":
+          description: Text of the targeted field after the action
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [actionId, targetField, text]
+                properties:
+                  actionId: { type: string, format: uuid }
+                  targetField: { $ref: "#/components/schemas/QualityTargetField" }
+                  text: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The text no longer matches the action
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/translation-quality/actions/{id}/ignore:
+    post:
+      tags: [Translation quality]
+      summary: Confirm a pending action can be ignored
+      description: |
+        Checks that the action is still pending so the editor can mark it ignored for
+        this session. Nothing is stored here; the ignore is saved when the article is
+        saved (see `ignoredActionIds` on the save route). Needs edit access.
+      operationId: acknowledgeIgnoredQualityAction
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActionId"
+      responses:
+        "200":
+          description: Action can be ignored
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status, sessionStatus]
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { type: string, enum: [pending] }
+                  sessionStatus: { type: string, enum: [ignored] }
+        "400":
+          description: Invalid id, or the action is no longer pending
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/articles/{id}/save:
+    post:
+      tags: [Articles]
+      summary: Save a reviewed translation
+      description: |
+        Saves the translation for one language. If any action ids are given, the save
+        also records which suggestions were accepted or ignored. An approver's save is
+        stored as `APPROVED`; anyone else's as `MANUALLY_MODIFIED`. Needs edit access.
+        An id cannot be in both `acceptedActionIds` and `ignoredActionIds`.
+      operationId: saveReviewedContentTranslation
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Article (content) id
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveTranslationRequest" }
+      responses:
+        "200":
+          description: The saved translation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContentTranslation" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/cron/publish:
+    get:
+      tags: [Cron]
+      summary: Publish articles that are due
+      description: Sends approved articles whose publish time has passed to their vendors.
+      operationId: runDuePublications
+      security: [{ cronSecret: [] }]
+      responses:
+        "200":
+          description: Run summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [due, delivered, failed, skipped, notes]
+                properties:
+                  due: { type: integer }
+                  delivered: { type: integer }
+                  failed: { type: integer }
+                  skipped: { type: integer }
+                  notes: { type: array, items: { type: string } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /api/cron/notifications:
+    get:
+      tags: [Cron]
+      summary: Send pending email notifications
+      description: |
+        Claims a batch from the notification outbox and emails it. If SMTP is not
+        configured, the queue is left alone and `notes` says so.
+      operationId: deliverPendingNotifications
+      security: [{ cronSecret: [] }]
+      responses:
+        "200":
+          description: Run summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [claimed, sent, retrying, failed, skipped, notes]
+                properties:
+                  claimed: { type: integer }
+                  sent: { type: integer }
+                  retrying: { type: integer }
+                  failed: { type: integer }
+                  skipped: { type: integer }
+                  notes: { type: array, items: { type: string } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: lingo_actor
+    cronSecret:
+      type: http
+      scheme: bearer
+      description: The `CRON_SECRET` environment variable.
+
+  parameters:
+    RunId:
+      name: id
+      in: path
+      required: true
+      description: Analysis run id
+      schema: { type: string, format: uuid }
+    ActionId:
+      name: id
+      in: path
+      required: true
+      description: Quality action id
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: Validation failed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Missing or wrong cron secret
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: No access to this article or application
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Article, run or action not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ServerError:
+      description: The job failed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+    LanguageCode:
+      type: string
+      pattern: "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"
+      example: ms-MY
+
+    AnalyzeRequest:
+      type: object
+      required: [applicationId, contentId, sourceLanguage, targetLanguage]
+      properties:
+        applicationId: { type: string, format: uuid }
+        contentId: { type: string, format: uuid }
+        sourceLanguage: { $ref: "#/components/schemas/LanguageCode" }
+        targetLanguage: { $ref: "#/components/schemas/LanguageCode" }
+        sourceTitle: { type: string, maxLength: 2000 }
+        sourceSummary: { type: string, maxLength: 8000 }
+        sourceContent: { type: string, maxLength: 100000 }
+        translatedTitle: { type: string, maxLength: 2000 }
+        translatedSummary: { type: string, maxLength: 8000 }
+        translatedContent: { type: string, maxLength: 100000 }
+
+    SourceContentFields:
+      type: object
+      required: [title, summary, body, seo_title, seo_description]
+      properties:
+        title: { type: string }
+        summary: { type: string }
+        body: { type: string }
+        seo_title: { type: string }
+        seo_description: { type: string }
+
+    SaveTranslationRequest:
+      type: object
+      required: [applicationId, languageCode, fields]
+      properties:
+        applicationId: { type: string, format: uuid }
+        languageCode: { $ref: "#/components/schemas/LanguageCode" }
+        fields: { $ref: "#/components/schemas/SourceContentFields" }
+        qualityRunId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Analysis run to attach to this draft
+        acceptedActionIds:
+          type: array
+          items: { type: string, format: uuid }
+        ignoredActionIds:
+          type: array
+          items: { type: string, format: uuid }
+
+    ContentTranslation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        content_id: { type: string, format: uuid }
+        language_code: { type: string }
+        title: { type: string }
+        summary: { type: string }
+        body: { type: string }
+        seo_title: { type: string }
+        seo_description: { type: string }
+        status:
+          type: string
+          enum: [MISSING, SYSTEM_GENERATED, MANUALLY_MODIFIED, APPROVED]
+        approved_by_username: { type: string, nullable: true }
+        approved_by_name: { type: string, nullable: true }
+        approved_by_user_id: { type: string, nullable: true }
+        approved_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    QualityTargetField:
+      type: string
+      enum: [title, summary, content]
+
+    QualityScore:
+      type: object
+      required: [categoryCode, categoryName, categoryType, score, sortOrder]
+      properties:
+        categoryCode: { type: string }
+        categoryName: { type: string }
+        categoryType: { type: string, enum: [ai, rule] }
+        score:
+          type: number
+          nullable: true
+          description: Null when this category failed and the rest of the analysis continued
+        severity: { type: string, enum: [excellent, good, warning, critical] }
+        summary: { type: string }
+        error: { type: string }
+        sortOrder: { type: integer }
+
+    QualityFinding:
+      type: object
+      required: [id, categoryCode, severity, title, explanation]
+      properties:
+        id: { type: string, format: uuid }
+        categoryCode: { type: string }
+        severity: { type: string, enum: [info, warning, error, critical] }
+        title: { type: string }
+        explanation: { type: string }
+        sourceText: { type: string }
+        translatedText: { type: string }
+        suggestedText: { type: string }
+        targetField: { $ref: "#/components/schemas/QualityTargetField" }
+        startOffset: { type: integer }
+        endOffset: { type: integer }
+
+    QualityAction:
+      type: object
+      required: [id, findingId, actionType, description, targetField, status]
+      properties:
+        id: { type: string, format: uuid }
+        findingId: { type: string, format: uuid }
+        actionType: { type: string, enum: [replace, insert, delete, rewrite] }
+        description: { type: string }
+        originalText: { type: string }
+        proposedText: { type: string }
+        targetField: { $ref: "#/components/schemas/QualityTargetField" }
+        startOffset: { type: integer }
+        endOffset: { type: integer }
+        status: { type: string, enum: [pending, applied, ignored] }
+
+    TranslationQualityResult:
+      type: object
+      required: [runId, status, overallScore, scores, findings, actions, metadata, createdAt, persisted]
+      properties:
+        runId: { type: string, format: uuid }
+        status: { type: string, enum: [pending, running, completed, failed] }
+        overallScore: { type: number, nullable: true }
+        scores:
+          type: array
+          items: { $ref: "#/components/schemas/QualityScore" }
+        findings:
+          type: array
+          items: { $ref: "#/components/schemas/QualityFinding" }
+        actions:
+          type: array
+          items: { $ref: "#/components/schemas/QualityAction" }
+        metadata:
+          type: object
+          required: [provider]
+          properties:
+            provider: { type: string }
+            model: { type: string }
+            promptVersion: { type: string }
+            durationMs: { type: integer }
+            partial: { type: boolean }
+            categoryErrors:
+              type: array
+              items:
+                type: object
+                properties:
+                  categoryCode: { type: string }
+                  message: { type: string }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }
+        persisted:
+          type: boolean
+          description: False for a check of unsaved text; those results are not kept

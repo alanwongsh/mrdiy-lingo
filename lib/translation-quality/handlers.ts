@@ -69,9 +69,9 @@ export async function loadTranslationQuality(input: {
 }): Promise<TranslationQualityBundle> {
   assertUuid(input.contentId, "article");
   const languageCode = assertLanguage(input.languageCode, "language");
-  await requireContentAccess(input.contentId, "view");
+  const grant = await requireContentAccess(input.contentId, "view");
   const [categories, runs, version] = await Promise.all([
-    listQualityCategories(false),
+    listQualityCategories(grant.applicationId, false),
     listQualityRunSummaries(input.contentId, languageCode),
     latestTranslationVersion(input.contentId, languageCode),
   ]);
@@ -375,7 +375,7 @@ async function keepDraftReview(input: {
 export async function listQualitySettings(applicationId: string) {
   assertUuid(applicationId, "application");
   await requireAppCapability(applicationId, "view");
-  const categories = await listQualityCategories(false);
+  const categories = await listQualityCategories(applicationId, false);
   return { categories };
 }
 
@@ -411,6 +411,7 @@ export async function saveQualityCategories(input: {
   if (input.categories.length === 0 || input.categories.length > 40) {
     throw new Error("Choose the categories to save.");
   }
+  // A repeated id fails the count check below.
   const ids = input.categories.map((item) => {
     assertUuid(item.id, "category");
     return item.id;
@@ -418,32 +419,27 @@ export async function saveQualityCategories(input: {
   const db = await getDb();
   const { data, error } = await db
     .from("quality_categories")
-    .select("id, configuration")
+    .select("id")
     .in("id", ids);
   if (error) throw new Error(qualitySchemaMessage(error));
-  const stored = new Map(
-    (data ?? []).map((row) => [row.id as string, row.configuration])
-  );
-  if (stored.size !== ids.length) throw new Error("A category was not found.");
+  if ((data ?? []).length !== ids.length) throw new Error("A category was not found.");
 
-  for (const item of input.categories) {
+  const rows = input.categories.map((item) => {
     const weight = Number(item.weight);
     if (!Number.isInteger(weight) || weight < 1 || weight > 100) {
       throw new Error("Each share must be a whole number from 1 to 100.");
     }
-    const current =
-      stored.get(item.id) && typeof stored.get(item.id) === "object"
-        ? (stored.get(item.id) as Record<string, unknown>)
-        : {};
-    const { error: updateError } = await db
-      .from("quality_categories")
-      .update({
-        enabled: Boolean(item.enabled),
-        configuration: { ...current, weight },
-      })
-      .eq("id", item.id);
-    if (updateError) throw new Error(qualitySchemaMessage(updateError));
-  }
+    return {
+      application_id: input.applicationId,
+      category_id: item.id,
+      enabled: Boolean(item.enabled),
+      weight,
+    };
+  });
+  const { error: saveError } = await db
+    .from("application_quality_settings")
+    .upsert(rows, { onConflict: "application_id,category_id" });
+  if (saveError) throw new Error(qualitySchemaMessage(saveError));
   revalidateQuality(input.applicationId);
 }
 
@@ -455,11 +451,19 @@ export async function setQualityCategoryEnabled(input: {
   assertUuid(input.applicationId, "application");
   assertUuid(input.categoryId, "category");
   await requireAppCapability(input.applicationId, "approve");
+  const categories = await listQualityCategories(input.applicationId, false);
+  const category = categories.find((item) => item.id === input.categoryId);
+  if (!category) throw new Error("A category was not found.");
   const db = await getDb();
-  const { error } = await db
-    .from("quality_categories")
-    .update({ enabled: input.enabled })
-    .eq("id", input.categoryId);
+  const { error } = await db.from("application_quality_settings").upsert(
+    {
+      application_id: input.applicationId,
+      category_id: input.categoryId,
+      enabled: input.enabled,
+      weight: Math.min(100, Math.max(1, Math.round(category.weight))),
+    },
+    { onConflict: "application_id,category_id" }
+  );
   if (error) throw new Error(qualitySchemaMessage(error));
   revalidateQuality(input.applicationId);
 }

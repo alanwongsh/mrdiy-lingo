@@ -34,7 +34,7 @@ The panel calls the wrappers in `lib/actions/quality.ts`. Those wrappers catch e
 3. `handlers.ts` checks edit access, rejects the same source and target language, and limits title to 2,000 characters, description to 8,000, and body to 100,000. Empty title, description, and body together is rejected.
 4. `TranslationQualityService.score` loads enabled categories. Categories with `categoryType: "ai"` go to Gemini. `rule` categories run in `RuleEngine` (`TerminologyRule`, `BoilerplateRule`) and do not call Gemini.
 5. `normalizeGeminiResult` and `normalizeRuleResults` turn the replies into scores, findings, and actions. A finding whose quote cannot be found in the draft is dropped. An action is stored only when `actionForFinding` can apply it.
-6. The overall score is the weighted sum in `lib/translation-quality/scoring/ScoreCalculator.ts`. Weights live on `quality_categories.configuration.weight`.
+6. The overall score is the weighted sum in `lib/translation-quality/scoring/ScoreCalculator.ts`. Each application's weights live in `application_quality_settings.weight`, falling back to `quality_categories.configuration.weight`.
 
 Two persistence shapes:
 
