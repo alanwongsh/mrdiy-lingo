@@ -125,6 +125,7 @@ export async function analyzeTranslationQuality(input: {
   }
 
   return getTranslationQualityService().analyze({
+    applicationId: grant.applicationId,
     contentId: input.contentId,
     sourceLanguage,
     targetLanguage,
@@ -164,6 +165,7 @@ export async function previewTranslationQuality(input: {
     throw new Error("Add a translation before analyzing it.");
   }
   return getTranslationQualityService().preview({
+    applicationId: input.applicationId,
     sourceLanguage,
     targetLanguage,
     sourceTitle: bounded(input.sourceTitle ?? "", 2000, "Source title"),
@@ -193,6 +195,7 @@ export async function recheckTranslationRules(input: {
     throw new Error("Article not found.");
   }
   return getTranslationQualityService().recheckRules({
+    applicationId: grant.applicationId,
     contentId: input.contentId,
     sourceLanguage,
     targetLanguage,
@@ -389,6 +392,7 @@ export async function listTerminologyEntries(input: {
   await requireAppCapability(input.applicationId, "view");
   const status = input.status === "active" || input.status === "inactive" ? input.status : "";
   return listTerminologyPage({
+    applicationId: input.applicationId,
     page: input.page ?? 1,
     pageSize: input.pageSize ?? 50,
     search: input.search?.slice(0, 120),
@@ -514,10 +518,11 @@ export async function createTerminologyEntry(input: {
   isActive?: boolean;
 }) {
   assertUuid(input.applicationId, "application");
-  await requireAppCapability(input.applicationId, "approve");
+  await requireAppCapability(input.applicationId, "edit");
   const db = await getDb();
   const { error } = await db.from("terminology").insert({
     ...terminologyFields(input),
+    application_id: input.applicationId,
     description: "",
     context: "",
     example: "",
@@ -540,12 +545,13 @@ export async function updateTerminologyEntry(input: {
 }) {
   assertUuid(input.applicationId, "application");
   assertUuid(input.terminologyId, "term");
-  await requireAppCapability(input.applicationId, "approve");
+  await requireAppCapability(input.applicationId, "edit");
   const db = await getDb();
   const { error } = await db
     .from("terminology")
     .update(terminologyFields(input))
-    .eq("id", input.terminologyId);
+    .eq("id", input.terminologyId)
+    .eq("application_id", input.applicationId);
   if (error) throwTerminologyError(error);
   revalidateQuality(input.applicationId);
 }
@@ -565,14 +571,18 @@ export async function deleteTerminologyEntries(input: {
   terminologyIds: string[];
 }) {
   assertUuid(input.applicationId, "application");
-  await requireAppCapability(input.applicationId, "approve");
+  await requireAppCapability(input.applicationId, "edit");
   const ids = [...new Set(input.terminologyIds)];
   if (ids.length === 0 || ids.length > 100) {
     throw new Error("Choose the words to delete.");
   }
   for (const id of ids) assertUuid(id, "term");
   const db = await getDb();
-  const { error } = await db.from("terminology").delete().in("id", ids);
+  const { error } = await db
+    .from("terminology")
+    .delete()
+    .in("id", ids)
+    .eq("application_id", input.applicationId);
   if (error) throw new Error(qualitySchemaMessage(error));
   revalidateQuality(input.applicationId);
 }
@@ -584,12 +594,13 @@ export async function setTerminologyActive(input: {
 }) {
   assertUuid(input.applicationId, "application");
   assertUuid(input.terminologyId, "term");
-  await requireAppCapability(input.applicationId, "approve");
+  await requireAppCapability(input.applicationId, "edit");
   const db = await getDb();
   const { error } = await db
     .from("terminology")
     .update({ is_active: input.isActive })
-    .eq("id", input.terminologyId);
+    .eq("id", input.terminologyId)
+    .eq("application_id", input.applicationId);
   if (error) throw new Error(qualitySchemaMessage(error));
   revalidateQuality(input.applicationId);
 }

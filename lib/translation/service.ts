@@ -171,11 +171,11 @@ export class TranslationService {
   }
 }
 
-export function getTranslationService(): TranslationService {
+export function getTranslationService(applicationId: string): TranslationService {
   const providerName = (process.env.TRANSLATION_PROVIDER ?? "mymemory").trim().toLowerCase();
   if (providerName === "mock") return new TranslationService(new MockTranslationProvider());
   if (providerName === "gemini") {
-    return new TranslationService(new GeminiTranslationProvider());
+    return new TranslationService(new GeminiTranslationProvider(applicationId));
   }
   return new TranslationService(new MyMemoryTranslationProvider());
 }

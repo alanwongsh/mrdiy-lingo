@@ -231,9 +231,15 @@ export class GeminiTranslationProvider implements TranslationProvider {
   readonly name = "gemini";
   private glossary: Promise<Glossary> | null = null;
 
+  /** Terminology comes from this application only. */
+  constructor(private readonly applicationId: string) {}
+
   /** Loaded once per request. Translation still runs if the glossary tables cannot be read. */
   private loadGlossary(): Promise<Glossary> {
-    this.glossary ??= Promise.all([listActiveTerminology(), listActiveBoilerplate()])
+    this.glossary ??= Promise.all([
+      listActiveTerminology(this.applicationId),
+      listActiveBoilerplate(),
+    ])
       .then(([terminology, boilerplate]) => ({ terminology, boilerplate }))
       .catch(() => ({ terminology: [], boilerplate: [] }));
     return this.glossary;

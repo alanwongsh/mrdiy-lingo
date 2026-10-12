@@ -257,7 +257,7 @@ Identity comes from Joget or from email sign-in. Lingo stores the person on `hub
 
 Moving an article to `APPROVED` or `PUBLISHED`, and approving a language, requires the approve capability. Other writes require edit. An HOD who saves a language stores that language as `APPROVED`. An editor’s save stores it as `MANUALLY_MODIFIED` and returns an approved or published article to `REVIEW`.
 
-Quality settings — which checks are on, their weights, and the terminology list — can be changed by anyone who can approve that application: HOD and above, the owner, and a superadmin. An editor can open the screen and read it.
+Quality scoring — which checks are on and their weights — can be changed by anyone who can approve that application: HOD and above, the owner, and a superadmin. The terminology list can also be changed by an editor. Each application has its own terminology list, used by its quality checks and by Gemini translation.
 
 Applications created before access control have no owner. Until a superadmin sets one, only a superadmin can see them.
 

@@ -52,6 +52,7 @@ export function QualitySettings({
   terminology,
   languages,
   canManage,
+  canEditTerms,
   page,
   pageSize,
   total,
@@ -62,6 +63,7 @@ export function QualitySettings({
   terminology: TerminologyEntry[];
   languages: Language[];
   canManage: boolean;
+  canEditTerms: boolean;
   page: number;
   pageSize: number;
   total: number;
@@ -308,7 +310,7 @@ export function QualitySettings({
           </div>
           {!canManage ? (
             <p className="mt-4 text-xs text-slate-500">
-              HOD and above can change scoring and words.
+              HOD and above can change scoring.
             </p>
           ) : null}
         </Card>
@@ -342,7 +344,7 @@ export function QualitySettings({
             <Button type="submit" className="hidden shrink-0 sm:inline-flex" disabled={pending}>
               {pending ? "Filtering…" : "Filter"}
             </Button>
-            {canManage ? (
+            {canEditTerms ? (
               <Button type="button" variant="secondary" className="shrink-0" disabled={pending} onClick={openCreate}>
                 Add a word
               </Button>
@@ -394,7 +396,7 @@ export function QualitySettings({
       ) : null}
 
       <Card className="overflow-hidden">
-        {canManage && selectedOnPage.length > 0 ? (
+        {canEditTerms && selectedOnPage.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2 border-b border-[var(--hub-border)] px-4 py-3">
             <span className="text-sm text-[var(--hub-muted-strong)]">
               {selectedOnPage.length} selected
@@ -416,7 +418,7 @@ export function QualitySettings({
           <table className="hub-table">
             <thead>
               <tr>
-                {canManage ? (
+                {canEditTerms ? (
                   <th className="w-10">
                     <input
                       type="checkbox"
@@ -436,13 +438,13 @@ export function QualitySettings({
                 <th>Use this</th>
                 <th className="hidden md:table-cell">Avoid</th>
                 <th>Status</th>
-                {canManage ? <th className="w-20 text-right"> </th> : null}
+                {canEditTerms ? <th className="w-20 text-right"> </th> : null}
               </tr>
             </thead>
             <tbody>
               {terminology.length === 0 ? (
                 <tr>
-                  <td colSpan={canManage ? 8 : 6} className="py-12 text-center text-sm text-[var(--hub-muted)]">
+                  <td colSpan={canEditTerms ? 8 : 6} className="py-12 text-center text-sm text-[var(--hub-muted)]">
                     {total === 0 && !filters.q && !filters.source && !filters.target && !filters.status
                       ? "No words yet."
                       : "No words found."}
@@ -451,7 +453,7 @@ export function QualitySettings({
               ) : (
                 terminology.map((entry) => (
                   <tr key={entry.id} className={editor?.id === entry.id ? "bg-[var(--hub-accent-soft)]" : ""}>
-                    {canManage ? (
+                    {canEditTerms ? (
                       <td>
                         <input
                           type="checkbox"
@@ -474,7 +476,7 @@ export function QualitySettings({
                         {entry.isActive ? "In use" : "Not in use"}
                       </Badge>
                     </td>
-                    {canManage ? (
+                    {canEditTerms ? (
                       <td className="text-right">
                         <div className="inline-flex items-center justify-end gap-1">
                           <IconButton label={`Edit ${entry.term}`} disabled={pending} onClick={() => openEdit(entry)}>

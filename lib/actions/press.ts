@@ -940,7 +940,7 @@ export async function autoTranslateArticle(input: {
   /** HOD import: store the translation as approved and leave the article status alone. */
   approveTranslation?: boolean;
 }): Promise<ContentTranslation> {
-  await requireContentAccess(input.contentId, "edit");
+  const grant = await requireContentAccess(input.contentId, "edit");
   const article = await getArticle(input.contentId);
   if (!article) throw new Error("Article not found");
 
@@ -1003,7 +1003,7 @@ export async function autoTranslateArticle(input: {
     });
   }
 
-  const service = getTranslationService();
+  const service = getTranslationService(grant.applicationId);
   const previousStatus = article.status;
   let fields;
   try {
@@ -1140,7 +1140,7 @@ export async function previewTranslateArticle(input: {
   if (requested.length === 0) {
     throw new Error("Choose a language other than the source.");
   }
-  const service = getTranslationService();
+  const service = getTranslationService(input.applicationId);
   const results: { language_code: string; fields: SourceContentFields }[] = [];
   for (const targetLanguage of requested) {
     let fields = await service.translateArticle({

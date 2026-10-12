@@ -37,6 +37,8 @@ import type {
 } from "@/lib/translation-quality/types";
 
 export interface AnalyzeArticleInput {
+  /** Terminology is read from this application only. */
+  applicationId: string;
   contentId: string;
   sourceLanguage: string;
   targetLanguage: string;
@@ -86,7 +88,7 @@ export class TranslationQualityService {
       throw new Error("No quality categories are enabled.");
     }
     const [terminology, boilerplate, savedDecisions, unsavedDecisions] = await Promise.all([
-      listActiveTerminology(),
+      listActiveTerminology(request.applicationId),
       listActiveBoilerplate(),
       listReviewDecisions(request.contentId, request.targetLanguage).catch(() => []),
       listAcceptedDecisions(request.contentId, request.acceptedActionIds ?? []).catch(() => []),
@@ -339,7 +341,7 @@ export class TranslationQualityService {
       throw new Error("No quality categories are enabled.");
     }
     const [terminology, boilerplate] = await Promise.all([
-      listActiveTerminology(),
+      listActiveTerminology(request.applicationId),
       listActiveBoilerplate(),
     ]);
     const input: TranslationQualityInput = {
@@ -376,6 +378,7 @@ export class TranslationQualityService {
 
   /** Re-run terminology and boilerplate on the saved version. Does not call the model. */
   async recheckRules(request: {
+    applicationId: string;
     contentId: string;
     sourceLanguage: string;
     targetLanguage: string;
@@ -391,7 +394,7 @@ export class TranslationQualityService {
     }
     const categories = await listQualityCategories(false);
     const [terminology, boilerplate] = await Promise.all([
-      listActiveTerminology(),
+      listActiveTerminology(request.applicationId),
       listActiveBoilerplate(),
     ]);
     const input: TranslationQualityInput = {

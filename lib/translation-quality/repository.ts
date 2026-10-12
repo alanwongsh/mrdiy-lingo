@@ -21,6 +21,9 @@ export function qualitySchemaMessage(error: { message?: string; code?: string } 
   if (/content_translation_version_id/i.test(message)) {
     return "Run migration 015_quality_run_version.sql from Setup.";
   }
+  if (error?.code === "42703" && /application_id/i.test(message)) {
+    return "Run migration 021_terminology_per_application.sql from Setup.";
+  }
   if (
     error?.code === "42P01" ||
     error?.code === "42883" ||
@@ -127,22 +130,24 @@ export async function listQualityCategories(enabledOnly = false) {
   return (data ?? []).map((row) => mapCategory(row));
 }
 
-export async function listActiveTerminology() {
+export async function listActiveTerminology(applicationId: string) {
   const db = await getDb();
   const { data, error } = await db
     .from("terminology")
     .select("*")
+    .eq("application_id", applicationId)
     .eq("is_active", true)
     .order("term");
   if (error) throw new Error(qualitySchemaMessage(error));
   return (data ?? []).map((row) => mapTerminology(row));
 }
 
-export async function listTerminology() {
+export async function listTerminology(applicationId: string) {
   const db = await getDb();
   const { data, error } = await db
     .from("terminology")
     .select("*")
+    .eq("application_id", applicationId)
     .order("source_language")
     .order("target_language")
     .order("term");
@@ -151,6 +156,7 @@ export async function listTerminology() {
 }
 
 export async function listTerminologyPage(input: {
+  applicationId: string;
   page: number;
   pageSize: number;
   search?: string;
@@ -166,6 +172,7 @@ export async function listTerminologyPage(input: {
   let query = db
     .from("terminology")
     .select("*", { count: "exact" })
+    .eq("application_id", input.applicationId)
     .order("source_language")
     .order("target_language")
     .order("term")

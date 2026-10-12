@@ -424,11 +424,11 @@ export async function autoTranslateKey(input: {
   targetLanguage: string;
   applicationId: string;
 }): Promise<Translation> {
-  await requireTranslationKeyAccess(input.translationKeyId, "edit");
+  const grant = await requireTranslationKeyAccess(input.translationKeyId, "edit");
   const key = await getTranslationKey(input.translationKeyId);
   if (!key) throw new Error("Translation key not found");
 
-  const service = getTranslationService();
+  const service = getTranslationService(grant.applicationId);
   const translated = await service.translateText({
     text: key.source_text,
     sourceLanguage: key.source_language,
