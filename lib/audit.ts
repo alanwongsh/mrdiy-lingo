@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { getActor } from "@/lib/auth/actor";
 import { getCurrentUser } from "@/lib/auth/access";
 import { getDb } from "@/lib/db/client";
@@ -17,6 +18,12 @@ export type ArticleAuditInput = {
   toStatus?: string | null;
   detail?: Record<string, unknown>;
 };
+
+/**
+ * One id per request, so the timeline can show a save and the changes it caused as one entry.
+ * Outside a request (the publish timer) each call gets its own id.
+ */
+const currentActionId = cache((): string => crypto.randomUUID());
 
 type Who = {
   actor_username: string | null;
@@ -75,6 +82,7 @@ export async function recordArticleEvents(events: ArticleAuditInput[]): Promise<
     }
 
     const who = await currentWho();
+    const actionId = currentActionId();
     const insert = rows.flatMap((event) => {
       const article = articles.get(event.contentId);
       const applicationId = event.applicationId ?? article?.application_id;
@@ -88,7 +96,7 @@ export async function recordArticleEvents(events: ArticleAuditInput[]): Promise<
           language_code: event.languageCode ?? null,
           from_status: event.fromStatus ?? null,
           to_status: event.toStatus ?? null,
-          detail: event.detail ?? {},
+          detail: { ...event.detail, action_id: actionId },
           ...who,
         },
       ];
