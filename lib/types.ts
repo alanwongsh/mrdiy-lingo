@@ -264,6 +264,32 @@ export type ArticleComment = {
   created_at: string;
 };
 
+export type ContentAuditEventKind =
+  | "CREATED"
+  | "STATUS_CHANGED"
+  | "EDITED"
+  | "TRANSLATION_SAVED"
+  | "TRANSLATION_APPROVED"
+  | "TRANSLATION_UNAPPROVED"
+  | "DELETED";
+
+export type ContentAuditEvent = {
+  id: string;
+  content_id: string;
+  application_id: string;
+  content_title: string;
+  event: ContentAuditEventKind;
+  language_code: string | null;
+  from_status: string | null;
+  to_status: string | null;
+  detail: Record<string, unknown>;
+  actor_username: string | null;
+  /** "System" for scheduled runs with no signed-in person. */
+  actor_name: string;
+  actor_user_id: string | null;
+  created_at: string;
+};
+
 export type ContentTranslationVersion = {
   id: string;
   content_translation_id: string;

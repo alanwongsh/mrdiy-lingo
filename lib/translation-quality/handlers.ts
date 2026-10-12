@@ -5,6 +5,7 @@ import {
   requireContentAccess,
 } from "@/lib/auth/access";
 import { saveManualContentTranslation } from "@/lib/actions/press";
+import { recordArticleEvents, type ArticleAuditInput } from "@/lib/audit";
 import { getDb } from "@/lib/db/client";
 import {
   manualSaveStatus,
@@ -317,11 +318,17 @@ export async function saveReviewedContentTranslation(input: {
   const db = await getDb();
   const { data: existing, error: existingError } = await db
     .from("content_translations")
-    .select("status")
+    .select("status, title, summary, body, seo_title, seo_description")
     .eq("content_id", input.contentId)
     .eq("language_code", input.languageCode)
     .maybeSingle();
   if (existingError) throw new Error(existingError.message);
+  const { data: articleBefore, error: articleError } = await db
+    .from("content")
+    .select("status")
+    .eq("id", input.contentId)
+    .single();
+  if (articleError) throw new Error(articleError.message);
   const status = manualSaveStatus(approver, existing?.status as TranslationStatus | undefined);
   const approval = await approvalStamp(status, grant.user.id);
   const actor = await versionAuthorFields("MANUAL");
@@ -355,6 +362,13 @@ export async function saveReviewedContentTranslation(input: {
     .eq("id", data as string)
     .single();
   if (readError) throw new Error(readError.message);
+  await recordQualitySaveEvents({
+    input,
+    previous: existing,
+    nextStatus: status,
+    articleStatusBefore: String(articleBefore.status),
+    translationId: data as string,
+  });
 
   revalidatePath(`/applications/${input.applicationId}`);
   revalidatePath(
@@ -362,6 +376,79 @@ export async function saveReviewedContentTranslation(input: {
   );
   await keepDraftReview(input);
   return translation as ContentTranslation;
+}
+
+/** The SQL function saves the text and may drop the article to REVIEW, so audit both here. */
+async function recordQualitySaveEvents(args: {
+  input: {
+    contentId: string;
+    applicationId: string;
+    languageCode: string;
+    fields: SourceContentFields;
+    qualityRunId?: string | null;
+  };
+  previous: {
+    status: string;
+    title: string;
+    summary: string;
+    body: string;
+    seo_title: string;
+    seo_description: string;
+  } | null;
+  nextStatus: TranslationStatus;
+  articleStatusBefore: string;
+  translationId: string;
+}) {
+  const { input, previous, nextStatus } = args;
+  const db = await getDb();
+  const [{ data: article }, { data: version }] = await Promise.all([
+    db.from("content").select("status").eq("id", input.contentId).single(),
+    db
+      .from("content_translation_versions")
+      .select("version_number")
+      .eq("content_translation_id", args.translationId)
+      .order("version_number", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  const textChanged =
+    !previous ||
+    (["title", "summary", "body", "seo_title", "seo_description"] as const).some(
+      (field) => (previous[field] ?? "") !== (input.fields[field] ?? "")
+    );
+  const from = previous?.status ?? null;
+  const shared = { contentId: input.contentId, applicationId: input.applicationId };
+  const events: ArticleAuditInput[] = [];
+  if (textChanged) {
+    events.push({
+      ...shared,
+      event: "TRANSLATION_SAVED",
+      languageCode: input.languageCode,
+      fromStatus: from,
+      toStatus: nextStatus,
+      detail: {
+        version: version?.version_number ?? null,
+        source_type: "MANUAL",
+        quality_run_id: input.qualityRunId ?? null,
+      },
+    });
+  }
+  if (nextStatus === "APPROVED" && from !== "APPROVED") {
+    events.push({ ...shared, event: "TRANSLATION_APPROVED", languageCode: input.languageCode, fromStatus: from, toStatus: nextStatus });
+  } else if (from === "APPROVED" && nextStatus !== "APPROVED") {
+    events.push({ ...shared, event: "TRANSLATION_UNAPPROVED", languageCode: input.languageCode, fromStatus: from, toStatus: nextStatus });
+  }
+  const articleStatus = article?.status ? String(article.status) : null;
+  if (articleStatus && articleStatus !== args.articleStatusBefore) {
+    events.push({
+      ...shared,
+      event: "STATUS_CHANGED",
+      fromStatus: args.articleStatusBefore,
+      toStatus: articleStatus,
+      detail: { reason: `${input.languageCode} edited after approval` },
+    });
+  }
+  await recordArticleEvents(events);
 }
 
 async function keepDraftReview(input: {

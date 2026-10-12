@@ -35,6 +35,12 @@ import { replaceArticlePublishTargets } from "@/lib/publish/store";
 import { publishSchemaError } from "@/lib/publish/errors";
 import { syncArticlePublishStatus } from "@/lib/publish/run";
 import { isPublishable, normalizeLanguageSchedule } from "@/lib/publish/schedule";
+import {
+  recordArticleEvent,
+  recordArticleEvents,
+  recordStatusChange,
+  type ArticleAuditInput,
+} from "@/lib/audit";
 
 function asSourceContent(value: unknown): SourceContentFields {
   const v = (value ?? {}) as Partial<SourceContentFields>;
@@ -100,6 +106,18 @@ async function clearTargetApprovals(contentId: string, sourceLanguage: string) {
     })
     .in("id", ids);
   if (updateError) throw new Error(updateError.message);
+  await recordArticleEvents(
+    (data ?? [])
+      .filter((row) => ids.includes(row.id as string))
+      .map((row) => ({
+        contentId,
+        event: "TRANSLATION_UNAPPROVED" as const,
+        languageCode: String(row.language_code),
+        fromStatus: "APPROVED",
+        toStatus: "MANUALLY_MODIFIED",
+        detail: { reason: "Source text changed" },
+      }))
+  );
 }
 
 async function targetsAllApproved(
@@ -168,20 +186,31 @@ async function approveTargetTranslations(
     .select("id, language_code, status, title, summary, body")
     .eq("content_id", contentId);
   if (error) throw new Error(error.message);
-  const ids = (data ?? [])
-    .filter(
-      (row) =>
-        row.status !== "APPROVED" &&
-        targets.has(languageKey(String(row.language_code))) &&
-        [row.title, row.summary, row.body].some((value) => String(value ?? "").trim())
-    )
-    .map((row) => row.id as string);
-  if (ids.length === 0) return;
+  const rows = (data ?? []).filter(
+    (row) =>
+      row.status !== "APPROVED" &&
+      targets.has(languageKey(String(row.language_code))) &&
+      [row.title, row.summary, row.body].some((value) => String(value ?? "").trim())
+  );
+  if (rows.length === 0) return;
   const { error: updateError } = await db
     .from("content_translations")
     .update({ status: "APPROVED", ...(await approvalStamp("APPROVED", userId)) })
-    .in("id", ids);
+    .in(
+      "id",
+      rows.map((row) => row.id as string)
+    );
   if (updateError) throw new Error(updateError.message);
+  await recordArticleEvents(
+    rows.map((row) => ({
+      contentId,
+      event: "TRANSLATION_APPROVED" as const,
+      languageCode: String(row.language_code),
+      fromStatus: String(row.status),
+      toStatus: "APPROVED",
+      detail: { reason: "Article approved" },
+    }))
+  );
 }
 
 function mapContentRow(data: Content): Content {
@@ -466,6 +495,14 @@ export async function createArticle(input: {
     .select("*")
     .single();
   if (error) throw new Error(error.message);
+  await recordArticleEvent({
+    contentId: data.id,
+    applicationId: input.application_id,
+    title: data.title,
+    event: "CREATED",
+    toStatus: status,
+    languageCode: input.source_language,
+  });
 
   await upsertContentTranslation({
     content_id: data.id,
@@ -548,11 +585,38 @@ export async function saveNewArticle(input: {
 
   if (!approve) {
     const db = await getDb();
+    const { data: before, error: beforeError } = await db
+      .from("content")
+      .select("status, translations:content_translations(language_code, status)")
+      .eq("id", articleId)
+      .single();
+    if (beforeError) throw new Error(beforeError.message);
     const { error } = await db
       .from("content")
       .update({ status: unapprovedStatus, published_at: null })
       .eq("id", articleId);
     if (error) throw new Error(error.message);
+    await recordStatusChange(articleId, before.status, unapprovedStatus, {
+      applicationId: input.applicationId,
+    });
+    const sourceWasApproved = (
+      (before.translations ?? []) as { language_code: string; status: string }[]
+    ).some(
+      (row) =>
+        row.status === "APPROVED" &&
+        languageKey(row.language_code) === languageKey(input.sourceLanguage)
+    );
+    if (sourceWasApproved) {
+      await recordArticleEvent({
+        contentId: articleId,
+        applicationId: input.applicationId,
+        event: "TRANSLATION_UNAPPROVED",
+        languageCode: input.sourceLanguage,
+        fromStatus: "APPROVED",
+        toStatus: "MANUALLY_MODIFIED",
+        detail: { reason: `Saved as ${unapprovedStatus.toLowerCase()}` },
+      });
+    }
     const { error: sourceError } = await db
       .from("content_translations")
       .update({
@@ -632,7 +696,7 @@ export async function updateArticle(
   const { data: current, error: currentError } = await db
     .from("content")
     .select(
-      "published_at, status, source_language, source_content, target_languages, submitted_by_name"
+      "published_at, status, title, content_type, market, scheduled_publish_at, source_language, source_content, target_languages, submitted_by_name"
     )
     .eq("id", id)
     .single();
@@ -711,6 +775,43 @@ export async function updateArticle(
     .select("*")
     .single();
   if (error) throw publishSchemaError(error) ?? new Error(error.message);
+
+  const changed: string[] = [];
+  if (data.title !== current.title) changed.push("title");
+  if (textChanged) changed.push("source text");
+  if (data.source_language !== current.source_language) changed.push("source language");
+  if (data.content_type !== current.content_type) changed.push("content type");
+  if (targetsChanged) changed.push("target languages");
+  if ((data.market ?? null) !== (current.market ?? null)) changed.push("market");
+  if ((data.scheduled_publish_at ?? null) !== (current.scheduled_publish_at ?? null)) {
+    changed.push("publish time");
+  }
+  const audit: ArticleAuditInput[] = [];
+  if (changed.length > 0) {
+    audit.push({
+      contentId: id,
+      applicationId,
+      title: data.title,
+      event: "EDITED",
+      detail: {
+        fields: changed,
+        ...(targetsChanged ? { target_languages: { from: currentTargets, to: nextTargets } } : {}),
+      },
+    });
+  }
+  if (current.status !== nextStatus) {
+    audit.push({
+      contentId: id,
+      applicationId,
+      title: data.title,
+      event: "STATUS_CHANGED",
+      fromStatus: current.status,
+      toStatus: nextStatus,
+      ...(nextStatus !== input.status ? { detail: { reason: "Source text changed" } } : {}),
+    });
+  }
+  await recordArticleEvents(audit);
+
   if (isPublishable(nextStatus) && !released && grant.access.can_approve) {
     await approveTargetTranslations(id, input.source_language, nextTargets, grant.user.id);
   }
@@ -749,7 +850,7 @@ async function persistArticleStatus(
   const db = await getDb();
   const { data: current, error: currentError } = await db
     .from("content")
-    .select("published_at")
+    .select("published_at, status")
     .eq("id", id)
     .single();
   if (currentError) throw new Error(currentError.message);
@@ -762,6 +863,7 @@ async function persistArticleStatus(
     })
     .eq("id", id);
   if (error) throw new Error(error.message);
+  await recordStatusChange(id, current.status, status, { applicationId });
   revalidatePath(`/applications/${applicationId}`);
   revalidatePath(`/applications/${applicationId}/articles/${id}`);
 }
@@ -799,8 +901,17 @@ export async function deleteArticles(input: {
     .delete()
     .eq("application_id", input.applicationId)
     .in("id", ids)
-    .select("id");
+    .select("id, title, status");
   if (error) throw new Error(error.message);
+  await recordArticleEvents(
+    (data ?? []).map((row) => ({
+      contentId: String(row.id),
+      applicationId: input.applicationId,
+      title: String(row.title ?? ""),
+      event: "DELETED" as const,
+      fromStatus: String(row.status),
+    }))
+  );
 
   revalidatePath(`/applications/${input.applicationId}`);
   revalidatePath(`/applications/${input.applicationId}/articles`);
@@ -868,15 +979,17 @@ export async function upsertContentTranslation(input: {
     ...approval,
   };
 
+  const textChanged =
+    !existing ||
+    existing.title !== payload.title ||
+    existing.summary !== payload.summary ||
+    existing.body !== payload.body ||
+    existing.seo_title !== payload.seo_title ||
+    existing.seo_description !== payload.seo_description;
+
   let translation: ContentTranslation;
   if (existing) {
-    const unchanged =
-      existing.title === payload.title &&
-      existing.summary === payload.summary &&
-      existing.body === payload.body &&
-      existing.seo_title === payload.seo_title &&
-      existing.seo_description === payload.seo_description &&
-      existing.status === payload.status;
+    const unchanged = !textChanged && existing.status === payload.status;
     if (unchanged) return existing as ContentTranslation;
 
     const { data, error } = await db
@@ -915,7 +1028,40 @@ export async function upsertContentTranslation(input: {
     });
   if (versionError) throw new Error(versionError.message);
 
+  const previousStatus = (existing?.status as string | undefined) ?? null;
+  const audit: ArticleAuditInput[] = [];
+  if (textChanged) {
+    audit.push({
+      contentId: input.content_id,
+      event: "TRANSLATION_SAVED",
+      languageCode: input.language_code,
+      fromStatus: previousStatus,
+      toStatus: status,
+      detail: { version: versionNumber, source_type: input.source_type },
+    });
+  }
+  const approvalEvent = approvalChange(previousStatus, status);
+  if (approvalEvent) {
+    audit.push({
+      contentId: input.content_id,
+      event: approvalEvent,
+      languageCode: input.language_code,
+      fromStatus: previousStatus,
+      toStatus: status,
+    });
+  }
+  await recordArticleEvents(audit);
+
   return translation;
+}
+
+function approvalChange(
+  from: string | null,
+  to: string
+): "TRANSLATION_APPROVED" | "TRANSLATION_UNAPPROVED" | null {
+  if (to === "APPROVED" && from !== "APPROVED") return "TRANSLATION_APPROVED";
+  if (from === "APPROVED" && to !== "APPROVED") return "TRANSLATION_UNAPPROVED";
+  return null;
 }
 
 export async function listContentTranslationVersions(
@@ -942,11 +1088,31 @@ export async function deleteContentTranslationVersion(input: {
 }): Promise<void> {
   await requireContentVersionAccess(input.versionId, "edit");
   const db = await getDb();
+  const { data: version, error: findError } = await db
+    .from("content_translation_versions")
+    .select("version_number, translation:content_translations(content_id, language_code)")
+    .eq("id", input.versionId)
+    .maybeSingle();
+  if (findError) throw new Error(findError.message);
   const { error } = await db
     .from("content_translation_versions")
     .delete()
     .eq("id", input.versionId);
   if (error) throw new Error(error.message);
+  const owner = version?.translation as
+    | { content_id: string; language_code: string }
+    | { content_id: string; language_code: string }[]
+    | null
+    | undefined;
+  const translation = Array.isArray(owner) ? owner[0] : owner;
+  if (translation) {
+    await recordArticleEvent({
+      contentId: translation.content_id,
+      event: "EDITED",
+      languageCode: translation.language_code,
+      detail: { action: "Version deleted", version: version?.version_number ?? null },
+    });
+  }
   revalidatePath(`/applications/${input.applicationId}`);
   revalidatePath(
     `/applications/${input.applicationId}/articles/${input.contentId}`
@@ -964,12 +1130,29 @@ export async function setContentTranslationStatus(input: {
     input.status === "APPROVED" ? "approve" : "edit"
   );
   const db = await getDb();
+  const { data: before, error: beforeError } = await db
+    .from("content_translations")
+    .select("content_id, language_code, status")
+    .eq("id", input.contentTranslationId)
+    .single();
+  if (beforeError) throw new Error(beforeError.message);
   const approval = await approvalStamp(input.status, grant.user.id);
   const { error } = await db
     .from("content_translations")
     .update({ status: input.status, ...approval })
     .eq("id", input.contentTranslationId);
   if (error) throw new Error(error.message);
+  const approvalEvent = approvalChange(before.status, input.status);
+  if (approvalEvent) {
+    await recordArticleEvent({
+      contentId: before.content_id,
+      applicationId: input.applicationId,
+      event: approvalEvent,
+      languageCode: before.language_code,
+      fromStatus: before.status,
+      toStatus: input.status,
+    });
+  }
   await syncArticleStatusFromApprovals(
     input.contentId,
     input.applicationId,

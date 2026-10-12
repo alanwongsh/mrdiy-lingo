@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getActor } from "@/lib/auth/actor";
+import { listArticleAuditEvents } from "@/lib/actions/audit";
 import { getApplication } from "@/lib/actions/applications";
 import { listContentTypes } from "@/lib/actions/content-types";
 import { listArticleComments } from "@/lib/actions/comments";
@@ -7,10 +8,11 @@ import { listLanguages } from "@/lib/actions/languages";
 import { getArticlePublish } from "@/lib/actions/publish";
 import { getArticle } from "@/lib/actions/press";
 import { AppSubnav } from "@/components/app-subnav";
+import { ArticleActivity } from "@/components/article-activity";
 import { ArticleComments } from "@/components/article-comments";
 import { ArticleView } from "@/components/article-view";
 import { LinkButton, PageHeader } from "@/components/ui";
-import type { ArticleComment } from "@/lib/types";
+import type { ArticleComment, ContentAuditEvent } from "@/lib/types";
 
 export default async function ArticleDetailPage({
   params,
@@ -37,6 +39,13 @@ export default async function ArticleDetailPage({
     comments = await listArticleComments(contentId);
   } catch (error) {
     commentsError = error instanceof Error ? error.message : "Comments unavailable";
+  }
+  let activity: ContentAuditEvent[] = [];
+  let activityError = "";
+  try {
+    activity = await listArticleAuditEvents(contentId);
+  } catch (error) {
+    activityError = error instanceof Error ? error.message : "Activity unavailable";
   }
   const articleCodes = new Set(
     [article.source_language, ...(article.target_languages ?? [])]
@@ -79,6 +88,7 @@ export default async function ArticleDetailPage({
         publishTargets={publish.targets}
         publications={publish.publications}
       />
+      <ArticleActivity events={activity} loadError={activityError} />
       <ArticleComments
         applicationId={app.id}
         contentId={article.id}

@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import { recordStatusChange } from "@/lib/audit";
 import { getDb } from "@/lib/db/client";
 import { throwPublishError } from "@/lib/publish/errors";
 import { deliverToVendor, publicationInFlight } from "@/lib/publish/deliver";
@@ -471,15 +472,22 @@ export async function syncArticlePublishStatus(contentId: string): Promise<boole
   const next = nextPublishStatus(article.status as string, ticked.length, live);
   if (!next) return false;
 
-  const { error: updateError } = await db
+  const { data: updated, error: updateError } = await db
     .from("content")
     .update({
       status: next,
       published_at: next === "PUBLISHED" ? (article.published_at ?? new Date().toISOString()) : null,
     })
     .eq("id", contentId)
-    .eq("status", article.status as string);
+    .eq("status", article.status as string)
+    .select("id");
   if (updateError) throwPublishError(updateError);
+  if ((updated ?? []).length > 0) {
+    await recordStatusChange(contentId, article.status as string, next, {
+      applicationId: String(article.application_id),
+      detail: { reason: `${live} of ${ticked.length} languages live` },
+    });
+  }
   return true;
 }
 
