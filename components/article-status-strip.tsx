@@ -57,7 +57,7 @@ export function ArticleStatusStrip({
               selected
                 ? "border-[var(--diy-red)] bg-[var(--diy-red)] text-white"
                 : "border-[var(--hub-border)] bg-white text-slate-700 hover:border-[var(--hub-border-strong)] hover:bg-[var(--diy-yellow-soft)]"
-            } ${item.status === "REVIEW" && item.count > 0 && !selected ? "border-sky-300" : ""}`}
+            }`}
           >
             {item.label}
             <span
