@@ -5,9 +5,12 @@ import {
   listQualitySettings,
   listTerminologyEntries,
 } from "@/lib/actions/quality";
+import { listPublishIntegrationTypes, listPublishVendors } from "@/lib/actions/publish";
+import { PublishVendorsManager } from "@/components/publish-vendors-manager";
 import { QualitySettings } from "@/components/quality-settings";
-import { SettingsChrome } from "@/components/settings-chrome";
-import { PAGE_SIZE } from "@/lib/types";
+import { SettingsChrome, SettingsSection } from "@/components/settings-chrome";
+import type { PublishIntegrationType } from "@/lib/publish/integrations/integration";
+import { PAGE_SIZE, type PublishVendor } from "@/lib/types";
 
 export default async function SettingsQualityPage({
   params,
@@ -65,24 +68,58 @@ export default async function SettingsQualityPage({
     }
   }
 
+  let vendors: PublishVendor[] = [];
+  let vendorTypes: PublishIntegrationType[] = [];
+  let vendorError = "";
+  try {
+    [vendors, vendorTypes] = await Promise.all([
+      listPublishVendors(app.id),
+      listPublishIntegrationTypes(),
+    ]);
+  } catch (error) {
+    vendorError = error instanceof Error ? error.message : "Publish settings are unavailable.";
+    try {
+      vendorTypes = await listPublishIntegrationTypes();
+    } catch {
+      vendorTypes = [];
+    }
+  }
+
   return (
     <SettingsChrome application={app}>
-      {terms ? (
-        <QualitySettings
-          applicationId={app.id}
-          categories={categories}
-          terminology={terms.items}
-          languages={languages}
-          canManage={app.access.can_manage || app.access.can_approve}
-          canEditTerms={app.access.can_edit}
-          page={terms.page}
-          pageSize={terms.pageSize}
-          total={terms.total}
-          filters={{ q, source, target, status }}
-        />
-      ) : (
-        <p className="text-sm text-red-700">{loadError}</p>
-      )}
+      <div className="space-y-10">
+        {terms ? (
+          <QualitySettings
+            applicationId={app.id}
+            categories={categories}
+            terminology={terms.items}
+            languages={languages}
+            canManage={app.access.can_manage || app.access.can_approve}
+            canEditTerms={app.access.can_edit}
+            page={terms.page}
+            pageSize={terms.pageSize}
+            total={terms.total}
+            filters={{ q, source, target, status }}
+          />
+        ) : (
+          <p className="text-sm text-red-700">{loadError}</p>
+        )}
+
+        <SettingsSection
+          id="publishing"
+          title="Publish connections"
+          description="Where approved articles are sent at their publish time."
+        >
+          {vendorError ? <p className="text-sm text-red-700">{vendorError}</p> : null}
+          <PublishVendorsManager
+            applicationId={app.id}
+            vendors={vendors}
+            types={vendorTypes}
+            canConfigure={app.access.can_approve || app.access.can_manage}
+            disabled={Boolean(vendorError)}
+          />
+        </SettingsSection>
+      </div>
     </SettingsChrome>
   );
 }

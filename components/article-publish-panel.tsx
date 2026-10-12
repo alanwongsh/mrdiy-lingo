@@ -225,7 +225,7 @@ export function PublishLanguagePicker({
           No providers yet. Add one under{" "}
           <Link
             className="font-semibold text-[var(--hub-accent)] underline-offset-2 hover:underline"
-            href={`/applications/${applicationId}/settings/publish`}
+            href={`/applications/${applicationId}/settings/quality#publishing`}
           >
             Settings → Publish
           </Link>

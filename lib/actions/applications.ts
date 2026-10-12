@@ -36,6 +36,8 @@ function revalidateApplication(id: string) {
   revalidatePath("/");
   revalidatePath("/applications");
   revalidatePath(`/applications/${id}`);
+  revalidatePath(`/applications/${id}/settings/general`);
+  revalidatePath(`/applications/${id}/settings/people`);
 }
 
 async function withAccess(
@@ -192,7 +194,7 @@ export async function setReviewEmailNotifications(
     }
     throw new Error(error.message);
   }
-  revalidatePath(`/applications/${id}/settings/notifications`);
+  revalidatePath(`/applications/${id}/settings/general`);
 }
 
 export async function listApplicationPeople(applicationId: string): Promise<{

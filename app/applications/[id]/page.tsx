@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { AppSubnav } from "@/components/app-subnav";
 import { DbErrorPanel, formatDbError } from "@/lib/db/errors";
 import {
@@ -9,7 +10,6 @@ import { listApplicationPeople } from "@/lib/actions/applications";
 import { getApplication } from "@/lib/actions/applications";
 import { getCurrentUser } from "@/lib/auth/access";
 import { getProductStats } from "@/lib/actions/product";
-import { getPressStats } from "@/lib/actions/press";
 import { ApplicationAccessPanel } from "@/components/application-access-panel";
 
 export default async function ApplicationOverviewPage({
@@ -29,6 +29,8 @@ export default async function ApplicationOverviewPage({
       <DbErrorPanel message="This application does not exist, or you do not have access to it." />
     );
   }
+  // Content apps open on Articles; their status counts and People live there and in Settings.
+  if (app.model_type === "CONTENT") redirect(`/applications/${id}/articles`);
   let people: Awaited<ReturnType<typeof listApplicationPeople>> | null = null;
   let user: Awaited<ReturnType<typeof getCurrentUser>> = null;
   try {
@@ -40,7 +42,6 @@ export default async function ApplicationOverviewPage({
 
   const isString = app.model_type === "STRING";
   const productStats = isString ? await getProductStats(id) : null;
-  const pressStats = !isString ? await getPressStats(id) : null;
 
   return (
     <div>
@@ -82,17 +83,6 @@ export default async function ApplicationOverviewPage({
             value={productStats.missing}
             tone={productStats.missing > 0 ? "warn" : "default"}
           />
-        </div>
-      ) : null}
-
-      {!isString && pressStats ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <StatCard label="Articles" value={pressStats.articles} tone="accent" />
-          <StatCard label="Published" value={pressStats.published} tone="good" />
-          <StatCard label="In review" value={pressStats.inReview} tone="info" />
-          <StatCard label="Draft" value={pressStats.draft} />
-          <StatCard label="Translating" value={pressStats.translating} tone="info" />
-          <StatCard label="Approved" value={pressStats.approved} tone="good" />
         </div>
       ) : null}
 

@@ -25,8 +25,7 @@ function throwContentTypeError(error: { message: string }) {
 function revalidateContentTypes(applicationId: string) {
   revalidatePath(`/applications/${applicationId}`);
   revalidatePath(`/applications/${applicationId}/articles`);
-  revalidatePath(`/applications/${applicationId}/types`);
-  revalidatePath(`/applications/${applicationId}/settings/types`);
+  revalidatePath(`/applications/${applicationId}/settings/general`);
 }
 
 async function findContentType(applicationId: string, code: string) {

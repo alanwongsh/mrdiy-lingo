@@ -6,5 +6,5 @@ export default async function SettingsIndexPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  redirect(`/applications/${id}/settings/types`);
+  redirect(`/applications/${id}/settings/general`);
 }

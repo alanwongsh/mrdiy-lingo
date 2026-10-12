@@ -165,7 +165,7 @@ export function ArticleListFilters({
                   <span />
                 )}
                 <Link
-                  href={`/applications/${applicationId}/settings/types`}
+                  href={`/applications/${applicationId}/settings/general#types`}
                   className="text-sm text-slate-600 hover:underline"
                 >
                   Manage types

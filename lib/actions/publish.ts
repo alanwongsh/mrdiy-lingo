@@ -190,7 +190,7 @@ export async function savePublishVendor(input: {
     }
   }
 
-  revalidatePath(`/applications/${input.applicationId}/settings/publish`);
+  revalidatePath(`/applications/${input.applicationId}/settings/quality`);
   revalidatePath(`/applications/${input.applicationId}/articles`);
 }
 
@@ -230,6 +230,6 @@ export async function deletePublishVendor(id: string, applicationId: string): Pr
     .eq("id", id)
     .eq("application_id", applicationId);
   if (error) throwPublishError(error);
-  revalidatePath(`/applications/${applicationId}/settings/publish`);
+  revalidatePath(`/applications/${applicationId}/settings/quality`);
   revalidatePath(`/applications/${applicationId}/articles`);
 }

@@ -2,8 +2,9 @@ import { notFound } from "next/navigation";
 import { getApplication } from "@/lib/actions/applications";
 import { listContentTypes } from "@/lib/actions/content-types";
 import { listLanguages } from "@/lib/actions/languages";
-import { listArticles } from "@/lib/actions/press";
+import { getPressStats, listArticles } from "@/lib/actions/press";
 import { AppSubnav } from "@/components/app-subnav";
+import { ArticleStatusStrip } from "@/components/article-status-strip";
 import { ArticleListFilters } from "@/components/article-list-filters";
 import { ArticleListTable } from "@/components/article-list-table";
 import { LinkButton, PageHeader, Pagination } from "@/components/ui";
@@ -41,7 +42,7 @@ export default async function ArticlesPage({
   const due = sp.due ?? "";
   const market = sp.market ?? "";
 
-  const [result, languages, contentTypes] = await Promise.all([
+  const [result, languages, contentTypes, stats] = await Promise.all([
     listArticles({
       applicationId: app.id,
       page,
@@ -55,6 +56,7 @@ export default async function ArticlesPage({
     }),
     listLanguages(),
     listContentTypes(app.id, { includeInactive: true }),
+    getPressStats(app.id),
   ]);
   const typeNames = Object.fromEntries(
     contentTypes.map((type) => [type.code, type.name])
@@ -74,6 +76,13 @@ export default async function ArticlesPage({
         }
       />
       <AppSubnav application={app} />
+
+      <ArticleStatusStrip
+        applicationId={app.id}
+        stats={stats}
+        active={status}
+        query={{ q, source: sourceParam || undefined, type: contentType, market, due }}
+      />
 
       <ArticleListFilters
         applicationId={app.id}

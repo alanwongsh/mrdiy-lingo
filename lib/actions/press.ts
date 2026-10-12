@@ -1405,17 +1405,21 @@ export async function getPressStats(applicationId: string) {
     "PUBLISHING",
     "PUBLISHED",
   ];
+  const results = await Promise.all(
+    statuses.map((status) =>
+      db
+        .from("content")
+        .select("id", { count: "exact", head: true })
+        .eq("application_id", applicationId)
+        .eq("status", status)
+    )
+  );
   const counts: Record<string, number> = { total: 0 };
-  for (const status of statuses) {
-    const { count, error } = await db
-      .from("content")
-      .select("*", { count: "exact", head: true })
-      .eq("application_id", applicationId)
-      .eq("status", status);
+  results.forEach(({ count, error }, index) => {
     if (error) throw new Error(error.message);
-    counts[status] = count ?? 0;
+    counts[statuses[index]] = count ?? 0;
     counts.total += count ?? 0;
-  }
+  });
   return {
     articles: counts.total,
     published: counts.PUBLISHED ?? 0,
