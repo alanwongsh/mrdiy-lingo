@@ -1,9 +1,13 @@
 /**
- * db:seed — seeds the database with default languages, applications,
- * and a default admin user account.
+ * db:seed — seeds the database with:
+ *   - Default languages
+ *   - Default applications (Product + Press)
+ *   - Test users with different roles
  *
- * Safe to re-run — all inserts use ON CONFLICT so existing data is never wiped.
- * Auto-runs any pending migrations first so tables always exist.
+ * Superadmin email/name/password can be overridden via .env.local:
+ *   LINGO_SEED_ADMIN_EMAIL
+ *   LINGO_SEED_ADMIN_NAME
+ *   LINGO_SEED_ADMIN_PASSWORD
  *
  * Usage:
  *   npm run db:seed
@@ -12,11 +16,7 @@
 import postgres from "postgres";
 import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
-import { readFileSync, readdirSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const scryptAsync = promisify(scrypt);
 
 const connectionString = process.env.DATABASE_URL?.trim();
@@ -26,9 +26,10 @@ if (!connectionString) {
 }
 
 const sql = postgres(connectionString, {
-  ssl: process.env.SUPABASE_INSECURE_SSL === "true"
-    ? { rejectUnauthorized: false }
-    : true,
+  ssl:
+    process.env.SUPABASE_INSECURE_SSL === "true"
+      ? { rejectUnauthorized: false }
+      : true,
   max: 1,
   onnotice: () => {},
 });
@@ -37,43 +38,6 @@ async function hashPassword(password) {
   const salt = randomBytes(16).toString("base64url");
   const hash = await scryptAsync(password, salt, 32);
   return `scrypt$${salt}$${hash.toString("base64url")}`;
-}
-
-// ── Auto-migrate ──────────────────────────────────────────────────────────────
-// Runs any pending migrations before seeding so tables always exist,
-// even if someone runs db:seed before db:migrate.
-
-async function ensureMigrated() {
-  await sql.unsafe(`
-    create table if not exists _migrations (
-      filename text primary key,
-      applied_at timestamptz not null default now()
-    );
-  `);
-
-  const migrationsDir = join(__dirname, "../supabase/migrations");
-  const files = readdirSync(migrationsDir)
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
-
-  const applied = await sql`select filename from _migrations`;
-  const appliedSet = new Set(applied.map((r) => r.filename));
-  const pending = files.filter((f) => !appliedSet.has(f));
-
-  if (pending.length === 0) {
-    console.log("✅  Migrations already up to date.\n");
-    return;
-  }
-
-  console.log(`📦  Running ${pending.length} pending migration(s) first...\n`);
-  for (const file of pending) {
-    console.log(`📄  Migrating: ${file}`);
-    const migrationSql = readFileSync(join(migrationsDir, file), "utf8");
-    await sql.unsafe(migrationSql);
-    await sql`insert into _migrations (filename) values (${file})`;
-    console.log(`   ✔  Done`);
-  }
-  console.log("");
 }
 
 // ── Seed data ─────────────────────────────────────────────────────────────────
@@ -102,9 +66,41 @@ const applications = [
   },
 ];
 
-async function seed() {
-  await ensureMigrated();
+// ── Read from env or fall back to defaults ────────────────────────────────────
+const ADMIN_EMAIL    = process.env.LINGO_SEED_ADMIN_EMAIL?.trim()    || "superadmin@mrdiy.com";
+const ADMIN_NAME     = process.env.LINGO_SEED_ADMIN_NAME?.trim()     || "Super Admin";
+const ADMIN_PASSWORD = process.env.LINGO_SEED_ADMIN_PASSWORD?.trim() || "Admin@123!";
 
+// Test users — superadmin comes from env, others are fixed test accounts
+const users = [
+  {
+    email: ADMIN_EMAIL,
+    display_name: ADMIN_NAME,
+    is_superadmin: true,
+    role: null, // superadmin bypasses all app roles
+  },
+  {
+    email: "admin@mrdiy.com",
+    display_name: "App Admin",
+    is_superadmin: false,
+    role: "ADMIN", // edit + approve + manage app
+  },
+  {
+    email: "hod@mrdiy.com",
+    display_name: "HOD User",
+    is_superadmin: false,
+    role: "HOD",   // edit + approve
+  },
+  {
+    email: "editor@mrdiy.com",
+    display_name: "Editor User",
+    is_superadmin: false,
+    role: "EDITOR", // edit/draft only
+  },
+];
+
+async function seed() {
+  // ── Languages ──────────────────────────────────────────────────────────────
   console.log("🌱  Seeding languages...");
   for (const lang of languages) {
     await sql`
@@ -115,38 +111,86 @@ async function seed() {
   }
   console.log(`   ✔  ${languages.length} languages`);
 
+  // ── Applications ───────────────────────────────────────────────────────────
   console.log("🌱  Seeding applications...");
+  const appIds = {};
   for (const app of applications) {
-    await sql`
-      insert into applications (name, description, status, model_type)
-      values (${app.name}, ${app.description}, ${app.status}, ${app.model_type})
-      on conflict (name) do nothing
+    const [existing] = await sql`
+      select id from applications where name = ${app.name}
     `;
+    if (existing) {
+      appIds[app.name] = existing.id;
+    } else {
+      const [inserted] = await sql`
+        insert into applications (name, description, status, model_type)
+        values (${app.name}, ${app.description}, ${app.status}, ${app.model_type})
+        returning id
+      `;
+      appIds[app.name] = inserted.id;
+    }
   }
   console.log(`   ✔  ${applications.length} applications`);
 
-  // ── Default admin user ────────────────────────────────────────────────────
-  const adminEmail    = process.env.LINGO_SEED_ADMIN_EMAIL?.trim()    || "admin@mrdiy.com";
-  const adminName     = process.env.LINGO_SEED_ADMIN_NAME?.trim()     || "Lingo Admin";
-  const adminPassword = process.env.LINGO_SEED_ADMIN_PASSWORD?.trim() || "Admin@123!";
+  // ── Users ──────────────────────────────────────────────────────────────────
+  console.log(`🌱  Seeding users (password: ${ADMIN_PASSWORD})...`);
+  const passwordHash = await hashPassword(ADMIN_PASSWORD);
 
-  console.log(`🌱  Seeding admin user: ${adminEmail}...`);
-  const passwordHash = await hashPassword(adminPassword);
+  for (const user of users) {
+    const [row] = await sql`
+      insert into hub_users (email, display_name, is_superadmin, password_hash)
+      values (${user.email}, ${user.display_name}, ${user.is_superadmin}, ${passwordHash})
+      on conflict (lower(email)) where email is not null
+      do update set
+        display_name  = excluded.display_name,
+        is_superadmin = excluded.is_superadmin,
+        password_hash = excluded.password_hash
+      returning id
+    `;
 
-  await sql`
-    insert into hub_users (email, display_name, is_superadmin, password_hash)
-    values (${adminEmail}, ${adminName}, true, ${passwordHash})
-    on conflict (lower(email)) where email is not null
-    do update set
-      display_name   = excluded.display_name,
-      is_superadmin  = true,
-      password_hash  = excluded.password_hash
-  `;
-  console.log(`   ✔  Admin seeded`);
-  console.log(`   📧  Email:    ${adminEmail}`);
-  console.log(`   🔑  Password: ${adminPassword}`);
+    console.log(
+      `   ✔  ${user.display_name} (${user.email}) — ${
+        user.is_superadmin ? "Superadmin" : `Role: ${user.role}`
+      }`
+    );
 
-  console.log("\n✅  Seed complete.");
+    // Add non-superadmin users to all applications with their role
+    if (!user.is_superadmin && user.role) {
+      const canApprove = user.role === "HOD" || user.role === "ADMIN";
+      for (const [appName, appId] of Object.entries(appIds)) {
+        await sql`
+          insert into application_members (application_id, user_id, role, can_edit, can_approve)
+          values (${appId}, ${row.id}, ${user.role}, true, ${canApprove})
+          on conflict (application_id, user_id)
+          do update set
+            role        = excluded.role,
+            can_edit    = excluded.can_edit,
+            can_approve = excluded.can_approve
+        `;
+      }
+      console.log(`      → Added to: ${Object.keys(appIds).join(", ")}`);
+    }
+  }
+
+  // ── Summary ────────────────────────────────────────────────────────────────
+  console.log(`
+✅  Seed complete!
+
+📋  Test accounts (password: ${ADMIN_PASSWORD})
+┌──────────────────────────────┬────────────────┬───────────────────────────────┐
+│ Email                        │ Role           │ Can do                        │
+├──────────────────────────────┼────────────────┼───────────────────────────────┤
+│ ${ADMIN_EMAIL.padEnd(28)}  │ Superadmin     │ Everything, all apps          │
+│ admin@mrdiy.com              │ Admin          │ Edit + approve + manage app   │
+│ hod@mrdiy.com                │ HOD            │ Edit + approve translations   │
+│ editor@mrdiy.com             │ Editor         │ Edit/draft only               │
+└──────────────────────────────┴────────────────┴───────────────────────────────┘
+
+💡  Override superadmin in .env.local:
+    LINGO_SEED_ADMIN_EMAIL=your.email@mrdiy.com
+    LINGO_SEED_ADMIN_NAME=Your Name
+    LINGO_SEED_ADMIN_PASSWORD=YourPassword123!
+  `);
+
   await sql.end();
 }
 
