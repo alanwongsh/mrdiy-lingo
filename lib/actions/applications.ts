@@ -20,6 +20,7 @@ import {
   parseAppRole,
   roleFromApprovalFlag,
 } from "@/lib/auth/roles";
+import { hashPassword } from "@/lib/auth/password";
 import { ensureDefaultContentType } from "@/lib/actions/content-types";
 import { getDb } from "@/lib/db/client";
 import type {
@@ -328,14 +329,94 @@ async function assignLdapRole(userId: string, ldapRole: string): Promise<void> {
   if (error) throw new Error(error);
 }
 
+const ACCOUNT_LOCKED_MESSAGE =
+  "This account has access outside this application. Ask a superadmin to change its sign-in.";
+
+function passwordProblem(password: string): string | null {
+  if (password.length < 8) return "Password must be at least 8 characters.";
+  if (password.length > 200) return "Password must be 200 characters or fewer.";
+  return null;
+}
+
+/**
+ * An owner may only change the name or password of an account that exists for
+ * this application alone. Otherwise they could take over someone else's sign-in.
+ */
+async function accountLockReason(
+  actor: HubUser,
+  userId: string,
+  applicationId: string
+): Promise<string | null> {
+  if (actor.is_superadmin) return null;
+  if (actor.id === userId) return ACCOUNT_LOCKED_MESSAGE;
+  const db = await getDb();
+  const { data: target, error } = await db
+    .from("hub_users")
+    .select("is_superadmin")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) return accessErrorMessage(error);
+  if (!target) return "That person was not found.";
+  if (target.is_superadmin) return ACCOUNT_LOCKED_MESSAGE;
+
+  const owned = await db
+    .from("applications")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_user_id", userId);
+  if (owned.error) return accessErrorMessage(owned.error);
+  if (owned.count) return ACCOUNT_LOCKED_MESSAGE;
+
+  const elsewhere = await db
+    .from("application_members")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .neq("application_id", applicationId);
+  if (elsewhere.error) return accessErrorMessage(elsewhere.error);
+  if (elsewhere.count) return ACCOUNT_LOCKED_MESSAGE;
+  return null;
+}
+
+async function writeSignIn(
+  userId: string,
+  fields: { displayName?: string; password?: string }
+): Promise<string | null> {
+  const update: Record<string, string> = {};
+  const name = fields.displayName?.trim();
+  if (name) update.display_name = name.slice(0, 120);
+  if (fields.password) update.password_hash = await hashPassword(fields.password);
+  if (Object.keys(update).length === 0) return null;
+  const db = await getDb();
+  const { error } = await db.from("hub_users").update(update).eq("id", userId);
+  if (!error) return null;
+  if (error.code === "42703" && /password_hash/i.test(error.message)) {
+    return "Run migration 009_password_sign_in.sql from Setup.";
+  }
+  return accessErrorMessage(error);
+}
+
 export async function inviteApplicationMember(input: {
   applicationId: string;
   identity: string;
   ldapRole: string;
+  displayName?: string;
+  password?: string;
 }): Promise<{ error?: string }> {
   try {
-    await requireAppCapability(input.applicationId, "manage");
+    const { user: actor } = await requireAppCapability(input.applicationId, "manage");
+    const password = input.password ?? "";
+    const displayName = input.displayName?.trim() ?? "";
+    if (password) {
+      if (!input.identity.includes("@")) {
+        return { error: "Enter an email to give this person a sign-in password." };
+      }
+      const problem = passwordProblem(password);
+      if (problem) return { error: problem };
+    }
     const user = await ensureDirectoryUser(input.identity);
+    if (password || displayName) {
+      const locked = await accountLockReason(actor, user.id, input.applicationId);
+      if (locked) return { error: locked };
+    }
     const db = await getDb();
     const { data: app, error: appError } = await db
       .from("applications")
@@ -377,11 +458,50 @@ export async function inviteApplicationMember(input: {
       { onConflict: "application_id,user_id" }
     );
     if (error) return { error: accessErrorMessage(error) };
+    const signInError = await writeSignIn(user.id, { displayName, password });
+    if (signInError) return { error: signInError };
     revalidateApplication(input.applicationId);
     return {};
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Could not invite this person.",
+    };
+  }
+}
+
+export async function setApplicationMemberPassword(input: {
+  applicationId: string;
+  membershipId: string;
+  password: string;
+}): Promise<{ error?: string }> {
+  try {
+    const { user: actor } = await requireAppCapability(input.applicationId, "manage");
+    const problem = passwordProblem(input.password);
+    if (problem) return { error: problem };
+    const db = await getDb();
+    const { data: member, error: memberError } = await db
+      .from("application_members")
+      .select("user:hub_users(id, email)")
+      .eq("id", input.membershipId)
+      .eq("application_id", input.applicationId)
+      .maybeSingle();
+    if (memberError) return { error: accessErrorMessage(memberError) };
+    const target = (Array.isArray(member?.user) ? member.user[0] : member?.user) as
+      | { id: string; email: string | null }
+      | null
+      | undefined;
+    if (!target) return { error: "That person is not on this application." };
+    if (!target.email) {
+      return { error: "This person has no email, so they cannot sign in with a password." };
+    }
+    const locked = await accountLockReason(actor, target.id, input.applicationId);
+    if (locked) return { error: locked };
+    const signInError = await writeSignIn(target.id, { password: input.password });
+    if (signInError) return { error: signInError };
+    return {};
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Could not set the password.",
     };
   }
 }

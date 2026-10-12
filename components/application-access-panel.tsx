@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import {
   inviteApplicationMember,
   removeApplicationMember,
+  setApplicationMemberPassword,
   setApplicationOwner,
   updateApplicationMember,
 } from "@/lib/actions/applications";
@@ -63,6 +64,39 @@ function MemberRow({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const [ldapRole, setLdapRole] = useState(member.ldapRole ?? "");
+  const [editingPassword, setEditingPassword] = useState(false);
+  const [password, setPassword] = useState("");
+  const [notice, setNotice] = useState("");
+
+  function savePassword(event: React.FormEvent) {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+    startTransition(async () => {
+      try {
+        const result = await setApplicationMemberPassword({
+          applicationId,
+          membershipId: member.membershipId,
+          password,
+        });
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
+        setPassword("");
+        setEditingPassword(false);
+        setNotice("Password saved.");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not set the password.");
+      }
+    });
+  }
+
+  function cancelPassword() {
+    setPassword("");
+    setEditingPassword(false);
+    setError("");
+  }
 
   function save() {
     setError("");
@@ -112,11 +146,47 @@ function MemberRow({
           <Button type="button" variant="secondary" disabled={pending} onClick={save}>
             Save
           </Button>
+          {editingPassword ? null : (
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={pending}
+              onClick={() => {
+                setNotice("");
+                setEditingPassword(true);
+              }}
+            >
+              Set password
+            </Button>
+          )}
           <Button type="button" variant="ghost" disabled={pending} onClick={remove}>
             Remove
           </Button>
         </div>
       </div>
+      {editingPassword ? (
+        <form onSubmit={savePassword} className="mt-3 flex flex-wrap items-end gap-2">
+          <Field label="New sign-in password">
+            <input
+              type="password"
+              className={inputClass}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="new-password"
+              minLength={8}
+              maxLength={200}
+              required
+            />
+          </Field>
+          <Button type="submit" variant="secondary" disabled={pending}>
+            Save password
+          </Button>
+          <Button type="button" variant="ghost" disabled={pending} onClick={cancelPassword}>
+            Cancel
+          </Button>
+        </form>
+      ) : null}
+      {notice ? <p className="mt-2 text-sm text-emerald-700">{notice}</p> : null}
       {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}
     </div>
   );
@@ -140,6 +210,8 @@ export function ApplicationAccessPanel({
   const [identity, setIdentity] = useState("");
   const [ownerIdentity, setOwnerIdentity] = useState("");
   const [ldapRole, setLdapRole] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const roles = orgRoles ?? [];
 
@@ -152,6 +224,8 @@ export function ApplicationAccessPanel({
           applicationId,
           identity,
           ldapRole,
+          displayName,
+          password,
         });
         if (result.error) {
           setError(result.error);
@@ -159,6 +233,8 @@ export function ApplicationAccessPanel({
         }
         setIdentity("");
         setLdapRole("");
+        setDisplayName("");
+        setPassword("");
         router.refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not invite this person.");
@@ -245,12 +321,13 @@ export function ApplicationAccessPanel({
 
       <form onSubmit={invite} className="mt-4 space-y-3 border-t border-[var(--hub-border)] pt-4">
         <div className="grid gap-3 sm:grid-cols-[1fr_16rem] sm:items-end">
-          <Field label="Invite">
+          <Field label="Email">
             <input
+              type="email"
               className={inputClass}
               value={identity}
               onChange={(event) => setIdentity(event.target.value)}
-              placeholder="Email or employee ID"
+              autoComplete="off"
               required
             />
           </Field>
@@ -258,6 +335,32 @@ export function ApplicationAccessPanel({
             <RoleSelect value={ldapRole} roles={roles} onChange={setLdapRole} />
           </Field>
         </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Name">
+            <input
+              className={inputClass}
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              maxLength={120}
+              required
+            />
+          </Field>
+          <Field label="Sign-in password">
+            <input
+              type="password"
+              className={inputClass}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="new-password"
+              minLength={8}
+              maxLength={200}
+              required
+            />
+          </Field>
+        </div>
+        <p className="text-xs text-[var(--hub-muted)]">
+          This person signs in with this email and password. At least 8 characters.
+        </p>
         <Button type="submit" disabled={pending || (roles.length === 0 && ldapRole.trim().length > 0)}>
           {pending ? "Saving…" : "Add person"}
         </Button>

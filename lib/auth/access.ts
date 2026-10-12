@@ -182,7 +182,7 @@ export async function actorForStoredEmail(email: string): Promise<HubActor | nul
   const username = (
     data.username?.trim() ||
     data.employee_id?.trim() ||
-    storedEmail.split("@")[0] ||
+    storedEmail ||
     ""
   ).slice(0, 80);
   const name = (data.display_name?.trim() || username).slice(0, 120);

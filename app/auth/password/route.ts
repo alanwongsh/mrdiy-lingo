@@ -45,7 +45,8 @@ export async function POST(request: Request) {
   const username =
     data.username?.trim() ||
     data.employee_id?.trim() ||
-    email.split("@")[0] ||
+    data.email?.trim() ||
+    email ||
     "";
   const name = data.display_name?.trim() || username;
   if (!username) return failed;
