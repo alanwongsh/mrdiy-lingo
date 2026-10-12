@@ -137,6 +137,7 @@ The mapping from LDAP role to role band (EDITOR, HOD and so on). Changing it cha
 - **Input:** `{ applicationId; page?; pageSize?; search?; status?; contentType?; sourceLanguages?; market?; due?: "published" | "none" | "overdue" | "due_soon" | "scheduled" }`
 - **Permission:** `requireAppCapability(applicationId, "view")`
 - **Validation:** `pageSize` is limited to 1–100 (default 50). `search` matches the title.
+- **Order:** articles in REVIEW first (earliest publish date first), then unpublished articles with a publish date (soonest first), then everything else by latest update. Each group is a separate query and the page is assembled from them, so a page costs 3 count queries plus 1–3 data queries.
 - **Returns:** `Paginated<Content & { translations: { id, language_code, status, title }[] }>`
 
 #### `countArticlesNeedingReview(applicationIds)`

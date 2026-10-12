@@ -230,19 +230,6 @@ export async function listArticles(input: {
   const nowIso = now.toISOString();
   const soonIso = new Date(now.getTime() + DUE_SOON_MS).toISOString();
 
-  let query = db
-    .from("content")
-    .select(
-      "*, translations:content_translations(id, language_code, status, title)",
-      { count: "exact" }
-    )
-    .eq("application_id", input.applicationId)
-    .order("scheduled_publish_at", { ascending: true, nullsFirst: false })
-    .order("updated_at", { ascending: false })
-    .range(from, to);
-
-  if (input.status) query = query.eq("status", input.status);
-  if (input.contentType) query = query.eq("content_type", input.contentType);
   const sourceLanguages = [
     ...new Set(
       (input.sourceLanguages ?? [])
@@ -250,53 +237,117 @@ export async function listArticles(input: {
         .filter(Boolean)
     ),
   ];
-  if (sourceLanguages.length === 1) {
-    query = query.eq("source_language", sourceLanguages[0]);
-  } else if (sourceLanguages.length > 1) {
-    query = query.in("source_language", sourceLanguages);
-  }
   const market = normalizeMarket(input.market);
-  if (market) query = query.eq("market", market);
-  if (input.search?.trim()) {
-    const term = escapeIlike(input.search.trim());
-    query = query.ilike("title", `%${term}%`);
-  }
 
-  if (input.due === "published") {
-    query = query.or("status.eq.PUBLISHED,published_at.not.is.null");
-  } else if (input.due === "none") {
-    query = query
-      .neq("status", "PUBLISHED")
-      .is("published_at", null)
-      .is("scheduled_publish_at", null);
-  } else if (input.due === "overdue") {
-    query = query
-      .neq("status", "PUBLISHED")
-      .is("published_at", null)
-      .not("scheduled_publish_at", "is", null)
-      .lt("scheduled_publish_at", nowIso);
-  } else if (input.due === "due_soon") {
-    query = query
-      .neq("status", "PUBLISHED")
-      .is("published_at", null)
-      .gte("scheduled_publish_at", nowIso)
-      .lte("scheduled_publish_at", soonIso);
-  } else if (input.due === "scheduled") {
-    query = query
-      .neq("status", "PUBLISHED")
-      .is("published_at", null)
-      .gt("scheduled_publish_at", soonIso);
-  }
+  /** The app's articles with the list filters applied. */
+  function filtered(columns: string, head = false) {
+    let query = db
+      .from("content")
+      .select(columns, head ? { count: "exact", head: true } : undefined)
+      .eq("application_id", input.applicationId);
 
-  const { data, error, count } = await query;
-  if (error) throw new Error(error.message);
+    if (input.status) query = query.eq("status", input.status);
+    if (input.contentType) query = query.eq("content_type", input.contentType);
+    if (sourceLanguages.length === 1) {
+      query = query.eq("source_language", sourceLanguages[0]);
+    } else if (sourceLanguages.length > 1) {
+      query = query.in("source_language", sourceLanguages);
+    }
+    if (market) query = query.eq("market", market);
+    if (input.search?.trim()) {
+      const term = escapeIlike(input.search.trim());
+      query = query.ilike("title", `%${term}%`);
+    }
+
+    if (input.due === "published") {
+      query = query.or("status.eq.PUBLISHED,published_at.not.is.null");
+    } else if (input.due === "none") {
+      query = query
+        .neq("status", "PUBLISHED")
+        .is("published_at", null)
+        .is("scheduled_publish_at", null);
+    } else if (input.due === "overdue") {
+      query = query
+        .neq("status", "PUBLISHED")
+        .is("published_at", null)
+        .not("scheduled_publish_at", "is", null)
+        .lt("scheduled_publish_at", nowIso);
+    } else if (input.due === "due_soon") {
+      query = query
+        .neq("status", "PUBLISHED")
+        .is("published_at", null)
+        .gte("scheduled_publish_at", nowIso)
+        .lte("scheduled_publish_at", soonIso);
+    } else if (input.due === "scheduled") {
+      query = query
+        .neq("status", "PUBLISHED")
+        .is("published_at", null)
+        .gt("scheduled_publish_at", soonIso);
+    }
+    return query;
+  }
+  type ListQuery = ReturnType<typeof filtered>;
+
+  // List order: review first, then due to publish (soonest first), then latest update.
+  // Each group is queried on its own and the requested page is cut across them.
+  const groups: { where: (q: ListQuery) => ListQuery; order: (q: ListQuery) => ListQuery }[] = [
+    {
+      where: (q) => q.eq("status", "REVIEW"),
+      order: (q) =>
+        q
+          .order("scheduled_publish_at", { ascending: true, nullsFirst: false })
+          .order("updated_at", { ascending: false }),
+    },
+    {
+      where: (q) =>
+        q.not("status", "in", "(REVIEW,PUBLISHED)").not("scheduled_publish_at", "is", null),
+      order: (q) =>
+        q
+          .order("scheduled_publish_at", { ascending: true })
+          .order("updated_at", { ascending: false }),
+    },
+    {
+      where: (q) =>
+        q.neq("status", "REVIEW").or("status.eq.PUBLISHED,scheduled_publish_at.is.null"),
+      order: (q) => q.order("updated_at", { ascending: false }),
+    },
+  ];
+
+  const counts = await Promise.all(
+    groups.map(async (group) => {
+      const { count, error } = await group.where(filtered("id", true));
+      if (error) throw new Error(error.message);
+      return count ?? 0;
+    })
+  );
+
+  let start = 0;
+  const slices = await Promise.all(
+    groups.map(async (group, index) => {
+      const groupStart = start;
+      start += counts[index];
+      const sliceFrom = Math.max(from, groupStart) - groupStart;
+      const sliceTo = Math.min(to, groupStart + counts[index] - 1) - groupStart;
+      if (sliceFrom > sliceTo) return [];
+      const { data, error } = await group
+        .order(
+          group.where(
+            filtered("*, translations:content_translations(id, language_code, status, title)")
+          )
+        )
+        .order("id", { ascending: false })
+        .range(sliceFrom, sliceTo);
+      if (error) throw new Error(error.message);
+      return (data ?? []) as unknown as ArticleListItem[];
+    })
+  );
 
   return {
-    items: ((data ?? []) as ArticleListItem[]).map((item) => ({
+    items: slices.flat().map((item) => ({
       ...mapContentRow(item),
       translations: item.translations ?? [],
     })),
-    total: count ?? 0,
+    total: counts.reduce((sum, count) => sum + count, 0),
     page,
     pageSize,
   };
