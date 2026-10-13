@@ -190,8 +190,11 @@ function RoleForm({
         </legend>
         <div className="grid gap-4 lg:grid-cols-3">
           {PERMISSION_GROUPS.map((group) => (
-            <div key={group} className="rounded-lg border border-[var(--hub-border)] p-3">
-              <div className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold tracking-wide text-[var(--hub-muted-strong)] uppercase">
+            <div
+              key={group}
+              className="overflow-hidden rounded-lg border border-[var(--hub-border-strong)] bg-white shadow-sm"
+            >
+              <div className="flex items-center justify-between gap-2 border-b border-[var(--hub-border)] bg-slate-50 px-3 py-2 text-xs font-semibold tracking-wide text-[var(--hub-muted-strong)] uppercase">
                 {group}
                 <GroupCheckbox
                   held={permissions}
@@ -203,7 +206,7 @@ function RoleForm({
                   }
                 />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 p-3">
                 {PERMISSIONS.filter((item) => item.group === group).map((permission) => (
                   <label key={permission.key} className="flex items-start gap-2 text-sm">
                     <input
