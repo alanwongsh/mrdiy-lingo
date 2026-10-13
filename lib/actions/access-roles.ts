@@ -121,28 +121,6 @@ async function writePermissions(roleId: string, permissions: readonly Permission
   if (memberError) throwRoleError(memberError);
 }
 
-export async function createAccessRole(
-  input: Scope & {
-    name: string;
-    description: string;
-    /** Start from another role's permissions here. Leave out to start with none. */
-    copyFromId?: string;
-  }
-): Promise<void> {
-  const { actor, roles } = await authorize(input);
-  const details = cleanDetails(input);
-  const source = input.copyFromId ? changeableRole(roles, input.copyFromId, actor) : null;
-  const db = await getDb();
-  const { data, error } = await db
-    .from("access_roles")
-    .insert({ ...details, application_id: input.applicationId })
-    .select("id")
-    .single();
-  if (error) throwRoleError(error);
-  if (source) await writePermissions(data.id as string, source.permissions);
-  revalidateRoles(input);
-}
-
 export async function updateAccessRoleDetails(
   input: Scope & { id: string; name: string; description: string }
 ): Promise<void> {
@@ -157,11 +135,33 @@ export async function updateAccessRoleDetails(
   revalidateRoles(input);
 }
 
-/** Save the whole permission map at once: role id to the permissions it holds. */
+/**
+ * Save the grid at once: the permission map (role id to the permissions it holds)
+ * and any new roles. Everything is checked before anything is written.
+ */
 export async function saveRolePermissions(
-  input: Scope & { map: Record<string, string[]> }
+  input: Scope & {
+    map: Record<string, string[]>;
+    created?: Array<{ name: string; description?: string; permissions: string[] }>;
+  }
 ): Promise<void> {
   const { actor, roles } = await authorize(input);
+
+  const taken = new Set(roles.map((role) => role.name.toLowerCase()));
+  const created = (input.created ?? []).map((item) => {
+    const { name, description } = cleanDetails({
+      name: item.name,
+      description: item.description ?? "",
+    });
+    if (taken.has(name.toLowerCase())) throw new Error(`A role named “${name}” already exists here.`);
+    taken.add(name.toLowerCase());
+    const permissions = parsePermissions(item.permissions);
+    if (!canGrantRole(actor, { permissions })) {
+      throw new Error(`You can only tick permissions you hold yourself (“${name}”).`);
+    }
+    return { name, description, permissions };
+  });
+
   const changes: Array<{ role: AccessRole; next: PermissionKey[] }> = [];
   for (const role of roles) {
     if (!(role.id in input.map)) continue;
@@ -177,6 +177,21 @@ export async function saveRolePermissions(
     changes.push({ role, next });
   }
   for (const change of changes) await writePermissions(change.role.id, change.next);
+
+  const db = await getDb();
+  for (const item of created) {
+    const { data, error } = await db
+      .from("access_roles")
+      .insert({
+        name: item.name,
+        description: item.description,
+        application_id: input.applicationId,
+      })
+      .select("id")
+      .single();
+    if (error) throwRoleError(error);
+    await writePermissions(data.id as string, item.permissions);
+  }
   revalidateRoles(input);
 }
 

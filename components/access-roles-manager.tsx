@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import {
-  createAccessRole,
   deleteAccessRole,
   saveRolePermissions,
   updateAccessRoleDetails,
@@ -16,6 +15,7 @@ import {
   type PermissionKey,
 } from "@/lib/auth/permissions";
 import type { AccessRole } from "@/lib/types";
+import { FilterSelect } from "@/components/filter-select";
 import { Button, Card, Field, inputClass } from "@/components/ui";
 
 type PermissionMap = Record<string, PermissionKey[]>;
@@ -60,6 +60,7 @@ function PermissionMatrix({
     setDraft(saved);
   }
   const dirty = !sameMap(draft, saved);
+  const actor = { permissions: actorPermissions };
 
   function toggle(roleId: string, key: PermissionKey, checked: boolean) {
     setDraft((current) => {
@@ -126,7 +127,7 @@ function PermissionMatrix({
                           disabled={
                             pending ||
                             !actorPermissions.includes(permission.key) ||
-                            !canGrantRole({ permissions: actorPermissions }, role)
+                            !canGrantRole(actor, role)
                           }
                           onChange={(event) =>
                             toggle(role.id, permission.key, event.target.checked)
@@ -156,6 +157,139 @@ function PermissionMatrix({
         ) : null}
       </div>
     </Card>
+  );
+}
+
+/** A new role, optionally copied from an existing one as a draft, then adjusted before saving. */
+function NewRoleForm({
+  roles,
+  pending,
+  run,
+  applicationId,
+  actorPermissions,
+}: {
+  /** Roles the signed-in person may copy from. */
+  roles: AccessRole[];
+  pending: boolean;
+  run: (task: () => Promise<void>, after?: () => void) => void;
+  applicationId: string | null;
+  actorPermissions: readonly PermissionKey[];
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [copyFromId, setCopyFromId] = useState("");
+  const [permissions, setPermissions] = useState<PermissionKey[]>([]);
+
+  function copyFrom(id: string) {
+    setCopyFromId(id);
+    const source = roles.find((role) => role.id === id);
+    setPermissions(source ? [...source.permissions] : []);
+    if (source && !name.trim()) setName(`Copy of ${source.name}`.slice(0, 60));
+    if (source && !description.trim()) setDescription(source.description);
+  }
+
+  function clear() {
+    setName("");
+    setDescription("");
+    setCopyFromId("");
+    setPermissions([]);
+  }
+
+  function toggle(key: PermissionKey, checked: boolean) {
+    setPermissions((current) =>
+      checked ? [...current, key] : current.filter((item) => item !== key)
+    );
+  }
+
+  return (
+    <form
+      className="mt-4 space-y-4 border-t border-[var(--hub-border)] pt-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        run(
+          () =>
+            saveRolePermissions({
+              applicationId,
+              map: {},
+              created: [{ name, description, permissions }],
+            }),
+          clear
+        );
+      }}
+    >
+      <h3 className="text-sm font-semibold">New role</h3>
+      <div className="grid gap-3 sm:grid-cols-[16rem_1fr_16rem] sm:items-end">
+        <Field label="Role name" required>
+          <input
+            className={inputClass}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Translator"
+            maxLength={60}
+            required
+          />
+        </Field>
+        <Field label="Description">
+          <input
+            className={inputClass}
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="What this role is for"
+            maxLength={200}
+          />
+        </Field>
+        <FilterSelect
+          label="Copy from"
+          fullWidth
+          value={copyFromId}
+          placeholder="Blank role"
+          options={roles.map((role) => ({ value: role.id, label: role.name }))}
+          onChange={copyFrom}
+        />
+      </div>
+      <fieldset className="space-y-3">
+        <legend className="text-xs font-semibold tracking-wide text-[var(--hub-muted-strong)]">
+          Permissions{copyFromId ? " (copied, change as needed)" : ""}
+        </legend>
+        <div className="grid gap-4 lg:grid-cols-3">
+          {PERMISSION_GROUPS.map((group) => (
+            <div
+              key={group}
+              className="rounded-lg border border-[var(--hub-border)] p-3"
+            >
+              <div className="mb-2 text-xs font-semibold tracking-wide text-[var(--hub-muted-strong)] uppercase">
+                {group}
+              </div>
+              <div className="space-y-2">
+                {PERMISSIONS.filter((item) => item.group === group).map((permission) => (
+                  <label key={permission.key} className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={permissions.includes(permission.key)}
+                      disabled={pending || !actorPermissions.includes(permission.key)}
+                      onChange={(event) => toggle(permission.key, event.target.checked)}
+                    />
+                    <span>
+                      <span className="font-medium text-slate-900">{permission.label}</span>
+                      <span className="block text-xs text-[var(--hub-muted)]">{permission.hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </fieldset>
+      <div className="flex gap-2">
+        <Button type="submit" disabled={pending || !name.trim()}>
+          {pending ? "Saving…" : "Add role"}
+        </Button>
+        <Button type="button" variant="ghost" disabled={pending} onClick={clear}>
+          Clear
+        </Button>
+      </div>
+    </form>
   );
 }
 
@@ -286,9 +420,6 @@ export function AccessRolesManager({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [copyFromId, setCopyFromId] = useState("");
 
   function run(task: () => Promise<void>, after?: () => void) {
     setError("");
@@ -318,8 +449,8 @@ export function AccessRolesManager({
         <h2 className="text-base font-semibold">Roles</h2>
         <p className="mt-1 text-sm text-[var(--hub-muted)]">
           {applicationId
-            ? "Each person on this application holds one of these roles."
-            : "Every new application starts with a copy of these roles. Each application then changes its own."}
+            ? "Each person on this application holds one of these roles. Rename them or change their description here, or add a new one below."
+            : "Every new application starts with a copy of these roles."}
         </p>
         <ul className="mt-2 divide-y divide-[var(--hub-border)]">
           {roles.map((role) => (
@@ -334,66 +465,13 @@ export function AccessRolesManager({
             />
           ))}
         </ul>
-
-        <form
-          className="mt-4 flex flex-wrap items-end gap-3 border-t border-[var(--hub-border)] pt-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            run(
-              () =>
-                createAccessRole({
-                  applicationId,
-                  name,
-                  description,
-                  copyFromId: copyFromId || undefined,
-                }),
-              () => {
-                setName("");
-                setDescription("");
-                setCopyFromId("");
-              }
-            );
-          }}
-        >
-          <Field label="New role" required>
-            <input
-              className={inputClass}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Translator"
-              maxLength={60}
-              required
-            />
-          </Field>
-          <div className="min-w-[14rem] flex-1">
-            <Field label="Description">
-              <input
-                className={inputClass}
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="What this role is for"
-                maxLength={200}
-              />
-            </Field>
-          </div>
-          <Field label="Start with permissions of">
-            <select
-              className={inputClass}
-              value={copyFromId}
-              onChange={(event) => setCopyFromId(event.target.value)}
-            >
-              <option value="">No permissions</option>
-              {changeableRoles.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Button type="submit" disabled={pending}>
-            {pending ? "Saving…" : "Add role"}
-          </Button>
-        </form>
+        <NewRoleForm
+          roles={changeableRoles}
+          pending={pending}
+          run={run}
+          applicationId={applicationId}
+          actorPermissions={actorPermissions}
+        />
       </Card>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
     </div>

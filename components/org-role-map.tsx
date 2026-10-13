@@ -9,6 +9,7 @@ import {
 } from "@/lib/actions/org-roles";
 import { ORG_BAND_LABEL, ORG_BANDS, type OrgRoleBand } from "@/lib/auth/roles";
 import type { OrgRoleMapping } from "@/lib/types";
+import { FilterSelect } from "@/components/filter-select";
 import { Button, Card, Field, inputClass } from "@/components/ui";
 
 function RoleGroup({
@@ -133,19 +134,14 @@ export function OrgRoleMap({ roles }: { roles: OrgRoleMapping[] }) {
               required
             />
           </Field>
-          <Field label="Group">
-            <select
-              className={inputClass}
-              value={band}
-              onChange={(event) => setBand(event.target.value as OrgRoleBand)}
-            >
-              {ORG_BANDS.map((item) => (
-                <option key={item} value={item}>
-                  {ORG_BAND_LABEL[item]}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <FilterSelect
+            label="Group"
+            value={band}
+            placeholder="Choose a group"
+            hideEmptyOption
+            options={ORG_BANDS.map((item) => ({ value: item, label: ORG_BAND_LABEL[item] }))}
+            onChange={(value) => setBand(value as OrgRoleBand)}
+          />
           <Button type="submit" disabled={pending}>
             {pending ? "Saving…" : "Add role"}
           </Button>
