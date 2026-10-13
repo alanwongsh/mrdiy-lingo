@@ -1,5 +1,6 @@
 "use server";
 
+import { UserFacingError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { escapeIlike, getDb } from "@/lib/db/client";
 import type {
@@ -458,7 +459,7 @@ export async function createArticle(input: {
     status = "APPROVED";
   }
   if (isPublishable(status) && !grant.access.can_approve) {
-    throw new Error("Your role cannot approve.");
+    throw new UserFacingError("Your role cannot approve.");
   }
   const db = await getDb();
   const source_content = {
@@ -704,7 +705,7 @@ export async function updateArticle(
 
   const releasing = isPublishable(input.status);
   if (releasing && input.status !== current.status && !grant.access.can_approve) {
-    throw new Error("Your role cannot approve.");
+    throw new UserFacingError("Your role cannot approve.");
   }
 
   const textChanged = sourceContentChanged(
@@ -1182,12 +1183,12 @@ export async function autoTranslateArticle(input: {
 }): Promise<ContentTranslation> {
   const grant = await requireContentAccess(input.contentId, "edit");
   const article = await getArticle(input.contentId);
-  if (!article) throw new Error("Article not found");
+  if (!article) throw new UserFacingError("Article not found");
 
   const sourceLanguage =
     input.sourceLanguage?.trim() || article.source_language;
   if (languageKey(sourceLanguage) === languageKey(input.targetLanguage)) {
-    throw new Error("Target language must differ from source language.");
+    throw new UserFacingError("Target language must differ from source language.");
   }
 
   const stored = article.source_content;
@@ -1299,14 +1300,14 @@ export async function autoTranslateArticleLanguages(input: {
   const approveTranslations =
     input.approveTranslations ?? grant.access.can_approve;
   const article = await getArticle(input.contentId);
-  if (!article) throw new Error("Article not found");
+  if (!article) throw new UserFacingError("Article not found");
   const sourceLanguage = input.sourceLanguage?.trim() || article.source_language;
   const requested = normalizeTargetLanguages(
     input.targetLanguages,
     sourceLanguage
   );
   if (requested.length === 0) {
-    throw new Error("Choose a language other than the source.");
+    throw new UserFacingError("Choose a language other than the source.");
   }
   const approved = new Set(
     (article.translations ?? [])
@@ -1315,7 +1316,7 @@ export async function autoTranslateArticleLanguages(input: {
   );
   const toTranslate = requested.filter((code) => !approved.has(languageKey(code)));
   if (toTranslate.length === 0) {
-    throw new Error("Selected languages are already approved.");
+    throw new UserFacingError("Selected languages are already approved.");
   }
   const storedTargets = normalizeTargetLanguages(
     [...(article.target_languages ?? []), ...requested],
@@ -1374,11 +1375,11 @@ export async function previewTranslateArticle(input: {
       "",
   };
   if (!sourceFields.body.trim() && !sourceFields.title.trim()) {
-    throw new Error("Nothing to translate — add a source title or body first.");
+    throw new UserFacingError("Nothing to translate — add a source title or body first.");
   }
   const requested = normalizeTargetLanguages(input.targetLanguages, sourceLanguage);
   if (requested.length === 0) {
-    throw new Error("Choose a language other than the source.");
+    throw new UserFacingError("Choose a language other than the source.");
   }
   const service = getTranslationService(input.applicationId);
   const results: { language_code: string; fields: SourceContentFields }[] = [];
@@ -1478,8 +1479,8 @@ export async function exportArticlesFile(input: {
 }): Promise<{ filename: string; base64: string; notice: string }> {
   await requireAppCapability(input.applicationId, "view");
   const ids = [...new Set(input.contentIds.map((id) => id.trim()).filter(Boolean))];
-  if (ids.length === 0) throw new Error("Select at least one article.");
-  if (ids.length > 200) throw new Error("Export up to 200 articles at a time.");
+  if (ids.length === 0) throw new UserFacingError("Select at least one article.");
+  if (ids.length > 200) throw new UserFacingError("Export up to 200 articles at a time.");
 
   const db = await getDb();
   const { data, error } = await db

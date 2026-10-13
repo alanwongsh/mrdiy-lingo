@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -133,7 +134,7 @@ export function ArticleListTable({
         downloadWorkbook(file.filename, file.base64);
         setNotice(file.notice);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Export failed");
+        setError(errorMessage(err, "Export failed"));
       } finally {
         setTask("");
       }
@@ -163,7 +164,7 @@ export function ArticleListTable({
         });
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Delete failed");
+        setError(errorMessage(err, "Delete failed"));
       } finally {
         setTask("");
       }
@@ -191,7 +192,7 @@ export function ArticleListTable({
         setSelected(new Set());
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Bulk delete failed");
+        setError(errorMessage(err, "Bulk delete failed"));
       } finally {
         setTask("");
       }

@@ -1,5 +1,6 @@
 "use server";
 
+import { UserFacingError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireAppCapability, requireContentAccess } from "@/lib/auth/access";
 import { can } from "@/lib/auth/permissions";
@@ -42,7 +43,7 @@ function canConfigure(access: AppAccess) {
 async function requireVendorAdmin(applicationId: string) {
   const grant = await requireAppCapability(applicationId, "view");
   if (!canConfigure(grant.access)) {
-    throw new Error("Your role cannot change vendor settings.");
+    throw new UserFacingError("Your role cannot change vendor settings.");
   }
   return grant;
 }
@@ -145,7 +146,7 @@ export async function savePublishVendor(input: {
 }): Promise<void> {
   await requireVendorAdmin(input.applicationId);
   const integration = getPublishIntegration(input.typeCode);
-  if (!integration) throw new Error("Choose an integration type.");
+  if (!integration) throw new UserFacingError("Choose an integration type.");
   const name = normalizeVendorName(input.name);
   const status = input.status === "INACTIVE" ? "INACTIVE" : "ACTIVE";
   const db = await getDb();
@@ -159,9 +160,9 @@ export async function savePublishVendor(input: {
       .eq("application_id", input.applicationId)
       .maybeSingle();
     if (currentError) throwPublishError(currentError);
-    if (!current) throw new Error("Vendor not found.");
+    if (!current) throw new UserFacingError("Vendor not found.");
     if (current.type_code !== input.typeCode) {
-      throw new Error("The integration type cannot be changed.");
+      throw new UserFacingError("The integration type cannot be changed.");
     }
     previous = readConfig(current.config);
     for (const key of input.clearSecrets ?? []) delete previous[key];
@@ -177,7 +178,7 @@ export async function savePublishVendor(input: {
       status,
     });
     if (error) {
-      if (error.code === "23505") throw new Error("This application already has a vendor with that name.");
+      if (error.code === "23505") throw new UserFacingError("This application already has a vendor with that name.");
       throwPublishError(error);
     }
   } else {
@@ -187,7 +188,7 @@ export async function savePublishVendor(input: {
       .eq("id", input.id)
       .eq("application_id", input.applicationId);
     if (error) {
-      if (error.code === "23505") throw new Error("This application already has a vendor with that name.");
+      if (error.code === "23505") throw new UserFacingError("This application already has a vendor with that name.");
       throwPublishError(error);
     }
   }
@@ -202,7 +203,7 @@ export async function publishArticleNow(
   targets: PublishLanguageTarget[]
 ): Promise<PublishRunResult> {
   const grant = await requireContentAccess(contentId, "edit");
-  if (grant.applicationId !== applicationId) throw new Error("Article not found.");
+  if (grant.applicationId !== applicationId) throw new UserFacingError("Article not found.");
   const db = await getDb();
   const { data, error } = await db
     .from("content")
@@ -211,7 +212,7 @@ export async function publishArticleNow(
     .single();
   if (error) throw new Error(error.message);
   if (!isPublishable(data.status)) {
-    throw new Error("Approve the article before publishing.");
+    throw new UserFacingError("Approve the article before publishing.");
   }
   await replaceArticlePublishTargets(contentId, applicationId, targets, [
     String(data.source_language ?? ""),

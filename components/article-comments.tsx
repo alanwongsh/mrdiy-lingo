@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addArticleComment } from "@/lib/actions/comments";
@@ -209,7 +210,7 @@ export function ArticleComments({
                   setBody("");
                   router.refresh();
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : "Comment failed");
+                  setError(errorMessage(err, "Comment failed"));
                 }
               });
             }}

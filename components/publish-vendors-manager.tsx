@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { deletePublishVendor, savePublishVendor } from "@/lib/actions/publish";
@@ -154,7 +155,7 @@ export function PublishVendorsManager({
         await deletePublishVendor(vendor.id, applicationId);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not delete the connection.");
+        setError(errorMessage(err, "Could not delete the connection."));
       }
     });
   }
@@ -309,7 +310,7 @@ function VendorDialog({
         router.refresh();
         onClose();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not save the connection.");
+        setError(errorMessage(err, "Could not save the connection."));
       }
     });
   }

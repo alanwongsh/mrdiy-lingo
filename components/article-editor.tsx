@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -434,7 +435,7 @@ export function ArticleEditor({
         setVersions(await listContentTranslationVersions(targetTranslation.id));
       } catch (err) {
         setHistoryError(
-          err instanceof Error ? err.message : "Failed to load history"
+          errorMessage(err, "Failed to load history")
         );
       } finally {
         setHistoryLoading(false);
@@ -493,7 +494,7 @@ export function ArticleEditor({
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Translate failed");
+        setError(errorMessage(err, "Translate failed"));
       } finally {
         setIsTranslating(false);
         setTranslatingLabel("");
@@ -532,7 +533,7 @@ export function ArticleEditor({
         if (result.notes.length > 0) setError(result.notes.join(" "));
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Publish failed");
+        setError(errorMessage(err, "Publish failed"));
       }
     });
   }
@@ -556,7 +557,7 @@ export function ArticleEditor({
         });
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Save failed");
+        setError(errorMessage(err, "Save failed"));
       }
     });
   }
@@ -582,7 +583,7 @@ export function ArticleEditor({
       setError("");
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Could not apply the suggestion.";
+        errorMessage(err, "Could not apply the suggestion.");
       // Accept all: an earlier suggestion may already have replaced this wording.
       if (quiet && !qualityActionStillOpen(draftRef.current, action)) {
         setAcceptedActionIds((ids) =>
@@ -682,7 +683,7 @@ export function ArticleEditor({
         });
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Save failed");
+        setError(errorMessage(err, "Save failed"));
       }
     });
   }
@@ -1044,7 +1045,7 @@ export function ArticleEditor({
                           if (showHistory) loadHistory();
                         } catch (err) {
                           setError(
-                            err instanceof Error ? err.message : "Save failed"
+                            errorMessage(err, "Save failed")
                           );
                         }
                       })
@@ -1095,7 +1096,7 @@ export function ArticleEditor({
                         router.refresh();
                       } catch (err) {
                         setError(
-                          err instanceof Error ? err.message : "Approve failed"
+                          errorMessage(err, "Approve failed")
                         );
                       }
                     })
@@ -1149,9 +1150,7 @@ export function ArticleEditor({
                         );
                       } catch (err) {
                         setHistoryError(
-                          err instanceof Error
-                            ? err.message
-                            : "Failed to delete version"
+                          errorMessage(err, "Failed to delete version")
                         );
                       }
                     });

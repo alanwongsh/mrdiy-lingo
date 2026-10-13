@@ -1,5 +1,6 @@
 "use server";
 
+import { UserFacingError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db/client";
 import {
@@ -158,7 +159,7 @@ export async function requireContentTypeCode(
   await requireAppCapability(applicationId, "edit");
   const existing = await findContentType(applicationId, requested);
   if (!existing) {
-    throw new Error(`Add the ${requested} type before using it.`);
+    throw new UserFacingError(`Add the ${requested} type before using it.`);
   }
   return existing.code;
 }
@@ -171,18 +172,18 @@ export async function createContentType(input: {
 }): Promise<ContentTypeRecord> {
   await requireAppCapability(input.application_id, "settings.content_types");
   const name = input.name.trim();
-  if (!name) throw new Error("Name is required.");
+  if (!name) throw new UserFacingError("Name is required.");
   const code = normalizeContentTypeCode(input.code?.trim() ? input.code : name);
-  if (!code) throw new Error("Enter a name that can become a type code.");
+  if (!code) throw new UserFacingError("Enter a name that can become a type code.");
   const existing = await findContentType(input.application_id, code);
-  if (existing) throw new Error(`Type ${code} already exists.`);
+  if (existing) throw new UserFacingError(`Type ${code} already exists.`);
   const inserted = await insertContentType({
     applicationId: input.application_id,
     code,
     name,
     description: input.description,
   });
-  if (!inserted.created) throw new Error(`Type ${code} already exists.`);
+  if (!inserted.created) throw new UserFacingError(`Type ${code} already exists.`);
   revalidateContentTypes(input.application_id);
   return inserted.record;
 }
@@ -194,7 +195,7 @@ export async function updateContentType(
 ): Promise<ContentTypeRecord> {
   await requireAppCapability(applicationId, "settings.content_types");
   const name = input.name.trim();
-  if (!name) throw new Error("Name is required.");
+  if (!name) throw new UserFacingError("Name is required.");
   const status = input.status === "INACTIVE" ? "INACTIVE" : "ACTIVE";
   const db = await getDb();
   const { data, error } = await db

@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
@@ -102,7 +103,7 @@ export function NamespacesManager({
                 }
                 router.refresh();
               } catch (err) {
-                setError(err instanceof Error ? err.message : "Failed");
+                setError(errorMessage(err, "Failed"));
               }
             });
           }}

@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { deleteContentType } from "@/lib/actions/content-types";
@@ -89,7 +90,7 @@ export function ContentTypesManager({
                                     router.refresh();
                                   } catch (err) {
                                     setError(
-                                      err instanceof Error ? err.message : "Failed"
+                                      errorMessage(err, "Failed")
                                     );
                                   }
                                 });

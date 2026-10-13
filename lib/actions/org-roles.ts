@@ -1,5 +1,6 @@
 "use server";
 
+import { UserFacingError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireSuperadmin } from "@/lib/auth/access";
 import { loadOrgRoleMap, normalizeLdapRole } from "@/lib/auth/org-roles";
@@ -16,7 +17,7 @@ function revalidateRoles() {
 export async function listOrgRoleMappings(): Promise<OrgRoleMapping[]> {
   await requireSuperadmin();
   const rows = await loadOrgRoleMap();
-  if (!rows) throw new Error(MIGRATION);
+  if (!rows) throw new UserFacingError(MIGRATION);
   return rows;
 }
 
@@ -29,9 +30,9 @@ export async function addOrgRoleMapping(input: {
   const ldapRole = normalizeLdapRole(input.ldapRole);
   const band = input.band === undefined ? "EDITOR" : parseOrgBand(input.band);
   if (!ldapRole || ldapRole.length > 80) {
-    throw new Error("Enter a job title of up to 80 characters.");
+    throw new UserFacingError("Enter a job title of up to 80 characters.");
   }
-  if (!band) throw new Error("Choose a group.");
+  if (!band) throw new UserFacingError("Choose a group.");
   const db = await getDb();
   const existing = await db
     .from("org_role_map")
@@ -39,17 +40,17 @@ export async function addOrgRoleMapping(input: {
     .ilike("ldap_role", ldapRole.replace(/[%_\\]/g, (match) => `\\${match}`))
     .maybeSingle();
   if (existing.error) {
-    if (existing.error.code === "42P01") throw new Error(MIGRATION);
+    if (existing.error.code === "42P01") throw new UserFacingError(MIGRATION);
     throw new Error(existing.error.message);
   }
-  if (existing.data) throw new Error("That job title is already on the list.");
+  if (existing.data) throw new UserFacingError("That job title is already on the list.");
   const { error } = await db.from("org_role_map").insert({
     ldap_role: ldapRole,
     band,
   });
   if (error) {
-    if (error.code === "42P01") throw new Error(MIGRATION);
-    if (error.code === "23505") throw new Error("That job title is already on the list.");
+    if (error.code === "42P01") throw new UserFacingError(MIGRATION);
+    if (error.code === "23505") throw new UserFacingError("That job title is already on the list.");
     throw new Error(error.message);
   }
   revalidateRoles();
@@ -61,14 +62,14 @@ export async function setOrgRoleBand(input: {
 }): Promise<void> {
   await requireSuperadmin();
   const band = parseOrgBand(input.band);
-  if (!band) throw new Error("Choose a group.");
+  if (!band) throw new UserFacingError("Choose a group.");
   const db = await getDb();
   const { error } = await db
     .from("org_role_map")
     .update({ band })
     .eq("id", input.id);
   if (error) {
-    if (error.code === "42P01") throw new Error(MIGRATION);
+    if (error.code === "42P01") throw new UserFacingError(MIGRATION);
     throw new Error(error.message);
   }
   revalidateRoles();
@@ -79,7 +80,7 @@ export async function removeOrgRoleMapping(input: { id: string }): Promise<void>
   const db = await getDb();
   const { error } = await db.from("org_role_map").delete().eq("id", input.id);
   if (error) {
-    if (error.code === "42P01") throw new Error(MIGRATION);
+    if (error.code === "42P01") throw new UserFacingError(MIGRATION);
     throw new Error(error.message);
   }
   revalidateRoles();

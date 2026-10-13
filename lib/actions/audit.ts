@@ -1,5 +1,6 @@
 "use server";
 
+import { UserFacingError } from "@/lib/errors";
 import { requireContentAccess } from "@/lib/auth/access";
 import { getDb } from "@/lib/db/client";
 import type { ContentAuditEvent } from "@/lib/types";
@@ -18,7 +19,7 @@ export async function listArticleAuditEvents(
     .limit(500);
   if (error) {
     if (error.code === "42P01" || /content_audit_events/i.test(error.message)) {
-      throw new Error("Run migration 023_content_audit_events.sql from Setup");
+      throw new UserFacingError("Run migration 023_content_audit_events.sql from Setup");
     }
     throw new Error(error.message);
   }

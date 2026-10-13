@@ -14,12 +14,15 @@ export function AppSubnav({
 }) {
   const pathname = usePathname();
   const base = `/applications/${application.id}`;
-  // CONTENT reaches Roles through its Settings tabs.
+  // CONTENT reaches Roles and Details through its Settings tabs.
   const rolesLink = application.access?.permissions?.includes("roles.manage")
     ? { href: `${base}/settings/roles`, label: "Roles" }
     : null;
   // Shown while access is unknown, so pages that pass no access keep their Import tab.
   const canImport = !application.access || application.access.permissions.includes("content.import");
+  const detailsLink = application.access?.permissions?.includes("settings.general")
+    ? { href: `${base}/edit`, label: "Details" }
+    : null;
   const links =
     application.model_type === "STRING"
       ? [
@@ -27,6 +30,7 @@ export function AppSubnav({
           { href: `${base}/translations`, label: "Translations" },
           { href: `${base}/namespaces`, label: "Namespaces" },
           ...(canImport ? [{ href: `${base}/import`, label: "Import" }] : []),
+          ...(detailsLink ? [detailsLink] : []),
           ...(rolesLink ? [rolesLink] : []),
         ]
       : application.model_type === "CATALOG"
@@ -37,6 +41,7 @@ export function AppSubnav({
             ...(application.access?.can_manage
               ? [{ href: `${base}/settings/people`, label: "People" }]
               : []),
+            ...(detailsLink ? [detailsLink] : []),
             ...(rolesLink ? [rolesLink] : []),
           ]
         : [

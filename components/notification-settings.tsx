@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setReviewEmailNotifications } from "@/lib/actions/applications";
@@ -34,7 +35,7 @@ export function NotificationSettings({
         setMessage("Saved.");
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not save this setting.");
+        setError(errorMessage(err, "Could not save this setting."));
       }
     });
   }

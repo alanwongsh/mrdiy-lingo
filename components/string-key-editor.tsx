@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -105,7 +106,7 @@ export function StringKeyEditor({
         setVersions(await listTranslationVersions(targetTranslation.id));
       } catch (err) {
         setHistoryError(
-          err instanceof Error ? err.message : "Failed to load history"
+          errorMessage(err, "Failed to load history")
         );
       } finally {
         setHistoryLoading(false);
@@ -134,7 +135,7 @@ export function StringKeyEditor({
         }
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Translate failed");
+        setError(errorMessage(err, "Translate failed"));
       } finally {
         setIsTranslating(false);
         setTranslatingLabel("");
@@ -240,7 +241,7 @@ export function StringKeyEditor({
                         if (showHistory) loadHistory();
                       } catch (err) {
                         setError(
-                          err instanceof Error ? err.message : "Save failed"
+                          errorMessage(err, "Save failed")
                         );
                       }
                     })
@@ -290,7 +291,7 @@ export function StringKeyEditor({
                         router.refresh();
                       } catch (err) {
                         setError(
-                          err instanceof Error ? err.message : "Approve failed"
+                          errorMessage(err, "Approve failed")
                         );
                       }
                     })
@@ -361,9 +362,7 @@ export function StringKeyEditor({
                 );
               } catch (err) {
                 setHistoryError(
-                  err instanceof Error
-                    ? err.message
-                    : "Failed to delete version"
+                  errorMessage(err, "Failed to delete version")
                 );
               }
             });

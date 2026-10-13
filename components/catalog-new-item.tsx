@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -99,7 +100,7 @@ export function CatalogNewItem({
               router.push(`/applications/${applicationId}/items/${item.id}`);
             } catch (err) {
               setProgress("");
-              setError(err instanceof Error ? err.message : "Failed to create");
+              setError(errorMessage(err, "Failed to create"));
             }
           });
         }}

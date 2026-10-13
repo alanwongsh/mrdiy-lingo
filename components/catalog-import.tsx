@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -71,7 +72,7 @@ export function CatalogImport({
       setResult(data);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Import failed");
+      setError(errorMessage(err, "Import failed"));
     } finally {
       setBusy(false);
     }

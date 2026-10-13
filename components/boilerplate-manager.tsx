@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
@@ -53,7 +54,7 @@ export function BoilerplateManager({
         after?.();
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not save the boilerplate.");
+        setError(errorMessage(err, "Could not save the boilerplate."));
       }
     });
   }

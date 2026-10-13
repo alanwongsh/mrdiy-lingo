@@ -1,5 +1,6 @@
 "use server";
 
+import { UserFacingError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActor } from "@/lib/auth/actor";
 import { requireContentAccess } from "@/lib/auth/access";
@@ -29,12 +30,12 @@ export async function addArticleComment(input: {
   const grant = await requireContentAccess(input.contentId, "view");
   const actor = await requireActor();
   const body = input.body.trim();
-  if (!body) throw new Error("Write a comment first.");
-  if (body.length > 2000) throw new Error("Comment is too long.");
+  if (!body) throw new UserFacingError("Write a comment first.");
+  if (body.length > 2000) throw new UserFacingError("Comment is too long.");
 
   const languageCode = input.languageCode?.trim() || null;
   if (languageCode && !/^[A-Za-z0-9-]{2,15}$/.test(languageCode)) {
-    throw new Error("Unknown language.");
+    throw new UserFacingError("Unknown language.");
   }
 
   const db = await getDb();
@@ -45,7 +46,7 @@ export async function addArticleComment(input: {
     .maybeSingle();
   if (findError) throw new Error(findError.message);
   if (!article || article.application_id !== input.applicationId) {
-    throw new Error("Article not found.");
+    throw new UserFacingError("Article not found.");
   }
 
   const { error } = await db.from("article_comments").insert({

@@ -1,6 +1,7 @@
 "use client";
 
 import { can } from "@/lib/auth/permissions";
+import { errorMessage } from "@/lib/errors";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getApplication } from "@/lib/actions/applications";
@@ -21,12 +22,12 @@ export default function EditApplicationPage() {
           return;
         }
         if (!can(row.access, "settings.general")) {
-          setError("Only the owner or a superadmin can edit this application.");
+          setError("Your role cannot change this application's details.");
           return;
         }
         setApp(row);
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => setError(errorMessage(e, "Could not load this application.")));
   }, [id]);
 
   if (!app && !error) {

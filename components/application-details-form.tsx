@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { updateApplication } from "@/lib/actions/applications";
@@ -41,7 +42,7 @@ export function ApplicationDetailsForm({
         else setMessage("Saved.");
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Update failed");
+        setError(errorMessage(err, "Update failed"));
       }
     });
   }

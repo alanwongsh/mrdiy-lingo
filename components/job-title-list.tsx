@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { addOrgRoleMapping, removeOrgRoleMapping } from "@/lib/actions/org-roles";
@@ -19,7 +20,7 @@ export function JobTitleList({ titles }: { titles: OrgRoleMapping[] }) {
         await task();
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not update job titles.");
+        setError(errorMessage(err, "Could not update job titles."));
       }
     });
   }

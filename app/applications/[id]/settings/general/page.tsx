@@ -6,6 +6,7 @@ import {
   listContentTypes,
 } from "@/lib/actions/content-types";
 import { mailConfigured } from "@/lib/mail";
+import { ApplicationDetailsForm } from "@/components/application-details-form";
 import { ContentTypesManager } from "@/components/content-types-manager";
 import { NotificationSettings } from "@/components/notification-settings";
 import { SettingsChrome, SettingsSection } from "@/components/settings-chrome";
@@ -27,6 +28,20 @@ export default async function SettingsGeneralPage({
   return (
     <SettingsChrome application={app}>
       <div className="space-y-3">
+        <SettingsSection
+          id="details"
+          title="Application details"
+          description={`${app.name} · ${app.status === "ACTIVE" ? "Active" : "Inactive"}`}
+        >
+          {can(app.access, "settings.general") ? (
+            <ApplicationDetailsForm application={app} />
+          ) : (
+            <p className="text-sm text-[var(--hub-muted)]">
+              Your role cannot change the application name, description, or status.
+            </p>
+          )}
+        </SettingsSection>
+
         <SettingsSection
           id="types"
           title="Article types"

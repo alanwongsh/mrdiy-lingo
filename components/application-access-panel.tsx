@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
@@ -162,7 +163,7 @@ function MemberRow({
         setEditingPassword(false);
         setNotice("Password saved.");
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not set the password.");
+        setError(errorMessage(err, "Could not set the password."));
       }
     });
   }
@@ -185,7 +186,7 @@ function MemberRow({
         });
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not save access.");
+        setError(errorMessage(err, "Could not save access."));
       }
     });
   }
@@ -200,7 +201,7 @@ function MemberRow({
         });
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not remove this person.");
+        setError(errorMessage(err, "Could not remove this person."));
       }
     });
   }
@@ -372,7 +373,7 @@ export function ApplicationAccessPanel({
         setPassword("");
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not invite this person.");
+        setError(errorMessage(err, "Could not invite this person."));
       }
     });
   }
@@ -393,7 +394,7 @@ export function ApplicationAccessPanel({
         setOwnerIdentity("");
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not set the owner.");
+        setError(errorMessage(err, "Could not set the owner."));
       }
     });
   }

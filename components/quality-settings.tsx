@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -125,7 +126,7 @@ export function QualitySettings({
         setNotice("Scoring saved.");
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not save scoring.");
+        setError(errorMessage(err, "Could not save scoring."));
       }
     });
   }
@@ -193,7 +194,7 @@ export function QualitySettings({
         setEditor(null);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not save the word.");
+        setError(errorMessage(err, "Could not save the word."));
       }
     });
   }
@@ -217,7 +218,7 @@ export function QualitySettings({
         setNotice("Word deleted.");
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not delete the word.");
+        setError(errorMessage(err, "Could not delete the word."));
       }
     });
   }
@@ -242,7 +243,7 @@ export function QualitySettings({
         setNotice(count === 1 ? "Word deleted." : `${count} words deleted.`);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not delete the words.");
+        setError(errorMessage(err, "Could not delete the words."));
       }
     });
   }

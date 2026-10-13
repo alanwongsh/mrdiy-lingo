@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useTransition } from "react";
 import {
@@ -122,7 +123,7 @@ export function CatalogItemEditor({
         if (message) setNotice(message);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong");
+        setError(errorMessage(err, "Something went wrong"));
       } finally {
         setBusy("");
       }
@@ -574,7 +575,7 @@ function SourceInput({
       onText(data.text ?? "");
       onUploaded({ extracted: data.extracted ?? 0, readError: data.readError ?? null });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      setError(errorMessage(err, "Upload failed"));
     } finally {
       setUploading(false);
       if (input.current) input.current.value = "";
@@ -592,7 +593,7 @@ function SourceInput({
       setChoice("text");
       onUploaded({ extracted: 0, readError: null });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Remove failed");
+      setError(errorMessage(err, "Remove failed"));
     }
   }
 

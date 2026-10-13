@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { listLanguages } from "@/lib/actions/languages";
@@ -65,7 +66,7 @@ export default function NewTranslationKeyPage() {
                   `/applications/${applicationId}/translations/${key.id}`
                 );
               } catch (err) {
-                setError(err instanceof Error ? err.message : "Failed");
+                setError(errorMessage(err, "Failed"));
               }
             });
           }}

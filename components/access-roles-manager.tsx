@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
@@ -349,7 +350,7 @@ export function AccessRolesManager({
         after?.();
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not save.");
+        setError(errorMessage(err, "Could not save."));
       }
     });
   }

@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -70,7 +71,7 @@ export function CatalogItemList({
         setSelected([]);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Translate failed");
+        setError(errorMessage(err, "Translate failed"));
       }
     });
   }

@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useState, useTransition } from "react";
 import {
   createContentType,
@@ -75,7 +76,7 @@ export function ContentTypeDialog({
                 onSaved?.(saved);
                 onClose();
               } catch (err) {
-                setError(err instanceof Error ? err.message : "Failed");
+                setError(errorMessage(err, "Failed"));
               }
             });
           }}

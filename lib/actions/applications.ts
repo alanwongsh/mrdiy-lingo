@@ -1,5 +1,6 @@
 "use server";
 
+import { UserFacingError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import {
   accessErrorMessage,
@@ -216,7 +217,7 @@ export async function setReviewEmailNotifications(
     .eq("id", id);
   if (error) {
     if (error.code === "42703") {
-      throw new Error("Run migration 020_review_email_setting.sql first.");
+      throw new UserFacingError("Run migration 020_review_email_setting.sql first.");
     }
     throw new Error(error.message);
   }
@@ -243,7 +244,7 @@ export async function listApplicationPeople(applicationId: string): Promise<{
     .eq("id", applicationId)
     .maybeSingle();
   if (appError) throw new Error(appError.message);
-  if (!app) throw new Error("Application not found.");
+  if (!app) throw new UserFacingError("Application not found.");
 
   let owner: ApplicationMemberView | null = null;
   if (app.owner_user_id) {
@@ -396,9 +397,9 @@ async function assignLdapRole(userId: string, ldapRole: string): Promise<void> {
     return;
   }
   const orgRoles = await loadOrgRoleMap();
-  if (!orgRoles) throw new Error("Run migration 012_org_role_map.sql from Setup.");
+  if (!orgRoles) throw new UserFacingError("Run migration 012_org_role_map.sql from Setup.");
   const title = mappedTitle(trimmed, orgRoles);
-  if (!title) throw new Error("Add that role on the Roles page before assigning it.");
+  if (!title) throw new UserFacingError("Add that role on the Roles page before assigning it.");
   const band = bandForLdapRole(title, orgRoles);
   const error = await writeAccountRole(userId, title, band === "ADMIN" ? "HOD" : band);
   if (error) throw new Error(error);
@@ -411,18 +412,18 @@ async function resolveJobTitle(input: string): Promise<string | null> {
   const trimmed = input.trim();
   if (!trimmed) return null;
   const orgRoles = await loadOrgRoleMap();
-  if (!orgRoles) throw new Error("Run migration 012_org_role_map.sql from Setup.");
+  if (!orgRoles) throw new UserFacingError("Run migration 012_org_role_map.sql from Setup.");
   const title = mappedTitle(trimmed, orgRoles);
-  if (!title) throw new Error("Add that job title on the Job titles page before assigning it.");
+  if (!title) throw new UserFacingError("Add that job title on the Job titles page before assigning it.");
   return title;
 }
 
 /** The chosen role, if the person giving it holds every permission in it. */
 function assignableRole(roles: AccessRole[], id: string, actor: AppAccess): AccessRole {
   const role = roles.find((item) => item.id === id);
-  if (!role) throw new Error("Choose a role.");
+  if (!role) throw new UserFacingError("Choose a role.");
   if (!canGrantRole(actor, role)) {
-    throw new Error("You can only give a role whose permissions you hold yourself.");
+    throw new UserFacingError("You can only give a role whose permissions you hold yourself.");
   }
   return role;
 }
@@ -435,7 +436,7 @@ function assertCanChangeHolder(
 ): void {
   const current = roles.find((item) => item.id === currentRoleId);
   if (current && !canGrantRole(actor, current)) {
-    throw new Error("This person's role has permissions you do not hold, so you cannot change it.");
+    throw new UserFacingError("This person's role has permissions you do not hold, so you cannot change it.");
   }
 }
 
@@ -686,7 +687,7 @@ export async function updateApplicationMember(input: {
     .eq("application_id", input.applicationId)
     .maybeSingle();
   if (memberError) throw new Error(accessErrorMessage(memberError));
-  if (!member?.user_id) throw new Error("That person is not on this application.");
+  if (!member?.user_id) throw new UserFacingError("That person is not on this application.");
 
   const accessRoles = await loadAccessRoles(input.applicationId);
   if (!accessRoles) {
@@ -705,7 +706,7 @@ export async function updateApplicationMember(input: {
   if (current.error) throw new Error(accessErrorMessage(current.error));
   const currentRoleId = (current.data?.access_role_id as string | null) ?? null;
   if (member.user_id === actor.id && !actor.is_superadmin && currentRoleId !== role.id) {
-    throw new Error(OWN_ROLE_MESSAGE);
+    throw new UserFacingError(OWN_ROLE_MESSAGE);
   }
   assertCanChangeHolder(accessRoles, currentRoleId, actorAccess);
   const { error: userError } = await db

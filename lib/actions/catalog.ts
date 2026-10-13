@@ -1,5 +1,6 @@
 "use server";
 
+import { UserFacingError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { escapeIlike, getDb } from "@/lib/db/client";
 import { getActor } from "@/lib/auth/actor";
@@ -99,7 +100,7 @@ export async function ensureCatalogFields(
 
 function cleanFieldInput(input: { label: string; translatable: boolean }) {
   const label = input.label.trim();
-  if (!label) throw new Error("Label is required.");
+  if (!label) throw new UserFacingError("Label is required.");
   return { label, translatable: !!input.translatable };
 }
 
@@ -113,9 +114,9 @@ export async function createItemField(input: {
   await requireAppCapability(input.application_id, "settings.fields");
   const { label, translatable } = cleanFieldInput(input);
   const code = normalizeFieldCode(input.code?.trim() ? input.code : label);
-  if (!code) throw new Error("Enter a label that can become a field code.");
+  if (!code) throw new UserFacingError("Enter a label that can become a field code.");
   const existing = await loadItemFields(input.application_id, { includeInactive: true });
-  if (existing.some((f) => f.code === code)) throw new Error(`Field ${code} already exists.`);
+  if (existing.some((f) => f.code === code)) throw new UserFacingError(`Field ${code} already exists.`);
   const sortOrder = Math.max(-10, ...existing.map((f) => f.sort_order)) + 10;
   const db = await getDb();
   const { data, error } = await db
@@ -134,7 +135,7 @@ export async function createItemField(input: {
     .select("*")
     .single();
   if (error) {
-    if (error.code === "23505") throw new Error(`Field ${code} already exists.`);
+    if (error.code === "23505") throw new UserFacingError(`Field ${code} already exists.`);
     throwItemError(error);
   }
   revalidateFields(input.application_id);
@@ -183,7 +184,7 @@ export async function deleteItemField(id: string, applicationId: string): Promis
     .eq("application_id", applicationId);
   if (error) {
     if (error.code === "23503") {
-      throw new Error("Items already use this field. Mark it inactive instead.");
+      throw new UserFacingError("Items already use this field. Mark it inactive instead.");
     }
     throwItemError(error);
   }
@@ -303,8 +304,8 @@ export async function createItem(input: {
 }): Promise<CatalogItem> {
   const grant = await requireAppCapability(input.applicationId, "edit");
   const code = normalizeItemCode(input.item_code);
-  if (!code) throw new Error("Code is required.");
-  if (!input.source_language) throw new Error("Pick the source language.");
+  if (!code) throw new UserFacingError("Code is required.");
+  if (!input.source_language) throw new UserFacingError("Pick the source language.");
   const actor = await getActor();
   const db = await getDb();
   const { data, error } = await db
@@ -322,7 +323,7 @@ export async function createItem(input: {
     .select("*")
     .single();
   if (error) {
-    if (error.code === "23505") throw new Error(`${code} already exists.`);
+    if (error.code === "23505") throw new UserFacingError(`${code} already exists.`);
     throwItemError(error);
   }
   const item = data as CatalogItem;
@@ -350,7 +351,7 @@ export async function updateItemDetails(
 ): Promise<CatalogItem> {
   const grant = await requireItemAccess(itemId, "edit");
   const item = await loadItem(itemId);
-  if (!item) throw new Error("Item not found.");
+  if (!item) throw new UserFacingError("Item not found.");
   const targets = cleanTargets(input.target_languages, item.source_language);
   const name = input.name.trim();
   const changed: string[] = [];
@@ -383,12 +384,12 @@ export async function saveItemText(input: {
 }): Promise<{ saved: number }> {
   const grant = await requireItemAccess(input.itemId, "edit");
   const item = await loadItem(input.itemId);
-  if (!item) throw new Error("Item not found.");
+  if (!item) throw new UserFacingError("Item not found.");
   if (
     input.languageCode !== item.source_language &&
     !item.target_languages.includes(input.languageCode)
   ) {
-    throw new Error("Add this language to this item first.");
+    throw new UserFacingError("Add this language to this item first.");
   }
   const [fields, values] = await Promise.all([
     loadItemFields(item.application_id),
@@ -511,7 +512,7 @@ async function translateOneItem(input: {
           sourceLanguage: item.source_language,
           targetLanguage: language,
         });
-        if (!translated.trim()) throw new Error("Empty translation");
+        if (!translated.trim()) throw new UserFacingError("Empty translation");
         batch.set(batchKey, translated);
         changes.push({ fieldId: field.id, text: translated, sourceType: "SYSTEM" });
       } catch (err) {
@@ -552,7 +553,7 @@ export async function translateItem(input: {
 }): Promise<TranslateStats> {
   const grant = await requireItemAccess(input.itemId, "edit");
   const item = await loadItem(input.itemId);
-  if (!item) throw new Error("Item not found.");
+  if (!item) throw new UserFacingError("Item not found.");
   const [fields, values] = await Promise.all([
     loadItemFields(item.application_id),
     loadItemValues([item.id]),
@@ -616,16 +617,16 @@ export async function translateItems(input: {
 export async function submitItem(itemId: string): Promise<CatalogItem> {
   const grant = await requireItemAccess(itemId, "edit");
   const item = await loadItem(itemId);
-  if (!item) throw new Error("Item not found.");
+  if (!item) throw new UserFacingError("Item not found.");
   if (item.status === "REVIEW") return item;
-  if (item.status === "APPROVED") throw new Error("This item is already approved.");
+  if (item.status === "APPROVED") throw new UserFacingError("This item is already approved.");
   const [fields, values] = await Promise.all([
     loadItemFields(item.application_id),
     loadItemValues([item.id]),
   ]);
   const missing = missingRequired(fields, values, item);
   if (missing.length > 0) {
-    throw new Error(`Fill ${missing.map((f) => f.label).join(", ")} before submitting.`);
+    throw new UserFacingError(`Fill ${missing.map((f) => f.label).join(", ")} before submitting.`);
   }
   const actor = await getActor();
   const next = await updateItemStatus(item, "REVIEW", {
@@ -650,9 +651,9 @@ export async function approveItemLanguage(input: {
 }): Promise<CatalogItem> {
   const grant = await requireItemAccess(input.itemId, "approve");
   const item = await loadItem(input.itemId);
-  if (!item) throw new Error("Item not found.");
+  if (!item) throw new UserFacingError("Item not found.");
   if (!item.target_languages.includes(input.languageCode)) {
-    throw new Error("That language is not a target of this item.");
+    throw new UserFacingError("That language is not a target of this item.");
   }
   const fields = await loadItemFields(item.application_id);
   const values = await loadItemValues([item.id]);
@@ -691,7 +692,7 @@ export async function approveItemLanguage(input: {
 export async function approveItem(itemId: string): Promise<CatalogItem> {
   const grant = await requireItemAccess(itemId, "approve");
   const item = await loadItem(itemId);
-  if (!item) throw new Error("Item not found.");
+  if (!item) throw new UserFacingError("Item not found.");
   if (item.status === "APPROVED") return item;
   const [fields, values] = await Promise.all([
     loadItemFields(item.application_id),
@@ -714,10 +715,10 @@ export async function requestItemChanges(input: {
 }): Promise<CatalogItem> {
   const grant = await requireItemAccess(input.itemId, "approve");
   const comment = input.comment.trim();
-  if (!comment) throw new Error("Say what needs to change.");
+  if (!comment) throw new UserFacingError("Say what needs to change.");
   const item = await loadItem(input.itemId);
-  if (!item) throw new Error("Item not found.");
-  if (item.status === "DRAFT") throw new Error("This item has not been submitted yet.");
+  if (!item) throw new UserFacingError("Item not found.");
+  if (item.status === "DRAFT") throw new UserFacingError("This item has not been submitted yet.");
   const next = await updateItemStatus(item, "CHANGES_REQUESTED", {
     approved_by_name: null,
     approved_by_username: null,
@@ -752,7 +753,7 @@ export async function deleteItem(itemId: string): Promise<void> {
 export async function deleteItemFile(valueId: string): Promise<void> {
   const grant = await requireItemValueAccess(valueId, "edit");
   const item = await loadItem(grant.itemId);
-  if (!item) throw new Error("Item not found.");
+  if (!item) throw new UserFacingError("Item not found.");
   const db = await getDb();
   const { data, error } = await db
     .from("catalog_values")

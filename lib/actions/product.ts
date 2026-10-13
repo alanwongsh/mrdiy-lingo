@@ -1,5 +1,6 @@
 "use server";
 
+import { UserFacingError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { escapeIlike, getDb } from "@/lib/db/client";
 import type {
@@ -426,7 +427,7 @@ export async function autoTranslateKey(input: {
 }): Promise<Translation> {
   const grant = await requireTranslationKeyAccess(input.translationKeyId, "edit");
   const key = await getTranslationKey(input.translationKeyId);
-  if (!key) throw new Error("Translation key not found");
+  if (!key) throw new UserFacingError("Translation key not found");
 
   const service = getTranslationService(grant.applicationId);
   const translated = await service.translateText({

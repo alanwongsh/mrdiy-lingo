@@ -1,3 +1,4 @@
+import { UserFacingError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { approvalStamp, versionAuthorFields } from "@/lib/auth/actor";
 import {
@@ -37,12 +38,12 @@ const UUID =
 const LANGUAGE = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;
 
 function assertUuid(value: string, label: string) {
-  if (!UUID.test(value)) throw new Error(`Invalid ${label}.`);
+  if (!UUID.test(value)) throw new UserFacingError(`Invalid ${label}.`);
 }
 
 function assertLanguage(value: string, label: string) {
   const trimmed = value.trim();
-  if (!LANGUAGE.test(trimmed)) throw new Error(`Invalid ${label}.`);
+  if (!LANGUAGE.test(trimmed)) throw new UserFacingError(`Invalid ${label}.`);
   return trimmed;
 }
 
@@ -59,7 +60,7 @@ function revalidateQuality(applicationId: string) {
 
 function bounded(value: string, max: number, label: string) {
   const text = value ?? "";
-  if (text.length > max) throw new Error(`${label} is too long to analyze.`);
+  if (text.length > max) throw new UserFacingError(`${label} is too long to analyze.`);
   return text;
 }
 
@@ -117,17 +118,17 @@ export async function analyzeTranslationQuality(input: {
   const sourceLanguage = assertLanguage(input.sourceLanguage, "source language");
   const targetLanguage = assertLanguage(input.targetLanguage, "target language");
   if (sourceLanguage.toLowerCase() === targetLanguage.toLowerCase()) {
-    throw new Error("Choose a target language that differs from the source.");
+    throw new UserFacingError("Choose a target language that differs from the source.");
   }
   const grant = await requireContentAccess(input.contentId, "edit");
   if (grant.applicationId !== input.applicationId) {
-    throw new Error("Article not found.");
+    throw new UserFacingError("Article not found.");
   }
   const translatedTitle = bounded(input.translatedTitle ?? "", 2000, "Title");
   const translatedSummary = bounded(input.translatedSummary ?? "", 8000, "Description");
   const translatedContent = bounded(input.translatedContent ?? "", 100000, "Body");
   if (!translatedTitle.trim() && !translatedSummary.trim() && !translatedContent.trim()) {
-    throw new Error("Add a translation before analyzing it.");
+    throw new UserFacingError("Add a translation before analyzing it.");
   }
 
   return getTranslationQualityService().analyze({
@@ -161,14 +162,14 @@ export async function previewTranslationQuality(input: {
   const sourceLanguage = assertLanguage(input.sourceLanguage, "source language");
   const targetLanguage = assertLanguage(input.targetLanguage, "target language");
   if (sourceLanguage.toLowerCase() === targetLanguage.toLowerCase()) {
-    throw new Error("Choose a target language that differs from the source.");
+    throw new UserFacingError("Choose a target language that differs from the source.");
   }
   await requireAppCapability(input.applicationId, "edit");
   const translatedTitle = bounded(input.translatedTitle ?? "", 2000, "Title");
   const translatedSummary = bounded(input.translatedSummary ?? "", 8000, "Description");
   const translatedContent = bounded(input.translatedContent ?? "", 100000, "Body");
   if (!translatedTitle.trim() && !translatedSummary.trim() && !translatedContent.trim()) {
-    throw new Error("Add a translation before analyzing it.");
+    throw new UserFacingError("Add a translation before analyzing it.");
   }
   return getTranslationQualityService().preview({
     applicationId: input.applicationId,
@@ -198,7 +199,7 @@ export async function recheckTranslationRules(input: {
   const targetLanguage = assertLanguage(input.targetLanguage, "target language");
   const grant = await requireContentAccess(input.contentId, "edit");
   if (grant.applicationId !== input.applicationId) {
-    throw new Error("Article not found.");
+    throw new UserFacingError("Article not found.");
   }
   return getTranslationQualityService().recheckRules({
     applicationId: grant.applicationId,
@@ -263,7 +264,7 @@ export async function ignoreTranslationFinding(input: {
   const run = await getQualityRunRecord(input.runId);
   const grant = await requireContentAccess(run.contentId, "edit");
   if (grant.applicationId !== input.applicationId) {
-    throw new Error("Article not found.");
+    throw new UserFacingError("Article not found.");
   }
   const actionId = await markFindingIgnored(input.findingId, input.runId);
   return { findingId: input.findingId, actionId, status: "ignored" as const };
@@ -275,7 +276,7 @@ export async function acknowledgeIgnoredQualityAction(actionId: string) {
   const row = await getQualityActionRow(actionId);
   await requireContentAccess(row.contentId, "edit");
   if (row.action.status !== "pending") {
-    throw new Error("This suggestion is no longer pending.");
+    throw new UserFacingError("This suggestion is no longer pending.");
   }
   return {
     id: row.action.id,
@@ -308,12 +309,12 @@ export async function saveReviewedContentTranslation(input: {
 
   const grant = await requireContentAccess(input.contentId, "edit");
   if (grant.applicationId !== input.applicationId) {
-    throw new Error("Article not found.");
+    throw new UserFacingError("Article not found.");
   }
   const approver = grant.access.can_approve;
   if (input.qualityRunId) assertUuid(input.qualityRunId, "analysis");
   const overlap = accepted.some((id) => ignored.includes(id));
-  if (overlap) throw new Error("An action cannot be both accepted and ignored.");
+  if (overlap) throw new UserFacingError("An action cannot be both accepted and ignored.");
 
   const db = await getDb();
   const { data: existing, error: existingError } = await db
@@ -508,7 +509,7 @@ export async function saveQualityCategories(input: {
   assertUuid(input.applicationId, "application");
   await requireAppCapability(input.applicationId, "settings.quality");
   if (input.categories.length === 0 || input.categories.length > 40) {
-    throw new Error("Choose the categories to save.");
+    throw new UserFacingError("Choose the categories to save.");
   }
   // A repeated id fails the count check below.
   const ids = input.categories.map((item) => {
@@ -521,12 +522,12 @@ export async function saveQualityCategories(input: {
     .select("id")
     .in("id", ids);
   if (error) throw new Error(qualitySchemaMessage(error));
-  if ((data ?? []).length !== ids.length) throw new Error("A category was not found.");
+  if ((data ?? []).length !== ids.length) throw new UserFacingError("A category was not found.");
 
   const rows = input.categories.map((item) => {
     const weight = Number(item.weight);
     if (!Number.isInteger(weight) || weight < 1 || weight > 100) {
-      throw new Error("Each share must be a whole number from 1 to 100.");
+      throw new UserFacingError("Each share must be a whole number from 1 to 100.");
     }
     return {
       application_id: input.applicationId,
@@ -552,7 +553,7 @@ export async function setQualityCategoryEnabled(input: {
   await requireAppCapability(input.applicationId, "settings.quality");
   const categories = await listQualityCategories(input.applicationId, false);
   const category = categories.find((item) => item.id === input.categoryId);
-  if (!category) throw new Error("A category was not found.");
+  if (!category) throw new UserFacingError("A category was not found.");
   const db = await getDb();
   const { error } = await db.from("application_quality_settings").upsert(
     {
@@ -580,10 +581,10 @@ function terminologyFields(input: {
   const term = input.term.trim();
   const sourceLanguage = assertLanguage(input.sourceLanguage, "source language");
   const targetLanguage = assertLanguage(input.targetLanguage, "target language");
-  if (!term || term.length > 120) throw new Error("Enter a term.");
+  if (!term || term.length > 120) throw new UserFacingError("Enter a term.");
   const preferred = input.preferredTranslation.trim();
   if (!preferred || preferred.length > 200) {
-    throw new Error("Enter the wording to use.");
+    throw new UserFacingError("Enter the wording to use.");
   }
   const forbidden = input.forbiddenTranslations
     .split(",")
@@ -604,7 +605,7 @@ function terminologyFields(input: {
 
 function throwTerminologyError(error: { code?: string; message?: string }) {
   if (error.code === "23505") {
-    throw new Error("That term already exists for this language pair.");
+    throw new UserFacingError("That term already exists for this language pair.");
   }
   throw new Error(qualitySchemaMessage(error));
 }
@@ -677,7 +678,7 @@ export async function deleteTerminologyEntries(input: {
   await requireAppCapability(input.applicationId, "settings.terminology");
   const ids = [...new Set(input.terminologyIds)];
   if (ids.length === 0 || ids.length > 100) {
-    throw new Error("Choose the words to delete.");
+    throw new UserFacingError("Choose the words to delete.");
   }
   for (const id of ids) assertUuid(id, "term");
   const db = await getDb();

@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
@@ -322,7 +323,7 @@ export function TranslationQualityPanel({
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Could not load quality review.");
+        setError(errorMessage(err, "Could not load quality review."));
         setErrorKey(key);
         setLoadedKey(key);
       });
@@ -347,7 +348,7 @@ export function TranslationQualityPanel({
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Could not load quality review.");
+        setError(errorMessage(err, "Could not load quality review."));
         setErrorKey(key);
         setLoadedKey(key);
       });
@@ -372,7 +373,7 @@ export function TranslationQualityPanel({
         const run = await getTranslationQualityRun(runId);
         setResults((current) => ({ ...current, [run.runId]: run }));
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not open that analysis.");
+        setError(errorMessage(err, "Could not open that analysis."));
       }
     });
   }
@@ -448,9 +449,7 @@ export function TranslationQualityPanel({
         }
       } catch (err) {
         setError(
-          err instanceof Error
-            ? err.message
-            : "Quality analysis failed. Please try again."
+          errorMessage(err, "Quality analysis failed. Please try again.")
         );
         setErrorKey(requestKey);
         setOpen(true);
@@ -491,7 +490,7 @@ export function TranslationQualityPanel({
           return { ...current, [runId]: { ...result, actions } };
         });
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not ignore that finding.");
+        setError(errorMessage(err, "Could not ignore that finding."));
         setErrorKey(requestKey);
       }
     });
@@ -525,7 +524,7 @@ export function TranslationQualityPanel({
         );
         setOpen(true);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not recheck wording.");
+        setError(errorMessage(err, "Could not recheck wording."));
         setErrorKey(requestKey);
       }
     });

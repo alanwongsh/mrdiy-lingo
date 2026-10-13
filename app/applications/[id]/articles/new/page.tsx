@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { getApplication } from "@/lib/actions/applications";
@@ -201,7 +202,7 @@ export default function NewArticlePage() {
         setAcceptedActionIds([]);
         setIgnoredActionIds([]);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Translate failed");
+        setError(errorMessage(err, "Translate failed"));
       } finally {
         setIsTranslating(false);
         setTranslatingLabel("");
@@ -232,7 +233,7 @@ export default function NewArticlePage() {
       );
       setError("");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not apply the suggestion.";
+      const message = errorMessage(err, "Could not apply the suggestion.");
       // Accept all: an earlier suggestion may already have replaced this wording.
       if (quiet && !qualityActionStillOpen(fields, action)) {
         setAcceptedActionIds((ids) =>
@@ -316,7 +317,7 @@ export default function NewArticlePage() {
         setCreatedId(saved.id);
         router.push(`/applications/${applicationId}/articles/${saved.id}/edit`);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed");
+        setError(errorMessage(err, "Failed"));
       } finally {
         setSavingIntent(null);
       }

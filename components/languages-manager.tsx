@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
@@ -44,7 +45,7 @@ export function LanguagesManager({
         e.currentTarget.reset();
         refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Create failed");
+        setError(errorMessage(err, "Create failed"));
       }
     });
   }
@@ -64,7 +65,7 @@ export function LanguagesManager({
         setEditing(null);
         refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Update failed");
+        setError(errorMessage(err, "Update failed"));
       }
     });
   }

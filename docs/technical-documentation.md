@@ -296,6 +296,8 @@ Identity comes from Joget or from email sign-in. Lingo stores the person on `hub
 
 Every check runs on the server (`lib/auth/access.ts`). Viewing needs membership. Every other action needs one permission. The permissions are listed in `lib/auth/permissions.ts`; which roles hold them is stored in `access_role_permissions` and mapped under each application's Settings → Roles. Owners and superadmins hold every permission.
 
+**Error messages.** Production builds of Next.js replace the message of any error thrown by a server action with a generic notice. Messages meant for the person, such as a refused permission or a validation rule, are thrown as `UserFacingError` (`lib/errors.ts`), which carries the text in the error digest. Screens read it with `errorMessage(error, fallback)`. When the reason was hidden, for example a raw database error, the screen shows its fallback and suggests reloading, since a permission may have changed while the page was open. Do not wrap database error text in `UserFacingError`.
+
 | Permission | Covers |
 | --- | --- |
 | `content.edit` | Create and edit articles, strings, catalog items, and translations. Drafts, submit for review, auto-translate, quality checks, delete articles |

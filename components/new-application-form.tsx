@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { createApplication } from "@/lib/actions/applications";
@@ -55,7 +56,7 @@ export function NewApplicationForm() {
         });
         router.push(appHomePath(app));
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to create");
+        setError(errorMessage(err, "Failed to create"));
       }
     });
   }

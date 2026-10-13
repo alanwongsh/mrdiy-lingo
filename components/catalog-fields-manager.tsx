@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { createItemField, deleteItemField, updateItemField } from "@/lib/actions/catalog";
@@ -84,7 +85,7 @@ export function CatalogFieldsManager({
                                   await deleteItemField(field.id, applicationId);
                                   router.refresh();
                                 } catch (err) {
-                                  setError(err instanceof Error ? err.message : "Failed");
+                                  setError(errorMessage(err, "Failed"));
                                 }
                               });
                             }}
@@ -176,7 +177,7 @@ function FieldDialog({
                   onSaved();
                   onClose();
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : "Failed");
+                  setError(errorMessage(err, "Failed"));
                 }
               });
             }}

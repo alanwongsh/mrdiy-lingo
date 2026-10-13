@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { confirmArticleImport, confirmStringImport } from "@/lib/actions/import";
@@ -227,7 +228,7 @@ export function ImportWizard({
               : 0,
         });
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Import failed");
+        setError(errorMessage(err, "Import failed"));
       }
     });
   }

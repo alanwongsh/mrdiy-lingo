@@ -1,3 +1,4 @@
+import { UserFacingError } from "@/lib/errors";
 import { cache } from "react";
 import type { HubActor } from "@/lib/auth/actor";
 import { getActor } from "@/lib/auth/actor";
@@ -224,14 +225,14 @@ export async function actorForStoredEmail(email: string): Promise<HubActor | nul
 
 export async function requireUser(): Promise<HubUser> {
   const user = await getCurrentUser();
-  if (!user) throw new Error(SIGN_IN_MESSAGE);
+  if (!user) throw new UserFacingError(SIGN_IN_MESSAGE);
   return user;
 }
 
 export async function requireSuperadmin(): Promise<HubUser> {
   const user = await requireUser();
   if (!user.is_superadmin) {
-    throw new Error("This is limited to a Lingo superadmin.");
+    throw new UserFacingError("This is limited to a Lingo superadmin.");
   }
   return user;
 }
@@ -407,11 +408,15 @@ export async function requireAppCapability(
 ): Promise<AccessGrant> {
   const user = await requireUser();
   const application = await loadApplication(applicationId);
-  if (!application) throw new Error("Application not found.");
+  if (!application) throw new UserFacingError("Application not found.");
   const access = await resolveAppAccess(user, application);
-  if (!access) throw new Error("You do not have access to this application.");
+  if (!access) throw new UserFacingError(
+      "You no longer have access to this application. Reload the page, or ask the owner to add you again."
+    );
   if (!hasPermission(access, capability)) {
-    throw new Error("You do not have permission to do that.");
+    throw new UserFacingError(
+      "Your role in this application does not allow this. If your access just changed, reload the page."
+    );
   }
   return { user, applicationId: application.id, access };
 }
@@ -464,7 +469,7 @@ export async function requireContentTranslationAccess(
     .eq("id", contentTranslationId)
     .maybeSingle();
   if (error) throwDb(error);
-  if (!data?.content_id) throw new Error("Translation not found.");
+  if (!data?.content_id) throw new UserFacingError("Translation not found.");
   return requireContentAccess(data.content_id as string, capability);
 }
 
@@ -479,7 +484,7 @@ export async function requireContentVersionAccess(
     .eq("id", versionId)
     .maybeSingle();
   if (error) throwDb(error);
-  if (!data?.content_translation_id) throw new Error("Version not found.");
+  if (!data?.content_translation_id) throw new UserFacingError("Version not found.");
   return requireContentTranslationAccess(
     data.content_translation_id as string,
     capability
@@ -505,7 +510,7 @@ export async function requireItemValueAccess(
     .eq("id", valueId)
     .maybeSingle();
   if (error) throwDb(error);
-  if (!data?.item_id) throw new Error("Value not found.");
+  if (!data?.item_id) throw new UserFacingError("Value not found.");
   const grant = await requireItemAccess(data.item_id as string, capability);
   return { ...grant, itemId: data.item_id as string };
 }
@@ -545,7 +550,7 @@ export async function requireTranslationAccess(
     .eq("id", translationId)
     .maybeSingle();
   if (error) throwDb(error);
-  if (!data?.translation_key_id) throw new Error("Translation not found.");
+  if (!data?.translation_key_id) throw new UserFacingError("Translation not found.");
   return requireTranslationKeyAccess(data.translation_key_id as string, capability);
 }
 
@@ -560,7 +565,7 @@ export async function requireTranslationVersionAccess(
     .eq("id", versionId)
     .maybeSingle();
   if (error) throwDb(error);
-  if (!data?.translation_id) throw new Error("Version not found.");
+  if (!data?.translation_id) throw new UserFacingError("Version not found.");
   return requireTranslationAccess(data.translation_id as string, capability);
 }
 
@@ -572,16 +577,16 @@ export function classifyIdentity(raw: string): {
 } {
   const value = raw.trim();
   if (!value || value.length > 160) {
-    throw new Error("Enter an email or employee ID.");
+    throw new UserFacingError("Enter an email or employee ID.");
   }
   if (value.includes("@")) {
     const email = value.toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new Error("Enter a valid email.");
+      throw new UserFacingError("Enter a valid email.");
     }
     return { email, employeeId: null, username: null, label: email };
   }
-  if (value.length > 80) throw new Error("Employee ID is too long.");
+  if (value.length > 80) throw new UserFacingError("Employee ID is too long.");
   return { email: null, employeeId: value, username: value, label: value };
 }
 

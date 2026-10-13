@@ -1,5 +1,6 @@
 "use server";
 
+import { UserFacingError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireAppCapability } from "@/lib/auth/access";
 import { getDb } from "@/lib/db/client";
@@ -20,8 +21,8 @@ const MIGRATION = "Run migration 028_boilerplate_per_application.sql from Setup.
 const LANGUAGE = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;
 
 function throwBoilerplateError(error: { message: string; code?: string }): never {
-  if (error.code === "42703" || error.code === "42P01") throw new Error(MIGRATION);
-  if (error.code === "23505") throw new Error("That name is already used for another passage.");
+  if (error.code === "42703" || error.code === "42P01") throw new UserFacingError(MIGRATION);
+  if (error.code === "23505") throw new UserFacingError("That name is already used for another passage.");
   throw new Error(error.message);
 }
 
@@ -32,7 +33,7 @@ function revalidate(applicationId: string) {
 /** Names are used to match languages, so keep them simple and comparable. */
 function cleanName(value: string): string {
   const name = value.trim().replace(/\s+/g, " ");
-  if (!name || name.length > 80) throw new Error("Enter a name of up to 80 characters.");
+  if (!name || name.length > 80) throw new UserFacingError("Enter a name of up to 80 characters.");
   return name;
 }
 
@@ -72,10 +73,10 @@ export async function saveBoilerplate(input: {
   const rows = Object.entries(input.phrases)
     .map(([language, phrase]) => ({ language: language.trim(), phrase: phrase.trim() }))
     .filter((row) => row.phrase);
-  if (rows.length === 0) throw new Error("Enter the wording in at least one language.");
+  if (rows.length === 0) throw new UserFacingError("Enter the wording in at least one language.");
   for (const row of rows) {
-    if (!LANGUAGE.test(row.language)) throw new Error("Choose a valid language.");
-    if (row.phrase.length > 4000) throw new Error("A passage can be up to 4,000 characters.");
+    if (!LANGUAGE.test(row.language)) throw new UserFacingError("Choose a valid language.");
+    if (row.phrase.length > 4000) throw new UserFacingError("A passage can be up to 4,000 characters.");
   }
 
   const db = await getDb();
@@ -89,7 +90,7 @@ export async function saveBoilerplate(input: {
   const renamingOnto =
     (existing.data?.length ?? 0) > 0 &&
     name.toLowerCase() !== (input.originalName ?? "").toLowerCase();
-  if (renamingOnto) throw new Error("That name is already used for another passage.");
+  if (renamingOnto) throw new UserFacingError("That name is already used for another passage.");
 
   if (input.originalName) {
     const { error } = await db

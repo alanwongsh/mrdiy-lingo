@@ -1,5 +1,6 @@
 "use server";
 
+import { UserFacingError } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireAppCapability, requireSuperadmin } from "@/lib/auth/access";
 import {
@@ -34,16 +35,16 @@ async function authorize(scope: Scope): Promise<{ actor: Actor; roles: AccessRol
     actor = { permissions: PERMISSION_KEYS };
   }
   const roles = await loadAccessRoles(scope.applicationId);
-  if (!roles) throw new Error(ACCESS_ROLE_MIGRATION);
+  if (!roles) throw new UserFacingError(ACCESS_ROLE_MIGRATION);
   return { actor, roles };
 }
 
 /** A role in this scope that the actor is allowed to change. */
 function changeableRole(roles: AccessRole[], id: string, actor: Actor): AccessRole {
   const role = roles.find((item) => item.id === id);
-  if (!role) throw new Error("That role was not found.");
+  if (!role) throw new UserFacingError("That role was not found.");
   if (!canGrantRole(actor, role)) {
-    throw new Error(`“${role.name}” has permissions you do not hold, so you cannot change it.`);
+    throw new UserFacingError(`“${role.name}” has permissions you do not hold, so you cannot change it.`);
   }
   return role;
 }
@@ -55,15 +56,15 @@ function revalidateRoles(scope: Scope) {
 
 function cleanDetails(input: { name: string; description: string }) {
   const name = input.name.trim().replace(/\s+/g, " ");
-  if (!name || name.length > 60) throw new Error("Enter a role name of up to 60 characters.");
+  if (!name || name.length > 60) throw new UserFacingError("Enter a role name of up to 60 characters.");
   return { name, description: input.description.trim().slice(0, 200) };
 }
 
 function throwRoleError(error: { message: string; code?: string }): never {
-  if (isMissingAccessRoles(error)) throw new Error(ACCESS_ROLE_MIGRATION);
-  if (error.code === "23505") throw new Error("A role with that name already exists here.");
+  if (isMissingAccessRoles(error)) throw new UserFacingError(ACCESS_ROLE_MIGRATION);
+  if (error.code === "23505") throw new UserFacingError("A role with that name already exists here.");
   if (error.code === "23503") {
-    throw new Error("People still hold this role. Give them another role first.");
+    throw new UserFacingError("People still hold this role. Give them another role first.");
   }
   throw new Error(error.message);
 }
@@ -139,11 +140,11 @@ export async function saveRolePermissions(
       name: item.name,
       description: item.description ?? "",
     });
-    if (taken.has(name.toLowerCase())) throw new Error(`A role named “${name}” already exists here.`);
+    if (taken.has(name.toLowerCase())) throw new UserFacingError(`A role named “${name}” already exists here.`);
     taken.add(name.toLowerCase());
     const permissions = parsePermissions(item.permissions);
     if (!canGrantRole(actor, { permissions })) {
-      throw new Error(`You can only tick permissions you hold yourself (“${name}”).`);
+      throw new UserFacingError(`You can only tick permissions you hold yourself (“${name}”).`);
     }
     return { name, description, permissions };
   });
@@ -158,7 +159,7 @@ export async function saveRolePermissions(
     if (same) continue;
     changeableRole(roles, role.id, actor);
     if (!canGrantRole(actor, { permissions: next })) {
-      throw new Error(`You can only tick permissions you hold yourself (“${role.name}”).`);
+      throw new UserFacingError(`You can only tick permissions you hold yourself (“${role.name}”).`);
     }
     changes.push({ role, next });
   }
@@ -191,10 +192,10 @@ export async function updateAccessRole(
   const clash = roles.find(
     (item) => item.id !== role.id && item.name.toLowerCase() === details.name.toLowerCase()
   );
-  if (clash) throw new Error(`A role named “${details.name}” already exists here.`);
+  if (clash) throw new UserFacingError(`A role named “${details.name}” already exists here.`);
   const permissions = parsePermissions(input.permissions);
   if (!canGrantRole(actor, { permissions })) {
-    throw new Error("You can only tick permissions you hold yourself.");
+    throw new UserFacingError("You can only tick permissions you hold yourself.");
   }
   const db = await getDb();
   const { error } = await db.from("access_roles").update(details).eq("id", role.id);

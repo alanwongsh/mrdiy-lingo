@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errors";
 import { Fragment, useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveReviewedContentTranslation } from "@/lib/actions/quality";
@@ -920,7 +921,7 @@ export function ArticleView({
             : "title";
       setReviewNote(`Updated the ${where}. Save changes to keep it.`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not apply the suggestion.";
+      const message = errorMessage(err, "Could not apply the suggestion.");
       // Accept all: an earlier suggestion may already have replaced this wording.
       if (quiet && !qualityActionStillOpen(reviewDraftRef.current, action)) {
         const remember = (ids: string[]) => (ids.includes(action.id) ? ids : [...ids, action.id]);
@@ -965,7 +966,7 @@ export function ArticleView({
         });
         router.refresh();
       } catch (err) {
-        setSaveError(err instanceof Error ? err.message : "Could not save the translation.");
+        setSaveError(errorMessage(err, "Could not save the translation."));
       }
     });
   }
