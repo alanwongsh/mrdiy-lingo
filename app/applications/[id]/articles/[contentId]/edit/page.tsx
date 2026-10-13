@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getActor } from "@/lib/auth/actor";
 import { getApplication } from "@/lib/actions/applications";
 import { listContentTypes } from "@/lib/actions/content-types";
@@ -24,6 +24,8 @@ export default async function ArticleEditPage({
   if (!app || app.model_type !== "CONTENT") notFound();
   const article = await getArticle(contentId);
   if (!article || article.application_id !== app.id) notFound();
+  // Without content.edit the editor is read-only at best; send them to the article instead.
+  if (!app.access.can_edit) redirect(`/applications/${id}/articles/${contentId}`);
   const [languages, contentTypes, publish] = await Promise.all([
     listLanguages(),
     listContentTypes(app.id, { includeInactive: true }),

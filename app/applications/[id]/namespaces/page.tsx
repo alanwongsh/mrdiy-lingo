@@ -22,7 +22,11 @@ export default async function NamespacesPage({
         description="Organize translation keys for navigation. Namespaces do not affect key uniqueness."
       />
       <AppSubnav application={app} />
-      <NamespacesManager applicationId={app.id} initialNamespaces={namespaces} />
+      <NamespacesManager
+        applicationId={app.id}
+        initialNamespaces={namespaces}
+        canEdit={app.access.can_edit}
+      />
     </div>
   );
 }

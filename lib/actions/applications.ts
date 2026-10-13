@@ -25,7 +25,7 @@ import {
   parseAppRole,
   roleFromApprovalFlag,
 } from "@/lib/auth/roles";
-import { canGrantRole } from "@/lib/auth/permissions";
+import { can, canGrantRole } from "@/lib/auth/permissions";
 import { hashPassword } from "@/lib/auth/password";
 import { ensureDefaultContentType } from "@/lib/actions/content-types";
 import { ensureCatalogFields } from "@/lib/actions/catalog";
@@ -64,6 +64,7 @@ async function withAccess(
 
 export async function listApplications(opts?: {
   includeInactive?: boolean;
+  /** Only applications this person can import into. */
   editableOnly?: boolean;
 }): Promise<VisibleApplication[]> {
   const user = await requireUser();
@@ -94,7 +95,7 @@ export async function listApplications(opts?: {
   if (error) throw new Error(error.message);
   const visible = await withAccess(user, (data ?? []) as Application[]);
   if (!opts?.editableOnly) return visible;
-  return visible.filter((app) => app.access.can_edit);
+  return visible.filter((app) => can(app.access, "content.import"));
 }
 
 export async function getApplication(

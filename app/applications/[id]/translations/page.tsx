@@ -49,9 +49,11 @@ export default async function TranslationsPage({
         title={`${app.name} · Translations`}
         description="Browse keys with a scrollable language panel — pick which locales to preview."
         actions={
+          app.access.can_edit ? (
           <LinkButton href={`/applications/${app.id}/translations/new`}>
             New key
           </LinkButton>
+          ) : null
         }
       />
       <AppSubnav application={app} />

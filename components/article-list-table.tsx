@@ -58,11 +58,14 @@ export function ArticleListTable({
   articles,
   languages,
   typeNames,
+  canEdit,
 }: {
   applicationId: string;
   articles: ArticleListItem[];
   languages: Language[];
   typeNames: Record<string, string>;
+  /** content.edit: shows edit and delete. Export stays for everyone. */
+  canEdit: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -210,6 +213,7 @@ export function ArticleListTable({
           >
             {task === "export" ? "Exporting…" : "Export"}
           </Button>
+          {canEdit ? (
           <Button
             type="button"
             variant="danger"
@@ -218,6 +222,7 @@ export function ArticleListTable({
           >
             {task === "delete" ? "Deleting…" : "Delete"}
           </Button>
+          ) : null}
           <button
             type="button"
             className="text-sm text-[var(--hub-muted)] underline-offset-2 hover:underline"
@@ -346,6 +351,7 @@ export function ArticleListTable({
                     ) : null}
                   </td>
                   <td className="text-right">
+                    {canEdit ? (
                     <div className="inline-flex items-center justify-end gap-1">
                       <IconButton
                         label={`Edit ${article.title}`}
@@ -362,6 +368,7 @@ export function ArticleListTable({
                         <TrashIcon />
                       </IconButton>
                     </div>
+                    ) : null}
                   </td>
                 </tr>
               );

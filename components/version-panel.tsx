@@ -80,8 +80,10 @@ export function StringVersionPanel({
   loading?: boolean;
   error?: string;
   pending?: boolean;
-  onRestore: (text: string) => void;
-  onDelete: (versionId: string, versionNumber: number) => void;
+  /** Leave out to show history without Use. */
+  onRestore?: (text: string) => void;
+  /** Leave out to show history without Delete. */
+  onDelete?: (versionId: string, versionNumber: number) => void;
 }) {
   const [tab, setTab] = useState<"list" | "compare">("list");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -182,25 +184,29 @@ export function StringVersionPanel({
                         <p className="whitespace-pre-wrap rounded-md bg-white/80 p-2 text-sm text-slate-900">
                           {v.translated_content}
                         </p>
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => onRestore(v.translated_content)}
-                          >
-                            Use
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="danger"
-                            disabled={pending}
-                            onClick={() =>
-                              onDelete(v.id, v.version_number)
-                            }
-                          >
-                            Delete
-                          </Button>
-                        </div>
+                        {onRestore || onDelete ? (
+                          <div className="flex flex-wrap gap-2">
+                            {onRestore ? (
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={() => onRestore(v.translated_content)}
+                              >
+                                Use
+                              </Button>
+                            ) : null}
+                            {onDelete ? (
+                              <Button
+                                type="button"
+                                variant="danger"
+                                disabled={pending}
+                                onClick={() => onDelete(v.id, v.version_number)}
+                              >
+                                Delete
+                              </Button>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
                   </li>

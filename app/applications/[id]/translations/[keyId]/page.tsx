@@ -37,6 +37,7 @@ export default async function TranslationKeyDetailPage({
         languages={languages}
         actor={actor}
         canApprove={app.access.can_approve}
+        canEdit={app.access.can_edit}
       />
     </div>
   );

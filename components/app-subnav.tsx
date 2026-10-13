@@ -18,19 +18,21 @@ export function AppSubnav({
   const rolesLink = application.access?.permissions?.includes("roles.manage")
     ? { href: `${base}/settings/roles`, label: "Roles" }
     : null;
+  // Shown while access is unknown, so pages that pass no access keep their Import tab.
+  const canImport = !application.access || application.access.permissions.includes("content.import");
   const links =
     application.model_type === "STRING"
       ? [
           { href: base, label: "Overview", exact: true },
           { href: `${base}/translations`, label: "Translations" },
           { href: `${base}/namespaces`, label: "Namespaces" },
-          { href: `${base}/import`, label: "Import" },
+          ...(canImport ? [{ href: `${base}/import`, label: "Import" }] : []),
           ...(rolesLink ? [rolesLink] : []),
         ]
       : application.model_type === "CATALOG"
         ? [
             { href: `${base}/items`, label: itemLabelPlural(application), exclude: `${base}/items/import` },
-            { href: `${base}/items/import`, label: "Import" },
+            ...(canImport ? [{ href: `${base}/items/import`, label: "Import" }] : []),
             { href: `${base}/fields`, label: "Fields" },
             ...(application.access?.can_manage
               ? [{ href: `${base}/settings/people`, label: "People" }]
@@ -39,7 +41,7 @@ export function AppSubnav({
           ]
         : [
             { href: `${base}/articles`, label: "Articles" },
-            { href: `${base}/import`, label: "Import" },
+            ...(canImport ? [{ href: `${base}/import`, label: "Import" }] : []),
             { href: `${base}/settings`, label: "Settings" },
           ];
 

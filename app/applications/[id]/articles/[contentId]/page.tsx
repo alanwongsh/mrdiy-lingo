@@ -65,12 +65,14 @@ export default async function ArticleDetailPage({
           label: "Back to articles",
         }}
         actions={
+          app.access.can_edit ? (
           <LinkButton
             href={`/applications/${id}/articles/${contentId}/edit`}
             variant="secondary"
           >
             Edit
           </LinkButton>
+          ) : null
         }
       />
       <AppSubnav application={app} />

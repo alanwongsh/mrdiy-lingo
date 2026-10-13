@@ -70,9 +70,11 @@ export default async function ArticlesPage({
         title="Articles"
         description={`${result.total} article${result.total === 1 ? "" : "s"}`}
         actions={
+          app.access.can_edit ? (
           <LinkButton href={`/applications/${app.id}/articles/new`}>
             New Draft
           </LinkButton>
+          ) : null
         }
       />
       <AppSubnav application={app} />
@@ -100,6 +102,7 @@ export default async function ArticlesPage({
       />
 
       <ArticleListTable
+        canEdit={app.access.can_edit}
         applicationId={app.id}
         articles={result.items}
         languages={languages}

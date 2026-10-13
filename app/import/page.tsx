@@ -29,7 +29,7 @@ export default async function ImportPage() {
         <DbErrorPanel message={dbError} />
       ) : applications.length === 0 ? (
         <p className="text-sm text-[var(--hub-muted)]">
-          Create an application first.
+          None of your applications let you import. Ask an application owner for a role with Import files.
         </p>
       ) : (
         <ImportWizard

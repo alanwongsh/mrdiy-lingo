@@ -30,12 +30,15 @@ export function StringKeyEditor({
   languages,
   actor,
   canApprove,
+  canEdit,
 }: {
   applicationId: string;
   translationKey: TranslationKeyListItem;
   languages: Language[];
   actor: { username: string; name: string } | null;
   canApprove: boolean;
+  /** content.edit: save, auto-translate, and restore or delete versions. */
+  canEdit: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -151,12 +154,14 @@ export function StringKeyEditor({
           onSelectedChange={setSelected}
           onActiveChange={setTargetLang}
           translateAction={
+            canEdit ? (
             <BatchTranslateButton
               count={selected.length}
               disabled={pending}
               loading={isTranslating}
               onClick={runBatchTranslate}
             />
+            ) : undefined
           }
         />
         {isTranslating ? (
@@ -211,11 +216,12 @@ export function StringKeyEditor({
               className={`${textareaClass} min-h-[8rem]`}
               value={draft}
               disabled={isTranslating}
+              readOnly={!canEdit}
               onChange={(e) => setDraft(e.target.value)}
               placeholder={`Enter ${targetMeta?.name ?? targetLang} translation…`}
             />
             <div className="flex flex-wrap items-center gap-2">
-              {isDirty ? (
+              {isDirty && canEdit ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -333,8 +339,8 @@ export function StringKeyEditor({
           loading={historyLoading}
           error={historyError}
           pending={pending}
-          onRestore={setDraft}
-          onDelete={(versionId, versionNumber) => {
+          onRestore={canEdit ? setDraft : undefined}
+          onDelete={canEdit ? (versionId, versionNumber) => {
             if (
               !confirm(
                 `Delete version v${versionNumber}? This cannot be undone.`
@@ -361,7 +367,7 @@ export function StringKeyEditor({
                 );
               }
             });
-          }}
+          } : undefined}
         />
       ) : null}
     </div>

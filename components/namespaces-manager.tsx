@@ -20,9 +20,12 @@ import {
 export function NamespacesManager({
   applicationId,
   initialNamespaces,
+  canEdit,
 }: {
   applicationId: string;
   initialNamespaces: Namespace[];
+  /** content.edit: create and edit namespaces. */
+  canEdit: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -30,7 +33,7 @@ export function NamespacesManager({
   const [error, setError] = useState("");
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+    <div className={`grid gap-6 ${canEdit ? "lg:grid-cols-[1fr_320px]" : ""}`}>
       <Card className="overflow-x-auto">
         <table className="hub-table">
           <thead>
@@ -52,6 +55,7 @@ export function NamespacesManager({
                   <Badge tone={statusTone(ns.status)}>{ns.status}</Badge>
                 </td>
                 <td className="px-4 py-3 text-right">
+                  {canEdit ? (
                   <button
                     type="button"
                     className="text-[var(--hub-accent)]"
@@ -59,6 +63,7 @@ export function NamespacesManager({
                   >
                     Edit
                   </button>
+                  ) : null}
                 </td>
               </tr>
             ))}
@@ -66,6 +71,7 @@ export function NamespacesManager({
         </table>
       </Card>
 
+      {canEdit ? (
       <Card className="h-fit p-4">
         <h2 className="mb-3 text-sm font-semibold">
           {editing ? "Edit namespace" : "Create namespace"}
@@ -146,6 +152,7 @@ export function NamespacesManager({
           </div>
         </form>
       </Card>
+      ) : null}
     </div>
   );
 }
