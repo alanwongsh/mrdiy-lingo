@@ -43,7 +43,6 @@ export function CatalogFieldsManager({
               <th>Label</th>
               <th>Code</th>
               <th>Translated</th>
-              <th>Required</th>
               <th>Status</th>
               <th />
             </tr>
@@ -51,7 +50,7 @@ export function CatalogFieldsManager({
           <tbody>
             {fields.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-sm text-[var(--hub-muted)]">
+                <td colSpan={6} className="px-4 py-6 text-sm text-[var(--hub-muted)]">
                   No fields yet.
                 </td>
               </tr>
@@ -62,7 +61,6 @@ export function CatalogFieldsManager({
                   <td className="font-medium">{field.label}</td>
                   <td className="font-mono text-xs text-[var(--hub-muted)]">{field.code}</td>
                   <td>{field.translatable ? "Per language" : "Same everywhere"}</td>
-                  <td>{field.required ? "Yes" : "—"}</td>
                   <td>
                     <Badge tone={statusTone(field.status)}>{field.status}</Badge>
                   </td>
@@ -131,7 +129,6 @@ function FieldDialog({
   const [code, setCode] = useState(field?.code ?? "");
   const [codeTouched, setCodeTouched] = useState(Boolean(field));
   const [translatable, setTranslatable] = useState(field?.translatable ?? true);
-  const [required, setRequired] = useState(field?.required ?? false);
   const [sortOrder, setSortOrder] = useState(String(field?.sort_order ?? ""));
   const [status, setStatus] = useState<EntityStatus>(field?.status ?? "ACTIVE");
   const [error, setError] = useState("");
@@ -161,7 +158,6 @@ function FieldDialog({
                     await updateItemField(field.id, applicationId, {
                       label,
                       translatable,
-                      required,
                       sort_order: Number(sortOrder) || 0,
                       status,
                     });
@@ -171,7 +167,6 @@ function FieldDialog({
                       label,
                       code: previewCode,
                       translatable,
-                      required,
                     });
                   }
                   onSaved();
@@ -229,10 +224,6 @@ function FieldDialog({
                     : "Same in every language, such as an HS code, barcode, brand name, or product photo."}
                 </span>
               </span>
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} />
-              Required before review
             </label>
             {field ? (
               <div className="grid grid-cols-2 gap-3">

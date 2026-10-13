@@ -23,7 +23,7 @@ export type ArticleAuditInput = {
  * One id per request, so the timeline can show a save and the changes it caused as one entry.
  * Outside a request (the publish timer) each call gets its own id.
  */
-const currentActionId = cache((): string => crypto.randomUUID());
+export const currentActionId = cache((): string => crypto.randomUUID());
 
 type Who = {
   actor_username: string | null;

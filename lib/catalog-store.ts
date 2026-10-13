@@ -1,10 +1,12 @@
 import { createHash } from "crypto";
 import { revalidatePath } from "next/cache";
 import { approvalStamp, getActor } from "@/lib/auth/actor";
+import { currentActionId } from "@/lib/audit";
 import { getDb } from "@/lib/db/client";
 import {
   hasValue,
   isMachineTranslatable,
+  itemFields,
   isStale,
   languageProgress,
 } from "@/lib/catalog";
@@ -113,7 +115,8 @@ export async function recordItemEvent(input: {
       from_status: input.fromStatus ?? null,
       to_status: input.toStatus ?? null,
       comment: input.comment ?? null,
-      detail: input.detail ?? {},
+      // Same id for every event in one request, so the activity list shows them as one entry.
+      detail: { ...input.detail, action_id: currentActionId() },
       actor_name: actor?.name ?? "System",
       actor_username: actor?.username ?? null,
       actor_user_id: input.userId ?? null,
@@ -269,12 +272,10 @@ export async function applyTextValues(input: {
   return { changed, unapproved };
 }
 
-/** Fields that must have a value in the source language before review or approval. */
+/** Fields added to the item but still empty in the source language. They block review and approval. */
 export function missingRequired(fields: CatalogField[], values: CatalogValue[], item: CatalogItem): CatalogField[] {
-  return fields.filter(
+  return itemFields(fields, values, item.source_language).filter(
     (field) =>
-      field.status === "ACTIVE" &&
-      field.required &&
       !hasValue(values.find((v) => v.field_id === field.id && v.language_code === item.source_language))
   );
 }
@@ -362,7 +363,7 @@ export async function approveWholeItem(input: {
   const { item, fields, values } = input;
   const missing = missingRequired(fields, values, item);
   if (missing.length > 0) {
-    throw new Error(`Fill ${missing.map((f) => f.label).join(", ")} before approving.`);
+    throw new Error(`Fill or remove ${missing.map((f) => f.label).join(", ")} before approving.`);
   }
   for (const language of item.target_languages) {
     if (language === item.source_language) continue;

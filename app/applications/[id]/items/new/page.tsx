@@ -3,6 +3,7 @@ import { getApplication } from "@/lib/actions/applications";
 import { listItemFields } from "@/lib/actions/catalog";
 import { listLanguages } from "@/lib/actions/languages";
 import { itemLabel } from "@/lib/catalog";
+import { uuidv7 } from "@/lib/uuid";
 import { DbErrorPanel, formatDbError } from "@/lib/db/errors";
 import { CatalogNewItem } from "@/components/catalog-new-item";
 import { PageHeader } from "@/components/ui";
@@ -32,7 +33,13 @@ export default async function NewCatalogItemPage({
         description="Saved as a draft. Submit it for review when the source text is ready."
         back={{ href: `/applications/${app.id}/items`, label: `Back to ${app.name}` }}
       />
-      <CatalogNewItem applicationId={app.id} itemLabel={label} fields={fields} languages={languages} />
+      <CatalogNewItem
+        applicationId={app.id}
+        itemLabel={label}
+        fields={fields}
+        languages={languages}
+        suggestedCode={uuidv7().toUpperCase()}
+      />
     </div>
   );
 }

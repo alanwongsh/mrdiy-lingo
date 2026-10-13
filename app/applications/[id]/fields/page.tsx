@@ -32,7 +32,7 @@ export default async function CatalogFieldsPage({
     <div>
       <PageHeader
         title="Fields"
-        description={`What every ${itemLabel(app)} holds. Fields in use can be switched off but not deleted. Roles with the Catalog fields permission can change them.`}
+        description={`Field names offered when adding fields to a ${itemLabel(app)}. Anyone who edits can add a new one from the ${itemLabel(app)} itself. Fields in use can be switched off but not deleted. Roles with the Catalog fields permission can change them.`}
       />
       <AppSubnav application={app} />
       <CatalogFieldsManager

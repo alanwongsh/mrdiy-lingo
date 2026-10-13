@@ -99,6 +99,22 @@ export function hasValue(value: Pick<CatalogValue, "text_value" | "file_path"> |
   return !!value && (value.text_value.trim() !== "" || !!value.file_path);
 }
 
+/**
+ * The fields one item uses, in the order they were added. A field belongs to an item once it has
+ * a row in the item's source language, even an empty one. Value ids are time-ordered (uuidv7).
+ */
+export function itemFields(
+  fields: CatalogField[],
+  values: CatalogValue[],
+  sourceLanguage: string
+): CatalogField[] {
+  return values
+    .filter((v) => v.language_code === sourceLanguage)
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((v) => fields.find((f) => f.id === v.field_id))
+    .filter((f): f is CatalogField => !!f);
+}
+
 export type LanguageProgress = {
   /** Translatable text fields whose source has text. */
   total: number;

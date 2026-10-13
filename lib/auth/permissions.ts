@@ -26,12 +26,6 @@ export const PERMISSIONS = [
     hint: "Approve content and translations, request changes, and move articles to Approved or Published.",
   },
   {
-    key: "settings.general",
-    group: "Settings",
-    label: "Application details",
-    hint: "Change the application name, description, and status.",
-  },
-  {
     key: "settings.notifications",
     models: ["CONTENT"],
     group: "Settings",
@@ -50,7 +44,7 @@ export const PERMISSIONS = [
     models: ["CATALOG"],
     group: "Settings",
     label: "Catalog fields",
-    hint: "Add, change, and switch off catalog fields.",
+    hint: "Rename, switch off, and delete catalog field names. Anyone who edits content can add a new name from an item.",
   },
   {
     key: "settings.quality",

@@ -1,4 +1,3 @@
-import { can } from "@/lib/auth/permissions";
 import Link from "next/link";
 import { listApplications } from "@/lib/actions/applications";
 import { getCurrentUser } from "@/lib/auth/access";
@@ -90,7 +89,7 @@ export default async function ApplicationsPage() {
                     : (app.access.role ??
                       (app.access.can_manage ? "Superadmin" : "Invited"))}
                 </Badge>
-                {can(app.access, "settings.general") ? (
+                {isSuperadmin ? (
                   <Link
                     href={`/applications/${app.id}/edit`}
                     className="hub-accent-link text-sm font-semibold"

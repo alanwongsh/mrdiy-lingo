@@ -36,6 +36,7 @@ import {
   type TextChange,
 } from "@/lib/catalog-store";
 import { getTranslationService, type TranslationService } from "@/lib/translation/service";
+import { uuidv7 } from "@/lib/uuid";
 import type {
   EntityStatus,
   Paginated,
@@ -109,7 +110,6 @@ export async function createItemField(input: {
   label: string;
   code?: string;
   translatable: boolean;
-  required: boolean;
 }): Promise<CatalogField> {
   await requireAppCapability(input.application_id, "settings.fields");
   const { label, translatable } = cleanFieldInput(input);
@@ -128,7 +128,7 @@ export async function createItemField(input: {
       // Kept for older rows; every field takes text and an upload.
       field_type: "long_text",
       translatable,
-      required: !!input.required,
+      required: false,
       sort_order: sortOrder,
       status: "ACTIVE",
     })
@@ -148,7 +148,6 @@ export async function updateItemField(
   input: {
     label: string;
     translatable: boolean;
-    required: boolean;
     sort_order: number;
     status: EntityStatus;
   }
@@ -161,7 +160,6 @@ export async function updateItemField(
     .update({
       label,
       translatable,
-      required: !!input.required,
       sort_order: Number.isFinite(input.sort_order) ? Math.round(input.sort_order) : 0,
       status: input.status === "INACTIVE" ? "INACTIVE" : "ACTIVE",
     })
@@ -189,6 +187,79 @@ export async function deleteItemField(id: string, applicationId: string): Promis
     throwItemError(error);
   }
   revalidateFields(applicationId);
+}
+
+/**
+ * Finds the field for each label, matching the label or its code without regard to case, and
+ * creates the ones that do not exist yet. A matching field that was switched off is switched back on.
+ * Anyone who can edit items can add a label; renaming and deleting stay on the Fields page.
+ */
+async function resolveFieldLabels(applicationId: string, labels: string[]): Promise<CatalogField[]> {
+  const existing = await loadItemFields(applicationId, { includeInactive: true });
+  const db = await getDb();
+  const resolved: CatalogField[] = [];
+  let changed = false;
+  for (const raw of labels) {
+    const label = raw.trim().replace(/\s+/g, " ").slice(0, 80);
+    if (!label) continue;
+    const code = normalizeFieldCode(label);
+    if (!code) throw new UserFacingError(`“${label}” needs at least one letter or number.`);
+    let field =
+      existing.find((f) => f.label.toLowerCase() === label.toLowerCase()) ??
+      existing.find((f) => f.code === code);
+    if (field && field.status !== "ACTIVE") {
+      const { data, error } = await db
+        .from("catalog_fields")
+        .update({ status: "ACTIVE" })
+        .eq("id", field.id)
+        .select("*")
+        .single();
+      if (error) throwItemError(error);
+      field = data as CatalogField;
+      changed = true;
+    }
+    if (!field) {
+      const { data, error } = await db
+        .from("catalog_fields")
+        .insert({
+          application_id: applicationId,
+          code,
+          label,
+          field_type: "long_text",
+          translatable: true,
+          required: false,
+          sort_order: Math.max(-10, ...existing.map((f) => f.sort_order)) + 10,
+          status: "ACTIVE",
+        })
+        .select("*")
+        .single();
+      if (error) throwItemError(error);
+      field = data as CatalogField;
+      existing.push(field);
+      changed = true;
+    }
+    if (!resolved.some((f) => f.id === field.id)) resolved.push(field);
+  }
+  if (changed) revalidateFields(applicationId);
+  return resolved;
+}
+
+/** Adds empty source rows so the item lists these fields. Fields it already has are left alone. */
+async function attachFields(item: CatalogItem, fields: CatalogField[]): Promise<void> {
+  if (fields.length === 0) return;
+  const db = await getDb();
+  const { error } = await db.from("catalog_values").upsert(
+    fields.map((field) => ({
+      item_id: item.id,
+      field_id: field.id,
+      language_code: item.source_language,
+      text_value: "",
+      status: "MISSING",
+      source_type: "MANUAL",
+    })),
+    { onConflict: "item_id,field_id,language_code", ignoreDuplicates: true }
+  );
+  if (error) throwItemError(error);
 }
 
 /* ---------- Items ---------- */
@@ -282,7 +353,8 @@ export async function getItemDetail(itemId: string): Promise<ItemDetail | null> 
       .select("*")
       .eq("item_id", item.id)
       .order("created_at", { ascending: false })
-      .limit(100),
+      .order("id", { ascending: false })
+      .limit(500),
   ]);
   if (events.error) throwItemError(events.error);
   return { item, fields, values, events: (events.data ?? []) as CatalogEvent[] };
@@ -300,11 +372,12 @@ export async function createItem(input: {
   name: string;
   source_language: string;
   target_languages: string[];
-  values?: Record<string, string>;
-}): Promise<CatalogItem> {
+  /** The item's fields in order, by label. A label that does not exist yet is created. */
+  fields?: { label: string; text: string }[];
+}): Promise<{ item: CatalogItem; fieldIds: string[] }> {
   const grant = await requireAppCapability(input.applicationId, "edit");
-  const code = normalizeItemCode(input.item_code);
-  if (!code) throw new UserFacingError("Code is required.");
+  // Left blank, the item gets a generated, time-ordered code.
+  const code = normalizeItemCode(input.item_code) || normalizeItemCode(uuidv7());
   if (!input.source_language) throw new UserFacingError("Pick the source language.");
   const actor = await getActor();
   const db = await getDb();
@@ -327,13 +400,21 @@ export async function createItem(input: {
     throwItemError(error);
   }
   const item = data as CatalogItem;
-  const changes = Object.entries(input.values ?? {}).map(([fieldId, text]) => ({ fieldId, text }));
+  const entries = input.fields ?? [];
+  const fields = await resolveFieldLabels(item.application_id, entries.map((e) => e.label));
+  await attachFields(item, fields);
+  const byLabel = (label: string) =>
+    fields.find((f) => f.label.toLowerCase() === label.trim().replace(/\s+/g, " ").toLowerCase()) ??
+    fields.find((f) => f.code === normalizeFieldCode(label));
+  const fieldIds = entries.map((e) => byLabel(e.label)?.id ?? "");
+  const changes = entries
+    .map((e, i) => ({ fieldId: fieldIds[i], text: e.text }))
+    .filter((c) => c.fieldId && c.text.trim());
   if (changes.length > 0) {
-    const fields = await loadItemFields(item.application_id);
     await applyTextValues({
       item,
       fields,
-      values: [],
+      values: await loadItemValues([item.id]),
       languageCode: item.source_language,
       changes,
       sourceType: "MANUAL",
@@ -342,7 +423,56 @@ export async function createItem(input: {
   }
   await recordItemEvent({ item, event: "CREATED", userId: grant.user.id, toStatus: "DRAFT" });
   revalidateItem(item.application_id);
-  return item;
+  return { item, fieldIds };
+}
+
+/** Adds a field to one item by label, creating the label when it is new. */
+export async function addItemField(input: { itemId: string; label: string }): Promise<CatalogField> {
+  const grant = await requireItemAccess(input.itemId, "edit");
+  const item = await loadItem(input.itemId);
+  if (!item) throw new UserFacingError("Item not found.");
+  const [field] = await resolveFieldLabels(item.application_id, [input.label]);
+  if (!field) throw new UserFacingError("Enter a field name.");
+  await attachFields(item, [field]);
+  await recordItemEvent({
+    item,
+    event: "EDITED",
+    userId: grant.user.id,
+    detail: { fields: [field.label], added: field.label },
+  });
+  revalidateItem(item.application_id, item.id);
+  return field;
+}
+
+/** Takes a field off one item: its text and files in every language. The label stays for other items. */
+export async function removeItemField(input: { itemId: string; fieldId: string }): Promise<void> {
+  const grant = await requireItemAccess(input.itemId, "edit");
+  const item = await loadItem(input.itemId);
+  if (!item) throw new UserFacingError("Item not found.");
+  const [fields, values] = await Promise.all([
+    loadItemFields(item.application_id, { includeInactive: true }),
+    loadItemValues([item.id]),
+  ]);
+  const field = fields.find((f) => f.id === input.fieldId);
+  const own = values.filter((v) => v.field_id === input.fieldId);
+  if (own.length === 0) return;
+  const db = await getDb();
+  const { error } = await db
+    .from("catalog_values")
+    .delete()
+    .eq("item_id", item.id)
+    .eq("field_id", input.fieldId);
+  if (error) throwItemError(error);
+  await removeStoredFiles(own.map((v) => v.file_path ?? ""));
+  const label = field?.label ?? "field";
+  await recordItemEvent({
+    item,
+    event: "EDITED",
+    userId: grant.user.id,
+    detail: { fields: [label], removed: label },
+  });
+  await reopenIfApproved(item, `${label} removed`, grant.user.id);
+  revalidateItem(item.application_id, item.id);
 }
 
 export async function updateItemDetails(
@@ -626,7 +756,7 @@ export async function submitItem(itemId: string): Promise<CatalogItem> {
   ]);
   const missing = missingRequired(fields, values, item);
   if (missing.length > 0) {
-    throw new UserFacingError(`Fill ${missing.map((f) => f.label).join(", ")} before submitting.`);
+    throw new UserFacingError(`Fill or remove ${missing.map((f) => f.label).join(", ")} before submitting.`);
   }
   const actor = await getActor();
   const next = await updateItemStatus(item, "REVIEW", {
@@ -763,7 +893,8 @@ export async function deleteItemFile(valueId: string): Promise<void> {
   if (error) throwItemError(error);
   if (!data?.file_path) return;
   // The row also holds the field's text; keep it and clear only the file.
-  const cleared = data.text_value.trim()
+  // The source row also keeps the field on the item, so it is never deleted here.
+  const cleared = data.text_value.trim() || data.language_code === item.source_language
     ? await db
         .from("catalog_values")
         .update({ file_path: null, file_name: null, file_mime: null, file_size: null })

@@ -166,7 +166,8 @@ export async function updateApplication(
     model_type: ApplicationModelType;
   }
 ): Promise<Application> {
-  await requireAppCapability(id, "settings.general");
+  // Name, description, status, and type are kept by a Lingo superadmin.
+  await requireSuperadmin();
   const db = await getDb();
   const { data, error } = await db
     .from("applications")
@@ -195,7 +196,7 @@ export async function setApplicationStatus(
   id: string,
   status: EntityStatus
 ): Promise<void> {
-  await requireAppCapability(id, "settings.general");
+  await requireSuperadmin();
   const db = await getDb();
   const { error } = await db
     .from("applications")

@@ -1,41 +1,24 @@
-"use client";
-
-import { can } from "@/lib/auth/permissions";
-import { errorMessage } from "@/lib/errors";
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { notFound } from "next/navigation";
 import { getApplication } from "@/lib/actions/applications";
-import type { Application } from "@/lib/types";
+import { getCurrentUser } from "@/lib/auth/access";
 import { PageHeader } from "@/components/ui";
 import { ApplicationDetailsForm } from "@/components/application-details-form";
 
-export default function EditApplicationPage() {
-  const { id } = useParams<{ id: string }>();
-  const [app, setApp] = useState<Application | null>(null);
-  const [error, setError] = useState("");
+export default async function EditApplicationPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const [app, user] = await Promise.all([getApplication(id), getCurrentUser()]);
+  if (!app) notFound();
 
-  useEffect(() => {
-    getApplication(id)
-      .then((row) => {
-        if (!row) {
-          setError("You do not have access to this application.");
-          return;
-        }
-        if (!can(row.access, "settings.general")) {
-          setError("Your role cannot change this application's details.");
-          return;
-        }
-        setApp(row);
-      })
-      .catch((e) => setError(errorMessage(e, "Could not load this application.")));
-  }, [id]);
-
-  if (!app && !error) {
-    return <div className="text-sm text-[var(--hub-muted)]">Loading…</div>;
-  }
-
-  if (!app) {
-    return <div className="text-sm text-red-700">{error}</div>;
+  if (!user?.is_superadmin) {
+    return (
+      <div className="text-sm text-red-700">
+        Only a Lingo superadmin can change this application&apos;s details.
+      </div>
+    );
   }
 
   return (

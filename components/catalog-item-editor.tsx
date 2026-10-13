@@ -2,12 +2,14 @@
 
 import { errorMessage } from "@/lib/errors";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
+  addItemField,
   approveItem,
   approveItemLanguage,
   deleteItem,
   deleteItemFile,
+  removeItemField,
   requestItemChanges,
   saveItemText,
   submitItem,
@@ -17,17 +19,31 @@ import {
 import {
   formatBytes,
   formatStamp,
+  hasValue,
   isStale,
+  itemFields,
   ITEM_STATUS_LABEL,
   languageProgress,
   CATALOG_FILE_MAX_BYTES,
+  type LanguageProgress,
 } from "@/lib/catalog";
 import type { CatalogEvent, CatalogField, CatalogItem, CatalogValue, Language } from "@/lib/types";
 import { LanguageChip, translateSummary } from "@/components/catalog-item-list";
-import { FilterMultiSelect } from "@/components/filter-select";
+import { FilterMultiSelect, FilterSelect } from "@/components/filter-select";
+import { CatalogActivity } from "@/components/catalog-activity";
+import { LabelChipInput } from "@/components/label-chip-input";
 import { Badge, Button, Card, Field, inputClass, statusTone, textareaClass } from "@/components/ui";
 
 type TextMap = Record<string, string>;
+
+type Layout = "split" | "all";
+
+const LAYOUT_STORAGE_KEY = "catalog-item-layout";
+
+const LAYOUTS: { id: Layout; label: string; title: string }[] = [
+  { id: "split", label: "Side by side", title: "Compare and edit two languages" },
+  { id: "all", label: "All languages", title: "Line up every field across languages" },
+];
 
 function textMap(values: CatalogValue[], language: string): TextMap {
   const map: TextMap = {};
@@ -78,24 +94,83 @@ export function CatalogItemEditor({
   const [notice, setNotice] = useState("");
   const languageName = (code: string) => languages.find((l) => l.code === code)?.name ?? code.toUpperCase();
   const source = item.source_language;
+  // `fields` lists every known field name; the item shows only the ones added to it.
+  const shown = useMemo(() => itemFields(fields, values, source), [fields, values, source]);
 
-  const [activeLang, setActiveLang] = useState(item.target_languages[0] ?? "");
-  const sourceSaved = useMemo(() => textMap(values, source), [values, source]);
-  const targetSaved = useMemo(() => textMap(values, activeLang), [values, activeLang]);
-  const [sourceBase, setSourceBase] = useState(sourceSaved);
-  const [sourceDraft, setSourceDraft] = useState(sourceSaved);
-  const [targetBase, setTargetBase] = useState(targetSaved);
-  const [targetDraft, setTargetDraft] = useState(targetSaved);
-  if (sourceBase !== sourceSaved) {
-    setSourceBase(sourceSaved);
-    setSourceDraft(mergeDraft(sourceDraft, sourceBase, sourceSaved));
+  const options = useMemo(
+    () => [source, ...item.target_languages.filter((code) => code !== source)],
+    [source, item.target_languages]
+  );
+  const optionLabels = options.map((code) => ({
+    value: code,
+    label: `${languageName(code)}${code === source ? " (source)" : ""}`,
+  }));
+  const canCompare = options.length > 1;
+
+  // Unsaved text per language, so switching sides never drops what someone typed.
+  const saved = useMemo(
+    () => Object.fromEntries(options.map((code) => [code, textMap(values, code)])) as Record<string, TextMap>,
+    [values, options]
+  );
+  const [base, setBase] = useState(saved);
+  const [drafts, setDrafts] = useState(saved);
+  if (base !== saved) {
+    setBase(saved);
+    setDrafts(
+      Object.fromEntries(
+        options.map((code) => [code, mergeDraft(drafts[code] ?? {}, base[code] ?? {}, saved[code] ?? {})])
+      )
+    );
   }
-  if (targetBase !== targetSaved) {
-    setTargetBase(targetSaved);
-    setTargetDraft(mergeDraft(targetDraft, targetBase, targetSaved));
+  const draftOf = (code: string) => drafts[code] ?? saved[code] ?? {};
+  const dirtyOf = (code: string) => dirtyFields(draftOf(code), saved[code] ?? {});
+  const sourceDirty = dirtyOf(source);
+  const anyDirty = options.some((code) => dirtyOf(code).length > 0);
+
+  const [layout, setLayout] = useState<Layout>("split");
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(LAYOUT_STORAGE_KEY);
+      if (stored === "split" || stored === "all") setLayout(stored);
+    } catch {
+      // Storage can be blocked; the default layout still works.
+    }
+  }, []);
+  function chooseLayout(next: Layout) {
+    setLayout(next);
+    try {
+      localStorage.setItem(LAYOUT_STORAGE_KEY, next);
+    } catch {
+      // Not remembered this time.
+    }
   }
-  const sourceDirty = dirtyFields(sourceDraft, sourceSaved);
-  const targetDirty = dirtyFields(targetDraft, targetSaved);
+  const activeLayout: Layout = canCompare ? layout : "split";
+
+  const [left, setLeft] = useState(source);
+  const [right, setRight] = useState(item.target_languages[0] ?? source);
+  const leftCode = options.includes(left) ? left : source;
+  const rightPick = options.includes(right) ? right : (options.find((c) => c !== leftCode) ?? leftCode);
+  const rightCode = rightPick === leftCode ? (options.find((c) => c !== leftCode) ?? leftCode) : rightPick;
+  const panes = canCompare ? [leftCode, rightCode] : [source];
+
+  function assignSide(index: number, code: string) {
+    if (index === 0) {
+      if (code === rightCode) setRight(leftCode);
+      setLeft(code);
+      return;
+    }
+    if (code === leftCode) setLeft(rightCode);
+    setRight(code);
+  }
+
+  function editLanguage(code: string) {
+    chooseLayout("split");
+    setLeft(source);
+    if (code !== source) setRight(code);
+  }
+
+  const [hidden, setHidden] = useState<string[]>([]);
+  const shownCodes = options.filter((code) => !hidden.includes(code));
 
   const [name, setName] = useState(item.name);
   const [targets, setTargets] = useState(item.target_languages);
@@ -142,16 +217,9 @@ export function CatalogItemEditor({
     router.refresh();
   }
 
-  function switchLanguage(code: string) {
-    if (code === activeLang) return;
-    if (targetDirty.length > 0 && !confirm(`Discard unsaved ${languageName(activeLang)} changes?`)) return;
-    const next = textMap(values, code);
-    setActiveLang(code);
-    setTargetBase(next);
-    setTargetDraft(next);
-  }
-
-  function saveText(language: string, draft: TextMap, dirty: string[]) {
+  function saveText(language: string) {
+    const draft = draftOf(language);
+    const dirty = dirtyOf(language);
     run(`save-${language}`, async () => {
       await saveItemText({
         itemId: item.id,
@@ -164,7 +232,6 @@ export function CatalogItemEditor({
 
   const statusTone_ =
     item.status === "APPROVED" ? "good" : item.status === "CHANGES_REQUESTED" ? "bad" : item.status === "REVIEW" ? "info" : "neutral";
-  const activeProgress = activeLang ? progress[activeLang] : undefined;
 
   return (
     <div className="space-y-4">
@@ -201,7 +268,7 @@ export function CatalogItemEditor({
             {canEdit && (item.status === "DRAFT" || item.status === "CHANGES_REQUESTED") ? (
               <Button
                 type="button"
-                disabled={pending || sourceDirty.length > 0 || targetDirty.length > 0}
+                disabled={pending || anyDirty}
                 onClick={() =>
                   run("submit", async () => {
                     await submitItem(item.id);
@@ -215,7 +282,7 @@ export function CatalogItemEditor({
             {canApprove && item.status !== "APPROVED" ? (
               <Button
                 type="button"
-                disabled={pending || sourceDirty.length > 0 || targetDirty.length > 0}
+                disabled={pending || anyDirty}
                 onClick={() =>
                   run("approve", async () => {
                     await approveItem(item.id);
@@ -322,10 +389,7 @@ export function CatalogItemEditor({
               disabled={pending}
               onClick={() =>
                 run("details", async () => {
-                  const next = await updateItemDetails(item.id, { name, target_languages: targets });
-                  if (!next.target_languages.includes(activeLang)) {
-                    switchLanguage(next.target_languages[0] ?? "");
-                  }
+                  await updateItemDetails(item.id, { name, target_languages: targets });
                   return "Details saved.";
                 })
               }
@@ -346,152 +410,117 @@ export function CatalogItemEditor({
         ) : null}
       </Card>
 
-      {/* Language tabs */}
-      {item.target_languages.length > 0 ? (
-        <Card className="flex flex-wrap items-center gap-2 p-3">
-          <span className="text-xs font-semibold tracking-wide text-[var(--hub-muted-strong)] uppercase">
-            Compare with
-          </span>
-          {item.target_languages.map((code) => (
-            <button
-              key={code}
-              type="button"
-              onClick={() => switchLanguage(code)}
-              aria-pressed={code === activeLang}
-              className={`inline-flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm ${
-                code === activeLang
-                  ? "border-[var(--hub-accent)] bg-[var(--hub-accent-soft)] font-semibold"
-                  : "border-[var(--hub-border)] hover:border-[var(--hub-border-strong)]"
-              }`}
-            >
-              {languageName(code)}
-              <LanguageChip code={code} progress={progress[code]} />
-            </button>
-          ))}
-          {canApprove && activeProgress && !activeProgress.complete && activeProgress.total > 0 ? (
-            <Button
-              type="button"
-              className="ml-auto"
-              variant="secondary"
-              disabled={pending || targetDirty.length > 0}
-              title={targetDirty.length > 0 ? "Save your changes first" : undefined}
-              onClick={() =>
-                run("approve-lang", async () => {
-                  const next = await approveItemLanguage({ itemId: item.id, languageCode: activeLang });
-                  return next.status === "APPROVED"
-                    ? `${languageName(activeLang)} approved. Every language is done, so the ${itemLabel} is approved.`
-                    : `${languageName(activeLang)} approved.`;
+      {/* Fields */}
+      <Card className="overflow-visible">
+        {canEdit ? (
+          <div className="space-y-1.5 border-b border-[var(--hub-border)] px-4 py-3">
+            <div className="text-xs font-semibold tracking-wide text-[var(--hub-muted-strong)]">Fields</div>
+            <LabelChipInput
+              chips={shown.map((f) => ({ key: f.id, label: f.label }))}
+              suggestions={fields.map((f) => f.label)}
+              disabled={pending}
+              placeholder="Type a field name, then press Enter"
+              ariaLabel="Add a field"
+              onAdd={(label) =>
+                run("add-field", async () => {
+                  await addItemField({ itemId: item.id, label });
                 })
               }
-            >
-              Approve {languageName(activeLang)}
-            </Button>
-          ) : null}
-        </Card>
-      ) : null}
-
-      {/* Fields */}
-      <Card className="overflow-hidden">
-        <div className="grid grid-cols-1 border-b border-[var(--hub-border)] bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase md:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1fr)]">
-          <div className="hidden px-4 py-3 md:block">Field</div>
-          <div className="px-4 py-3">Source · {languageName(source)}</div>
-          <div className="hidden px-4 py-3 md:block">
-            {activeLang ? `${languageName(activeLang)}` : "No target languages"}
-          </div>
-        </div>
-        {fields.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-[var(--hub-muted)]">No fields yet. Add them on the Fields tab.</p>
-        ) : (
-          fields.map((field) => {
-            const sourceValue = values.find((v) => v.field_id === field.id && v.language_code === source);
-            const targetValue = values.find((v) => v.field_id === field.id && v.language_code === activeLang);
-            return (
-              <div
-                key={field.id}
-                className="grid grid-cols-1 gap-2 border-b border-[var(--hub-border)] px-4 py-3 last:border-b-0 md:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1fr)] md:gap-0"
-              >
-                <div className="md:pr-4">
-                  <div className="text-sm font-semibold text-slate-900">
-                    {field.label}
-                    {field.required ? <span className="text-red-700"> *</span> : null}
-                  </div>
-                  <div className="text-[11px] text-[var(--hub-muted)]">
-                    {field.translatable ? "Translated per language" : "Same in every language"}
-                  </div>
-                </div>
-                <div className="md:pr-4">
-                  <SourceInput
-                    key={`${field.id}-${source}`}
-                    itemId={item.id}
-                    field={field}
-                    language={source}
-                    value={sourceValue}
-                    text={sourceDraft[field.id] ?? ""}
-                    canEdit={canEdit}
-                    onText={(text) => setSourceDraft((prev) => ({ ...prev, [field.id]: text }))}
-                    onUploaded={afterUpload}
-                  />
-                </div>
-                <div>
-                  {!activeLang ? null : !field.translatable ? (
-                    <p className="pt-2 text-xs text-[var(--hub-muted)]">Uses the source value.</p>
-                  ) : (
-                    <div className="space-y-1">
-                      <SourceInput
-                        key={`${field.id}-${activeLang}`}
-                        itemId={item.id}
-                        field={field}
-                        language={activeLang}
-                        value={targetValue}
-                        text={targetDraft[field.id] ?? ""}
-                        canEdit={canEdit}
-                        fileHint="Upload this country's own version only if it differs from the translation."
-                        onText={(text) => setTargetDraft((prev) => ({ ...prev, [field.id]: text }))}
-                        onUploaded={afterUpload}
-                      />
-                      <ValueBadges source={sourceValue} target={targetValue} />
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
-        {canEdit ? (
-          <div className="grid grid-cols-1 gap-2 border-t border-[var(--hub-border)] bg-slate-50 px-4 py-3 md:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1fr)]">
-            <div className="hidden md:block" />
-            <div>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={pending || sourceDirty.length === 0}
-                onClick={() => saveText(source, sourceDraft, sourceDirty)}
-              >
-                {busy === `save-${source}` ? "Saving…" : `Save ${languageName(source)}`}
-              </Button>
-              {sourceDirty.length > 0 && item.target_languages.length > 0 ? (
-                <p className="mt-1 text-xs text-amber-800">
-                  Changing source text clears the approval on its translations.
-                </p>
-              ) : null}
-            </div>
-            <div>
-              {activeLang ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={pending || targetDirty.length === 0}
-                  onClick={() => saveText(activeLang, targetDraft, targetDirty)}
-                >
-                  {busy === `save-${activeLang}` ? "Saving…" : `Save ${languageName(activeLang)}`}
-                </Button>
-              ) : null}
-            </div>
+              onRemove={(chip) => {
+                const filled = values.some((v) => v.field_id === chip.key && hasValue(v));
+                if (
+                  filled &&
+                  !confirm(`Remove ${chip.label} from this ${itemLabel}? Its text and files in every language are deleted.`)
+                ) {
+                  return;
+                }
+                run("remove-field", async () => {
+                  await removeItemField({ itemId: item.id, fieldId: chip.key });
+                  return `${chip.label} removed.`;
+                });
+              }}
+            />
           </div>
         ) : null}
+
+        {canCompare ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--hub-border)] px-4 py-3">
+            <LayoutSwitch value={activeLayout} onChange={chooseLayout} />
+            {activeLayout === "split" ? (
+              <button
+                type="button"
+                className="hub-text-button text-xs"
+                onClick={() => {
+                  setLeft(rightCode);
+                  setRight(leftCode);
+                }}
+              >
+                Swap sides
+              </button>
+            ) : (
+              <FilterMultiSelect
+                value={shownCodes}
+                onChange={(codes) => setHidden(options.filter((code) => !codes.includes(code)))}
+                placeholder="Choose languages"
+                options={optionLabels}
+              />
+            )}
+          </div>
+        ) : null}
+
+        {shown.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-[var(--hub-muted)]">
+            {canEdit ? "No fields yet. Add one above." : "No fields yet."}
+          </p>
+        ) : activeLayout === "split" ? (
+          <SplitView
+            panes={panes}
+            source={source}
+            fields={shown}
+            values={values}
+            draftOf={draftOf}
+            dirtyOf={dirtyOf}
+            progress={progress}
+            optionLabels={canCompare ? optionLabels : null}
+            languageName={languageName}
+            itemId={item.id}
+            canEdit={canEdit}
+            canApprove={canApprove}
+            pending={pending}
+            busy={busy}
+            hasTargets={item.target_languages.length > 0}
+            onSide={assignSide}
+            onText={(code, fieldId, text) =>
+              setDrafts((prev) => ({ ...prev, [code]: { ...(prev[code] ?? saved[code] ?? {}), [fieldId]: text } }))
+            }
+            onUploaded={afterUpload}
+            onSave={saveText}
+            onApprove={(code) =>
+              run("approve-lang", async () => {
+                const next = await approveItemLanguage({ itemId: item.id, languageCode: code });
+                return next.status === "APPROVED"
+                  ? `${languageName(code)} approved. Every language is done, so the ${itemLabel} is approved.`
+                  : `${languageName(code)} approved.`;
+              })
+            }
+          />
+        ) : shownCodes.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-[var(--hub-muted)]">Choose a language to show.</p>
+        ) : (
+          <AllLanguagesView
+            codes={shownCodes}
+            source={source}
+            fields={shown}
+            values={values}
+            draftOf={draftOf}
+            progress={progress}
+            languageName={languageName}
+            onEdit={editLanguage}
+          />
+        )}
       </Card>
 
-      <CatalogActivity events={events} languageName={languageName} />
+      <CatalogActivity events={events} itemLabel={itemLabel} languageName={languageName} />
 
       {canEdit ? (
         <div className="flex justify-end">
@@ -512,6 +541,285 @@ export function CatalogItemEditor({
           </Button>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function LayoutSwitch({ value, onChange }: { value: Layout; onChange: (layout: Layout) => void }) {
+  return (
+    <div role="tablist" aria-label="View layout" className="flex flex-wrap gap-1 rounded-lg border border-[var(--hub-border)] bg-white p-1">
+      {LAYOUTS.map((layout) => {
+        const active = value === layout.id;
+        return (
+          <button
+            key={layout.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            title={layout.title}
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-[var(--hub-accent-ring)] ${
+              active
+                ? "bg-[var(--diy-red)] text-white shadow-sm"
+                : "text-slate-600 hover:bg-[var(--diy-yellow-soft)] hover:text-slate-900"
+            }`}
+            onClick={() => onChange(layout.id)}
+          >
+            {layout.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+type LanguageOption = { value: string; label: string };
+
+/** Two languages next to each other, both editable. Each side picks its own language. */
+function SplitView({
+  panes,
+  source,
+  fields,
+  values,
+  draftOf,
+  dirtyOf,
+  progress,
+  optionLabels,
+  languageName,
+  itemId,
+  canEdit,
+  canApprove,
+  pending,
+  busy,
+  hasTargets,
+  onSide,
+  onText,
+  onUploaded,
+  onSave,
+  onApprove,
+}: {
+  panes: string[];
+  source: string;
+  fields: CatalogField[];
+  values: CatalogValue[];
+  draftOf: (code: string) => TextMap;
+  dirtyOf: (code: string) => string[];
+  progress: Record<string, LanguageProgress>;
+  /** Null when there is only the source language, so there is nothing to pick. */
+  optionLabels: LanguageOption[] | null;
+  languageName: (code: string) => string;
+  itemId: string;
+  canEdit: boolean;
+  canApprove: boolean;
+  pending: boolean;
+  busy: string;
+  hasTargets: boolean;
+  onSide: (index: number, code: string) => void;
+  onText: (code: string, fieldId: string, text: string) => void;
+  onUploaded: (result: UploadResult) => void;
+  onSave: (code: string) => void;
+  onApprove: (code: string) => void;
+}) {
+  const columns = panes.length > 1 ? "md:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1fr)]" : "md:grid-cols-[12rem_minmax(0,1fr)]";
+  const nameOf = (code: string) => `${languageName(code)}${code === source ? " (source)" : ""}`;
+  return (
+    <>
+      <div className={`grid grid-cols-1 gap-2 border-b border-[var(--hub-border)] bg-slate-50 px-4 py-3 md:gap-0 ${columns}`}>
+        <div className="hidden pt-2 text-xs font-semibold tracking-wide text-slate-500 uppercase md:block">Field</div>
+        {panes.map((code, index) => {
+          const p = progress[code];
+          return (
+            <div key={`${index}-${code}`} className="flex flex-wrap items-center gap-2 md:pr-4">
+              {optionLabels ? (
+                <div className="w-full sm:w-56">
+                  <FilterSelect
+                    fullWidth
+                    hideEmptyOption
+                    ariaLabel={index === 0 ? "Left language" : "Right language"}
+                    value={code}
+                    placeholder="Select language"
+                    options={optionLabels}
+                    onChange={(next) => next && onSide(index, next)}
+                  />
+                </div>
+              ) : (
+                <span className="text-sm font-semibold text-slate-900">{nameOf(code)}</span>
+              )}
+              {code !== source ? <LanguageChip code={code} progress={p} /> : null}
+              {canApprove && code !== source && p && !p.complete && p.total > 0 ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={pending || dirtyOf(code).length > 0}
+                  title={dirtyOf(code).length > 0 ? "Save your changes first" : undefined}
+                  onClick={() => onApprove(code)}
+                >
+                  Approve {languageName(code)}
+                </Button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+
+      {fields.map((field) => {
+        const sourceValue = values.find((v) => v.field_id === field.id && v.language_code === source);
+        return (
+          <div
+            key={field.id}
+            className={`grid grid-cols-1 gap-3 border-b border-[var(--hub-border)] px-4 py-3 last:border-b-0 md:gap-0 ${columns}`}
+          >
+            <div className="md:pr-4">
+              <div className="text-sm font-semibold text-slate-900">{field.label}</div>
+              <div className="text-[11px] text-[var(--hub-muted)]">
+                {field.translatable ? "Translated per language" : "Same in every language"}
+              </div>
+            </div>
+            {panes.map((code, index) => {
+              const value = values.find((v) => v.field_id === field.id && v.language_code === code);
+              return (
+                <div key={`${index}-${code}`} className="min-w-0 md:pr-4 last:md:pr-0">
+                  {panes.length > 1 ? (
+                    <div className="mb-1 text-[11px] font-semibold text-[var(--hub-muted-strong)] md:hidden">
+                      {nameOf(code)}
+                    </div>
+                  ) : null}
+                  {code !== source && !field.translatable ? (
+                    <p className="pt-2 text-xs text-[var(--hub-muted)]">Uses the source value.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      <SourceInput
+                        key={`${field.id}-${code}`}
+                        itemId={itemId}
+                        field={field}
+                        language={code}
+                        value={value}
+                        text={draftOf(code)[field.id] ?? ""}
+                        canEdit={canEdit}
+                        fileHint={
+                          code === source
+                            ? undefined
+                            : "Upload this country's own version only if it differs from the translation."
+                        }
+                        onText={(text) => onText(code, field.id, text)}
+                        onUploaded={onUploaded}
+                      />
+                      {code !== source ? <ValueBadges source={sourceValue} target={value} /> : null}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+
+      {canEdit ? (
+        <div className={`grid grid-cols-1 gap-2 border-t border-[var(--hub-border)] bg-slate-50 px-4 py-3 md:gap-0 ${columns}`}>
+          <div className="hidden md:block" />
+          {panes.map((code, index) => {
+            const dirty = dirtyOf(code);
+            return (
+              <div key={`${index}-${code}`} className="md:pr-4">
+                <Button type="button" variant="secondary" disabled={pending || dirty.length === 0} onClick={() => onSave(code)}>
+                  {busy === `save-${code}` ? "Saving…" : `Save ${languageName(code)}`}
+                </Button>
+                {code === source && dirty.length > 0 && hasTargets ? (
+                  <p className="mt-1 text-xs text-amber-800">
+                    Changing source text clears the approval on its translations.
+                  </p>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/** Every chosen language as a column, one row per field. Read only; Edit opens a language side by side. */
+function AllLanguagesView({
+  codes,
+  source,
+  fields,
+  values,
+  draftOf,
+  progress,
+  languageName,
+  onEdit,
+}: {
+  codes: string[];
+  source: string;
+  fields: CatalogField[];
+  values: CatalogValue[];
+  draftOf: (code: string) => TextMap;
+  progress: Record<string, LanguageProgress>;
+  languageName: (code: string) => string;
+  onEdit: (code: string) => void;
+}) {
+  return (
+    <div className="min-w-0 overflow-x-auto">
+      <div
+        className="grid"
+        style={{ gridTemplateColumns: `10rem repeat(${codes.length}, minmax(16rem, 1fr))`, minWidth: "100%" }}
+      >
+        <div className="sticky left-0 z-20 border-r border-b border-[var(--hub-border)] bg-slate-50" />
+        {codes.map((code) => (
+          <div
+            key={code}
+            className="flex flex-wrap items-center justify-between gap-2 border-b border-l border-[var(--hub-border)] bg-slate-50 px-3 py-2.5"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-semibold text-slate-900">
+                {languageName(code)}
+                {code === source ? " (source)" : ""}
+              </h3>
+              {code !== source ? <LanguageChip code={code} progress={progress[code]} /> : null}
+            </div>
+            <button type="button" className="hub-text-button text-xs" onClick={() => onEdit(code)}>
+              Edit
+            </button>
+          </div>
+        ))}
+        {fields.map((field) => (
+          <Fragment key={field.id}>
+            <div className="sticky left-0 z-10 border-r border-b border-[var(--hub-border)] bg-[var(--hub-panel)] px-3 py-3 text-xs font-semibold tracking-wide text-[var(--hub-muted)] uppercase">
+              {field.label}
+            </div>
+            {codes.map((code) => {
+              const sourceValue = values.find((v) => v.field_id === field.id && v.language_code === source);
+              const value = values.find((v) => v.field_id === field.id && v.language_code === code);
+              const text = draftOf(code)[field.id] ?? value?.text_value ?? "";
+              return (
+                <div key={`${field.id}-${code}`} className="min-w-0 space-y-1.5 border-b border-l border-[var(--hub-border)] px-3 py-3">
+                  {code !== source && !field.translatable ? (
+                    <p className="text-xs text-[var(--hub-muted)]">Uses the source value.</p>
+                  ) : (
+                    <>
+                      {value?.file_path ? (
+                        <a
+                          href={`/api/catalog-files/${value.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="hub-accent-link block text-xs break-all"
+                        >
+                          {value.file_name}
+                        </a>
+                      ) : null}
+                      {text.trim() ? (
+                        <p className="text-sm whitespace-pre-wrap text-slate-800">{text}</p>
+                      ) : (
+                        <p className="text-xs text-[var(--hub-muted)]">Empty</p>
+                      )}
+                      {code !== source ? <ValueBadges source={sourceValue} target={value} /> : null}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </Fragment>
+        ))}
+      </div>
     </div>
   );
 }
@@ -702,65 +1010,5 @@ function ValueBadges({ source, target }: { source?: CatalogValue; target?: Catal
         <span className="text-[11px] text-[var(--hub-muted)]">by {target.approved_by_name}</span>
       ) : null}
     </div>
-  );
-}
-
-const EVENT_TEXT: Record<CatalogEvent["event"], string> = {
-  CREATED: "created it",
-  EDITED: "edited",
-  TRANSLATED: "auto-translated",
-  SUBMITTED: "submitted it for review",
-  LANGUAGE_APPROVED: "approved",
-  APPROVED: "approved it",
-  CHANGES_REQUESTED: "asked for changes",
-  REOPENED: "moved it back to review",
-  DELETED: "deleted it",
-};
-
-function CatalogActivity({
-  events,
-  languageName,
-}: {
-  events: CatalogEvent[];
-  languageName: (code: string) => string;
-}) {
-  return (
-    <Card className="p-4">
-      <h2 className="mb-3 text-sm font-semibold text-slate-900">Activity</h2>
-      {events.length === 0 ? (
-        <p className="text-sm text-[var(--hub-muted)]">Nothing yet.</p>
-      ) : (
-        <ol className="space-y-2.5">
-          {events.map((event) => {
-            const detail = event.detail ?? {};
-            const fieldsChanged = Array.isArray(detail.fields) ? (detail.fields as string[]).join(", ") : "";
-            const reason = typeof detail.reason === "string" ? detail.reason : "";
-            const imported = typeof detail.import === "string" ? detail.import : "";
-            const languagesDone = Array.isArray(detail.languages)
-              ? (detail.languages as string[]).map((c) => c.toUpperCase()).join(", ")
-              : "";
-            return (
-              <li key={event.id} className="text-sm">
-                <div className="flex flex-wrap items-baseline gap-x-1.5">
-                  <span className="font-semibold">{event.actor_name}</span>
-                  <span>{EVENT_TEXT[event.event]}</span>
-                  {event.language_code ? <span>{languageName(event.language_code)}</span> : null}
-                  {fieldsChanged ? <span className="text-[var(--hub-muted-strong)]">· {fieldsChanged}</span> : null}
-                  {languagesDone ? <span className="text-[var(--hub-muted-strong)]">· {languagesDone}</span> : null}
-                  {imported ? <span className="text-[var(--hub-muted-strong)]">· from {imported}</span> : null}
-                  <span className="text-xs text-[var(--hub-muted)]">· {formatStamp(event.created_at)}</span>
-                </div>
-                {reason ? <div className="text-xs text-[var(--hub-muted)]">{reason}</div> : null}
-                {event.comment ? (
-                  <blockquote className="mt-1 border-l-2 border-red-300 pl-2 text-sm text-slate-700">
-                    {event.comment}
-                  </blockquote>
-                ) : null}
-              </li>
-            );
-          })}
-        </ol>
-      )}
-    </Card>
   );
 }
