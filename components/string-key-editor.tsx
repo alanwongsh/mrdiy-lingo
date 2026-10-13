@@ -294,7 +294,7 @@ export function StringKeyEditor({
                 </Button>
               ) : (
                 <span className="text-xs text-slate-500">
-                  HOD and above can approve this language.
+                  Only people who can approve can approve this language.
                 </span>
               )}
               {status === "APPROVED" && targetTranslation?.approved_by_name ? (

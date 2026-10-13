@@ -2,15 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { Application } from "@/lib/types";
+import { itemLabelPlural } from "@/lib/catalog";
+import type { AppAccess, Application } from "@/lib/types";
 
 export function AppSubnav({
   application,
 }: {
-  application: Pick<Application, "id" | "model_type">;
+  application: Pick<Application, "id" | "model_type" | "item_label"> & {
+    access?: Pick<AppAccess, "can_manage" | "permissions">;
+  };
 }) {
   const pathname = usePathname();
   const base = `/applications/${application.id}`;
+  // CONTENT reaches Roles through its Settings tabs.
+  const rolesLink = application.access?.permissions?.includes("roles.manage")
+    ? { href: `${base}/settings/roles`, label: "Roles" }
+    : null;
   const links =
     application.model_type === "STRING"
       ? [
@@ -18,22 +25,36 @@ export function AppSubnav({
           { href: `${base}/translations`, label: "Translations" },
           { href: `${base}/namespaces`, label: "Namespaces" },
           { href: `${base}/import`, label: "Import" },
+          ...(rolesLink ? [rolesLink] : []),
         ]
-      : [
-          { href: `${base}/articles`, label: "Articles" },
-          { href: `${base}/import`, label: "Import" },
-          { href: `${base}/settings`, label: "Settings" },
-        ];
+      : application.model_type === "CATALOG"
+        ? [
+            { href: `${base}/items`, label: itemLabelPlural(application), exclude: `${base}/items/import` },
+            { href: `${base}/items/import`, label: "Import" },
+            { href: `${base}/fields`, label: "Fields" },
+            ...(application.access?.can_manage
+              ? [{ href: `${base}/settings/people`, label: "People" }]
+              : []),
+            ...(rolesLink ? [rolesLink] : []),
+          ]
+        : [
+            { href: `${base}/articles`, label: "Articles" },
+            { href: `${base}/import`, label: "Import" },
+            { href: `${base}/settings`, label: "Settings" },
+          ];
 
   return (
     <nav aria-label="Application sections" className="mb-6">
       <div className="overflow-x-auto sm:overflow-visible">
         <div className="grid w-max min-w-full grid-flow-col auto-cols-[minmax(7.25rem,1fr)] gap-1 rounded-xl border border-[var(--hub-border)] bg-white p-1 shadow-[var(--hub-shadow)] sm:inline-grid sm:w-auto sm:min-w-0 sm:auto-cols-auto">
           {links.map((link) => {
-            const active = link.exact
-              ? pathname === link.href
-              : pathname === link.href || pathname.startsWith(`${link.href}/`);
-
+            const excluded =
+              "exclude" in link && link.exclude ? pathname.startsWith(link.exclude) : false;
+            const active =
+              !excluded &&
+              ("exact" in link && link.exact
+                ? pathname === link.href
+                : pathname === link.href || pathname.startsWith(`${link.href}/`));
             return (
               <Link
                 key={link.href}

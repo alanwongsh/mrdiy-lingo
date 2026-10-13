@@ -310,7 +310,7 @@ export function QualitySettings({
           </div>
           {!canManage ? (
             <p className="mt-4 text-xs text-slate-500">
-              HOD and above can change scoring.
+              Your role cannot change scoring.
             </p>
           ) : null}
         </Card>

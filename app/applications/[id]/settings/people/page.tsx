@@ -12,8 +12,14 @@ export default async function SettingsPeoplePage({
 }) {
   const { id } = await params;
   const app = await getApplication(id);
-  if (!app || app.model_type !== "CONTENT") notFound();
-  if (!app.access.can_manage) redirect(`/applications/${app.id}/settings/general`);
+  if (!app || app.model_type === "STRING") notFound();
+  if (!app.access.can_manage) {
+    redirect(
+      app.model_type === "CATALOG"
+        ? `/applications/${app.id}/items`
+        : `/applications/${app.id}/settings/general`
+    );
+  }
 
   let people: Awaited<ReturnType<typeof listApplicationPeople>>;
   let user: Awaited<ReturnType<typeof getCurrentUser>>;
@@ -30,6 +36,8 @@ export default async function SettingsPeoplePage({
         owner={people.owner}
         members={people.members}
         orgRoles={people.orgRoles}
+        accessRoles={people.accessRoles}
+        actorPermissions={app.access.permissions}
         isSuperadmin={!!user?.is_superadmin}
       />
     </SettingsChrome>

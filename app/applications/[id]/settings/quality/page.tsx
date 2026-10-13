@@ -1,3 +1,4 @@
+import { can } from "@/lib/auth/permissions";
 import { notFound, redirect } from "next/navigation";
 import { getApplication } from "@/lib/actions/applications";
 import { listLanguages } from "@/lib/actions/languages";
@@ -94,8 +95,8 @@ export default async function SettingsQualityPage({
             categories={categories}
             terminology={terms.items}
             languages={languages}
-            canManage={app.access.can_manage || app.access.can_approve}
-            canEditTerms={app.access.can_edit}
+            canManage={can(app.access, "settings.quality")}
+            canEditTerms={can(app.access, "settings.terminology")}
             page={terms.page}
             pageSize={terms.pageSize}
             total={terms.total}
@@ -115,7 +116,7 @@ export default async function SettingsQualityPage({
             applicationId={app.id}
             vendors={vendors}
             types={vendorTypes}
-            canConfigure={app.access.can_approve || app.access.can_manage}
+            canConfigure={can(app.access, "settings.quality")}
             disabled={Boolean(vendorError)}
           />
         </SettingsSection>

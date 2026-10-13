@@ -1,5 +1,6 @@
 "use client";
 
+import { can } from "@/lib/auth/permissions";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getApplication } from "@/lib/actions/applications";
@@ -19,7 +20,7 @@ export default function EditApplicationPage() {
           setError("You do not have access to this application.");
           return;
         }
-        if (!row.access.can_manage) {
+        if (!can(row.access, "settings.general")) {
           setError("Only the owner or a superadmin can edit this application.");
           return;
         }

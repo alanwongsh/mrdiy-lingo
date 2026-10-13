@@ -64,11 +64,15 @@ The browser never calls MyMemory, Gemini, or the database with a user credential
 
 **Next.js application.** Provides the user interface and the server-side functions for translation management: applications, languages, content, string keys, import, export, comments, version history, and translation quality review. UI and mutations live in one App Router project. Mutations are server actions in `lib/actions/`.
 
-**Supabase database.** Stores source content, translations, version history, workflow status, approvals, comments, users, application membership, quality categories, terminology, boilerplate, and quality runs. Row-level security is enabled. Current policies allow the server role through; who can see or change an application is enforced in application code (`lib/auth/access.ts`).
+**Supabase database.** Stores source content, translations, version history, workflow status, approvals, comments, users, application membership, quality categories, terminology, boilerplate, quality runs, publish vendors and deliveries, the review-email queue, and the article audit trail. Row-level security is enabled. Current policies allow the server role through; who can see or change an application is enforced in application code (`lib/auth/access.ts`).
 
 **Translation service.** Receives source text from the Next.js server, returns translated text, and the server stores the result for review. The active provider is selected with `TRANSLATION_PROVIDER`: `mymemory`, `mock`, or `gemini`. Gemini uses the same `GEMINI_API_KEY` and `GEMINI_MODEL` as quality review. An OpenAI provider is planned for QAT and production and is not wired in V0.1.
 
 **Quality review.** After a translation exists, the server can score it. Google Gemini scores message, tone, structure, and cross-language. Terminology and boilerplate are checked against lists stored in the database. The article screens do not call Gemini themselves.
+
+**Publishing.** Each CONTENT application lists its own publish vendors. An approved article sends each ticked language to the vendors chosen for it, either at its scheduled time or with **Publish now**. Vendor integrations live in `lib/publish/integrations/`. V0.1 has one, a mock that posts to webhook.site.
+
+**Review emails.** When an article enters `REVIEW`, a database trigger queues an email in `notification_outbox`. A cron route sends it over SMTP to everyone in that application who can approve.
 
 **Joget.** MR.DIY’s existing portal. Joget does not share its session cookie with Lingo. It opens Lingo in an iframe with a short-lived signed token. People who are not coming from Joget sign in on `/sign-in` with email and password. Both paths end in the same `lingo_actor` session cookie.
 
@@ -136,6 +140,7 @@ Primary keys are time-ordered UUID v7 (`uuidv7()`), so new rows append in index 
 | TipTap | ^3.31.4 | Article HTML body editor |
 | PapaParse | ^5.7.0 | Read CSV on import |
 | SheetJS (`xlsx`) | ^0.18.5 | Read Excel on import, write Excel on article export |
+| Nodemailer | ^10.0.16 | Send review emails over SMTP |
 
 ### 3.4 Authentication and security
 
@@ -153,44 +158,53 @@ Primary keys are time-ordered UUID v7 (`uuidv7()`), so new rows append in index 
 | MyMemory | Temporary free translation API for development. Each request is truncated at 450 characters |
 | OpenAI | Planned translation provider for QAT and production. Not implemented in V0.1 |
 | Google Gemini | Scores article translations, and translates them when `TRANSLATION_PROVIDER=gemini`. The API key stays on the server |
-| Supabase | Database |
-| Vercel | Application hosting |
+| Supabase | Database. `pg_cron` and `pg_net` call the cron routes (`supabase/cron/notifications.sql`) |
+| Vercel | Application hosting. Vercel Cron runs the publish route (`vercel.json`) |
+| SMTP server | Sends review emails |
+| webhook.site | Mock publish vendor for development |
 | Joget | Identity source for iframe sign-in |
 
 ---
 
 ## 4. Data model
 
-Schema is applied in order from `supabase/migrations/001` through `015`. Setup (`/setup`) shows which migrations the connected database still needs. Service call logs are daily files on the server, not database tables.
+Schema is applied in order from `supabase/migrations/001` through `023`. Setup (`/setup`) shows which migrations the connected database still needs, up to 018. Later migrations are applied with `npm run db:migrate`. Service call logs are daily files on the server, not database tables. The article audit trail is a database table, `content_audit_events` (migration 023).
 
 ### 4.1 Tables
 
 | Table | Description |
 | --- | --- |
 | `languages` | Languages available for translation. Each row has a code, a name, and a status of `ACTIVE` or `INACTIVE`. |
-| `hub_users` | Lingo user directory. A row is created when someone signs in from Joget, signs in with email and password, or is invited before their first sign-in. Holds display name, username, email, employee ID, superadmin flag, the password hash used for email sign-in, and `ldap_role` (the account title, such as Executive or HOD). |
-| `org_role_map` | Maps an account title (`ldap_role`) to a permission group: `EDITOR` or `HOD`. Titles in the HOD group can approve. Every other title can edit and draft. Maintained from the Roles screen. |
-| `applications` | Applications managed for translation. Each application is either `STRING` (product copy) or `CONTENT` (press articles), and has one owner. |
-| `application_members` | Users invited to one application. `role` is `EDITOR`, `HOD`, or `ADMIN`. HOD and Admin can approve. Editor can edit and draft. `can_edit` and `can_approve` follow that role. |
+| `hub_users` | Lingo user directory. A row is created when someone signs in from Joget, signs in with email and password, or is invited before their first sign-in. Holds display name, username, email, employee ID, superadmin flag, the password hash used for email sign-in, and `ldap_role` (the job title, such as Executive). The job title is shown only. |
+| `org_role_map` | The list of job titles (`ldap_role`). `band` decided approval before migrations 025 and 026 and is ignored after it. Maintained on the Job titles screen, and Joget adds new titles at sign-in. |
+| `access_roles` | Roles such as Translator or Reviewer: name, description, and `application_id`. Each application keeps its own roles, maintained under its Settings → Roles. Rows with no `application_id` are the defaults copied into every new application (`copied_from` records the source), maintained by a superadmin on the Default roles screen. Names are unique per application. |
+| `access_role_permissions` | Which permissions each role holds (`role_id`, `permission`). Mapped under each application's Settings → Roles, and for the defaults on the Default roles screen. |
+| `applications` | Applications managed for translation. Each application is either `STRING` (product copy) or `CONTENT` (press articles), and has one owner. `notify_review_email` (default on) turns review emails on or off for that application. |
+| `application_members` | Users invited to one application. `access_role_id` is the member's role and decides what they can do. The older `role`, `can_edit`, and `can_approve` columns are kept in step with it. |
 | `namespaces` | Groups translation keys inside a STRING application. The name is unique per application. |
 | `translation_keys` | A STRING key: key name, source language, and source text. The key is unique per application. |
 | `translations` | The current string for one key and one language, plus status and the approval stamp. |
 | `translation_versions` | Append-only history of a string translation. |
 | `content_types` | Types owned by one CONTENT application. Each row has a stable `code`, a display `name`, a description, `ACTIVE` or `INACTIVE`, and a sort order. The code is unique per application. New articles default to `GENERAL`. An inactive type stays on articles that already use it and is hidden from new choices. Import creates a type when the file uses a code this app does not have yet. |
-| `content` | An article in a CONTENT application. `content_type` is that app’s type code. Also stores title, slug, source language, source JSON, market, who submitted it, lifecycle status, target languages, and schedule and publish timestamps. |
+| `content` | An article in a CONTENT application. `content_type` is that app’s type code. Also stores title, slug, source language, source JSON, market, who submitted it, lifecycle status, target languages, and schedule and publish timestamps. `scheduled_publish_at` is the default publish time. `language_publish_at` (JSON, lower-case language code → ISO time) overrides it for one language. |
 | `content_translations` | One translation of an article into one language: title, summary, body, SEO title, SEO description, status, and the approval stamp. |
 | `content_translation_versions` | Append-only history of an article translation, stored as JSON of those five fields. |
 | `article_comments` | A comment on an article, scoped to one language. |
 | `quality_categories` | The checks used to score a translation. `category_type` is `ai` or `rule`. `enabled` turns a check on or off. `configuration.weight` is that check’s share of the score. Seeded checks: message 20, tone 15, structure 15, cross-language 25, terminology 15, boilerplate 10. The code is unique. `enabled` and the weight here are defaults; an application's own setting in `application_quality_settings` overrides them. |
 | `application_quality_settings` | One application's `enabled` and `weight` (1–100) for one quality check. Primary key is application + category. Migration 022 copies the shared settings to every existing application. |
-| `terminology` | A preferred wording for one source language and one target language, plus spellings to avoid. One term is unique per language pair, ignoring case. `is_active` includes or excludes it from reviews. |
+| `terminology` | A preferred wording for one source language and one target language, plus spellings to avoid. Each row belongs to one application (`application_id`, migration 021). One term is unique per application and language pair, ignoring case. `is_active` includes or excludes it from reviews. |
 | `boilerplate_phrases` | A required standard phrase for one language. The name is unique per language, ignoring case. `expected_usage` is `when_source_present`: the phrase is required when the source contains the matching phrase. Seeded with the company introduction. |
 | `quality_runs` | One quality analysis of an article translation. Stores provider, model, languages, status (`pending`, `running`, `completed`, `failed`), overall score, request and response metadata, and an error message. `content_translation_version_id` points at the saved version that was analyzed. That column is unique when it is set, so a saved version keeps one run. A draft analysis leaves it null. Deleting the article or that version deletes the run. |
 | `quality_scores` | One category result on a run: category code, score from 0 to 100, band (`excellent`, `good`, `warning`, `critical`), summary, or an error message when that category did not score. |
 | `quality_findings` | A problem found in a run: severity (`info`, `warning`, `error`, `critical`), title, explanation, source quote, translated quote, suggested wording, and field (`title`, `summary`, or `content`). |
 | `quality_actions` | A suggested edit for one finding. `action_type` is `replace`, `insert`, `delete`, or `rewrite`. Status is `pending`, `applied`, or `ignored`. |
+| `publish_vendors` | A publish destination owned by one CONTENT application. `type_code` picks the integration (V0.1 has `webhook_site`, a mock that posts to webhook.site). `config` (JSON) holds that integration's credentials, such as the URL and API key. `ACTIVE` or `INACTIVE`. The name is unique per application, ignoring case. |
+| `content_publish_targets` | Which vendors one article language is sent to. Primary key is article + language + vendor. |
+| `content_publications` | One delivery of one article language to one vendor. Status is `PENDING`, `PUBLISHED`, or `FAILED`, with the vendor's `external_url`, an error message, `attempted_at`, and `published_at`. Unique per article + vendor + language, so a retry updates the same row. |
+| `notification_outbox` | Queue of review emails. A database trigger on `content` adds an `ARTICLE_REVIEW` row when an article enters `REVIEW`, unless one is already queued or was added in the last 15 minutes, or the application has review emails turned off. Status is `PENDING`, `SENDING`, `SENT`, `FAILED`, or `SKIPPED`. Stores attempts, the recipients already emailed (`sent_to`), and the last error. |
+| `content_audit_events` | Append-only audit trail for articles. One row per event: `CREATED`, `STATUS_CHANGED`, `EDITED`, `TRANSLATION_SAVED`, `TRANSLATION_APPROVED`, `TRANSLATION_UNAPPROVED`, or `DELETED`. Stores the article id, application id, a copy of the article title, the language when the event is about one translation, `from_status` and `to_status`, and `detail` (JSON: changed fields, version number, reason, and `action_id`). The actor is `actor_name`, `actor_username`, and `actor_user_id`. `actor_name` is `System` for a scheduled publish with no signed-in person. A trigger rejects any update or delete. |
 
-Deleting an application cascades to its namespaces, keys, translations, content types, articles, and memberships. Deleting an article cascades to its quality runs. Deleting a run cascades to its scores, findings, and actions.
+Deleting an application cascades to its namespaces, keys, translations, content types, terminology, publish vendors, articles, and memberships. Deleting an article cascades to its quality runs, publish targets, publications, and queued emails. Deleting a vendor cascades to its targets and publications. Deleting a run cascades to its scores, findings, and actions. `content_audit_events` has no foreign key to `content` or `applications`, so the audit trail stays after an article or application is deleted.
 
 ### 4.2 Article source fields
 
@@ -217,7 +231,7 @@ Deleting an application cascades to its namespaces, keys, translations, content 
 | `MANUALLY_MODIFIED` | Written or edited by a person, or brought in by import |
 | `APPROVED` | Signed off. Stores approver username, display name, user id, and time |
 
-An editor save stores `MANUALLY_MODIFIED` and clears the approval stamp. An HOD save of an article language stores `APPROVED` and records who approved it and when. A string edit stays `MANUALLY_MODIFIED` until someone approves it. A new version row is written only when the text or status actually changes.
+An editor save stores `MANUALLY_MODIFIED` and clears the approval stamp. An HOD save of an article language keeps an existing approval, and otherwise stores `MANUALLY_MODIFIED`. Approving is a separate step that records who approved it and when. A string edit stays `MANUALLY_MODIFIED` until someone approves it. A new version row is written only when the text or status actually changes.
 
 **Article lifecycle** (`content.status`):
 
@@ -226,8 +240,11 @@ An editor save stores `MANUALLY_MODIFIED` and clears the approval stamp. An HOD 
 | `DRAFT` | Being written |
 | `TRANSLATING` | An automatic translation run is in progress |
 | `REVIEW` | Ready for a person to check translations |
-| `APPROVED` | Every target language is approved |
-| `PUBLISHED` | Released. `published_at` is set the first time this status is saved |
+| `APPROVED` | Every target language is approved. Ready to send to vendors |
+| `PUBLISHING` | Live in some of the ticked languages and still waiting in others |
+| `PUBLISHED` | Live in every ticked language. `published_at` is set the first time this status is saved |
+
+`APPROVED`, `PUBLISHING`, and `PUBLISHED` are the publishable statuses. The publish runner moves an article between them based on how many ticked languages are live. A language ticked after the article is `PUBLISHED` moves it back to `PUBLISHING` until that language goes out.
 
 **Version source** (`source_type`): `SYSTEM` (provider), `MANUAL` (editor), `IMPORT` (file).
 
@@ -243,6 +260,27 @@ Message, tone, structure, and cross-language are scored by Gemini. Terminology a
 
 The review does not block publishing. Findings are a reference for the reviewer.
 
+### 4.5 Audit trail
+
+The server writes audit rows from application code (`lib/audit.ts`) after each change is saved. Every place that changes an article writes one: create, save, status change, auto-translate, language save and approval, quality-review save (`commit_content_translation_quality`), version delete, article delete, and the publish runner's status sync.
+
+| Event | Written when |
+| --- | --- |
+| `CREATED` | An article is created |
+| `STATUS_CHANGED` | `content.status` changes. `detail.reason` explains automatic moves, for example `Source text changed` or `2 of 2 languages live` |
+| `EDITED` | Title, source text, source language, content type, target languages, market, or publish time changes (`detail.fields`). A deleted translation version is also recorded here |
+| `TRANSLATION_SAVED` | A translation's text changes. `detail.version` is the new version number |
+| `TRANSLATION_APPROVED` / `TRANSLATION_UNAPPROVED` | A language becomes approved, or its approval is cleared |
+| `DELETED` | An article is deleted. The title and last status are kept |
+
+Rows written in the same request share `detail.action_id`. The article page groups them into one Activity entry: the main action is the headline, and the changes it caused are listed under it.
+
+Limits:
+
+- A change made directly in the database, outside the app, is not recorded.
+- If writing the audit row fails, the change is still saved. The failure goes to the server console and the service log (source `audit`).
+- Articles changed before migration 023 have no history from before it.
+
 ---
 
 ## 5. Access control
@@ -251,18 +289,86 @@ Identity comes from Joget or from email sign-in. Lingo stores the person on `hub
 
 | Actor | What they can do |
 | --- | --- |
-| Signed-in user | Create an application and become its owner. See applications they own or were invited to. |
-| Owner | Edit and approve that application. Invite and remove members, and set each member’s account role. The role map does not limit the owner. |
-| Member | View the application. Cannot manage membership. Edit and approve follow the account title on `hub_users.ldap_role`, grouped by `org_role_map`. A title in the HOD group can edit and approve. Every other title, including a blank one, can edit and draft only. |
-| Superadmin | Listed in `LINGO_SUPERADMINS` (username, email, or employee ID) and stored as `hub_users.is_superadmin`. Opens every application, including ones with no owner. Edit, approve, and manage members on all of them. Uses Languages, Roles, Logs, and Setup. Can assign an owner. |
+| Signed-in user | See applications they own or were invited to. With none, they see "No applications yet". |
+| Owner | Edit and approve that application. Invite and remove members, and give each member a role and job title. Roles do not limit the owner. |
+| Member | View the application. Everything else follows the permissions mapped to the member's role (`application_members.access_role_id`). The job title (`hub_users.ldap_role`) is shown only. |
+| Superadmin | Listed in `LINGO_SUPERADMINS` (username, email, or employee ID) and stored as `hub_users.is_superadmin`. The only one who can create an application. Opens every application, including ones with no owner. Edit, approve, and manage members on all of them. Uses Languages, Default roles, Job titles, Logs, and Setup. Can assign an owner. |
 
-Moving an article to `APPROVED` or `PUBLISHED`, and approving a language, requires the approve capability. Other writes require edit. An HOD who saves a language stores that language as `APPROVED`. An editor’s save stores it as `MANUALLY_MODIFIED` and returns an approved or published article to `REVIEW`.
+Every check runs on the server (`lib/auth/access.ts`). Viewing needs membership. Every other action needs one permission. The permissions are listed in `lib/auth/permissions.ts`; which roles hold them is stored in `access_role_permissions` and mapped under each application's Settings → Roles. Owners and superadmins hold every permission.
 
-Quality scoring — which checks are on and their weights — can be changed by anyone who can approve that application: HOD and above, the owner, and a superadmin. The terminology list can also be changed by an editor. Each application has its own terminology list, used by its quality checks and by Gemini translation.
+| Permission | Covers |
+| --- | --- |
+| `content.edit` | Create and edit articles, strings, catalog items, and translations. Drafts, submit for review, auto-translate, quality checks, delete articles |
+| `content.import` | Import articles, strings, or catalog items from a file |
+| `content.approve` | Approve content and translations, request changes, move articles to Approved or Published |
+| `settings.general` | Application name, description, and status |
+| `settings.notifications` | Review-email switch |
+| `settings.content_types` | Article types |
+| `settings.fields` | Catalog fields |
+| `settings.quality` | Quality scoring, checks, and publish vendors |
+| `settings.terminology` | Terminology entries |
+| `people.manage` | Add and remove people and give them roles |
+| `roles.manage` | Add, rename, and delete the application's roles and map their permissions |
+
+Permissions are independent; none includes another. A person with `people.manage` can only give, change, or remove a role whose permissions they all hold, and cannot change their own role. Seeded roles match the old behaviour: Content writer and Translator hold `content.edit`, `content.import`, `settings.content_types`, and `settings.terminology`; Reviewer adds `content.approve`, `settings.notifications`, `settings.fields`, and `settings.quality`; Manager holds all of them. A person with `roles.manage` can only tick permissions they hold, and cannot change a role that holds permissions they lack. A role in use cannot be deleted. Each application keeps its own roles, so departments can shape their own workflow; changing the defaults on the Default roles screen only affects applications created afterwards. In code, `"edit"`, `"approve"`, and `"manage"` are shorthands for `content.edit`, `content.approve`, and `people.manage`.
+
+Before migrations 025 and 026, a member's group comes from their job title (`hub_users.ldap_role`) through `org_role_map`: a title in the HOD group can approve, and any other title can edit and draft.
+
+In the table below, "Editor" means a role with edit only, and "HOD and above" means a role that can approve.
+
+### 5.1 Permissions by feature
+
+| Feature | Editor | HOD and above | Owner and superadmin |
+| --- | :---: | :---: | :---: |
+| **Applications** | | | |
+| See the application, its articles, and its stats | ✓ | ✓ | ✓ |
+| Edit name, description, and status | | | ✓ |
+| Invite and remove members, set roles and passwords (Settings → People) | | | ✓ |
+| Assign an owner | | | Superadmin only |
+| **Articles** | | | |
+| Create an article: Save as draft | ✓ | ✓ | ✓ |
+| Create an article: Submit for review | ✓ | | |
+| Create an article: Save and approve | | ✓ | ✓ |
+| Edit source text, type, market, schedule, and target languages | ✓ | ✓ | ✓ |
+| Set the article to `APPROVED`, `PUBLISHING`, or `PUBLISHED` | | ✓ | ✓ |
+| Delete articles | ✓ | ✓ | ✓ |
+| Import articles (stored approved only for HOD and above) | ✓ | ✓ | ✓ |
+| Export approved languages to Excel | ✓ | ✓ | ✓ |
+| Comment | ✓ | ✓ | ✓ |
+| View version history and the Activity trail | ✓ | ✓ | ✓ |
+| Delete a translation version | ✓ | ✓ | ✓ |
+| **Translations** | | | |
+| Auto-translate (stored approved only for HOD and above) | ✓ | ✓ | ✓ |
+| Save a language (never approves it) | ✓ | ✓ | ✓ |
+| Approve a language, or clear its approval | | ✓ | ✓ |
+| **Quality review** | | | |
+| See scores and findings | ✓ | ✓ | ✓ |
+| Analyze, recheck wording, accept or ignore suggestions | ✓ | ✓ | ✓ |
+| Turn checks on or off and change weights (Settings → Quality) | | ✓ | ✓ |
+| Add, edit, turn on or off, and delete terminology | ✓ | ✓ | ✓ |
+| Boilerplate phrases | Database rows only. There is no screen | | |
+| **Content types** (Settings → Types) | | | |
+| Add, edit, and delete types | ✓ | ✓ | ✓ |
+| **Publishing** | | | |
+| Tick vendors for each language on an article | ✓ | ✓ | ✓ |
+| **Publish now** (the article must already be approved) | ✓ | ✓ | ✓ |
+| Add, edit, and delete vendors, and see their credentials (Settings → Quality → Publishing) | | ✓ | ✓ |
+| **Notifications** | | | |
+| Turn review emails on or off (Settings → General) | | ✓ | ✓ |
+| Receive review emails | | ✓ | Owner only. A superadmin who is not a member gets none |
+| **STRING applications** | | | |
+| Namespaces, keys, translations, import, and auto-translate | ✓ | ✓ | ✓ |
+| Approve a string translation | | ✓ | ✓ |
+| **Platform** (superadmin only) | | | |
+| Languages, Default roles, Job titles, Logs, and Setup | | | Superadmin only |
+
+Saving a language never approves it. An approver's save keeps an existing approval, and approving is a separate step. An editor's save stores `MANUALLY_MODIFIED`, and an approved or published article returns to `REVIEW`.
+
+Each application has its own terminology list, quality weights, content types, publish vendors, and review-email switch.
 
 Applications created before access control have no owner. Until a superadmin sets one, only a superadmin can see them.
 
-### 5.1 Session cookie
+### 5.2 Session cookie
 
 The session is the `lingo_actor` cookie. It holds a signed token: username, display name, email, optional employee ID, and expiry. It does not hold the password.
 
@@ -304,26 +410,39 @@ Joget mints a token that expires in about five minutes. After Lingo accepts it, 
 Token payload (compact JSON, base64url, HMAC-SHA256 of that text):
 
 ```json
-{"u":"ahmad","n":"Ahmad Lee","e":"ahmad@example.com","eid":"E10293","exp":1710000000}
+{"u":"ahmad","n":"Ahmad Lee","e":"ahmad@example.com","r":"Executive","eid":"E10293","exp":1710000000}
 ```
 
-`eid` is optional. Until Joget sends an employee ID, the Joget username is the identity used for invites and the superadmin list.
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `u` | Yes | Joget username |
+| `n` | Yes | Display name. Replaces the name on the account at each sign-in |
+| `e` | Yes | Company email. Lingo finds the person by email first, so invites made by email link on first sign-in. A token without an email is refused with 403 and a message to ask IT to add one |
+| `r` | No | Role or title from Joget, such as Executive. Stored as the job title (`hub_users.ldap_role`) and added to the job title list if new. Display only; it grants nothing |
+| `eid` | No | Employee ID |
+| `exp` | Yes | Unix seconds. About five minutes ahead |
+
+An SSO provider can replace Joget later by sending the same fields: email, name, and optionally a title.
+
+**Inviting.** On an application's People settings, the owner or someone whose role has `people.manage` adds a person by email and picks a role and an optional job title. Name and password are optional. Without a password they sign in from Joget only, matched by email, and Joget fills in their name. With a password they can also sign in on `/sign-in`. "Set password" adds or changes one later. The person shows "Invited, not signed in yet" until their first sign-in.
+
+Someone who opens Lingo from Joget without an invitation gets an account but sees "No applications yet" until they are added. Only a superadmin can create an application (`/applications/new`); they become its owner, can hand ownership to someone else, and add people.
 
 ### 6.2 Create an application and invite people
 
 ```mermaid
 flowchart TD
-  A[Dashboard or Applications] --> B[New application]
+  A[Superadmin: Applications] --> B[New application]
   B --> C{Model}
   C -->|Strings| D[Namespaces and keys]
   C -->|Content| E[General type and articles]
-  B --> F[Creator becomes owner]
-  F --> G[Owner invites by email or employee ID]
-  G --> H[Assign an account role]
-  H --> I[Invitee sees the app after they sign in]
+  B --> F[Superadmin becomes owner, or sets another owner]
+  F --> G[Owner invites by email, password optional]
+  G --> H[Pick a role and optional job title]
+  H --> I[Invitee sees the app after they sign in from Joget or with a password]
 ```
 
-Inviting someone who has never signed in creates a `hub_users` row so the membership can be stored. They match that row on their next sign-in by email, employee ID, or username.
+Inviting someone who has never signed in creates a `hub_users` row so the membership can be stored. They match that row on their first sign-in by email first, then username or employee ID.
 
 ### 6.3 Press article workflow
 
@@ -331,23 +450,35 @@ This is the main CONTENT flow.
 
 ```mermaid
 flowchart TD
-  Create[Create or import article] --> Start{Creator can approve?}
-  Start -->|No| Draft[DRAFT]
-  Start -->|Yes| Approved[APPROVED]
+  Create[New article] --> Start{Creator can approve?}
+  Start -->|No| EditorSave{Editor saves as}
+  EditorSave -->|Save as draft| Draft[DRAFT]
+  EditorSave -->|Submit for review| Review[REVIEW]
+  Start -->|Yes| HodSave{Approver saves as}
+  HodSave -->|Save as draft| Draft
+  HodSave -->|Save and approve| Approved[APPROVED]
+  Import[Import file] --> ImportWho{Importer can approve?}
+  ImportWho -->|No| Draft
+  ImportWho -->|Yes| Approved
   Draft --> Work[Edit source text and target languages]
+  Work -->|Set status to Review| Review
+  Work -->|Approver sets Approved| Approved
   Work --> Auto[Auto-translate]
   Auto --> AutoWho{Who ran it?}
-  AutoWho -->|Editor| Review[REVIEW]
-  AutoWho -->|HOD| LangOk[Language APPROVED]
+  AutoWho -->|Editor| Review
+  AutoWho -->|Approver| LangOk[Language APPROVED]
   Review --> SaveLang[Save a language]
   SaveLang --> Actor{Who saved?}
-  Actor -->|Editor| Manual[MANUALLY_MODIFIED and article REVIEW]
-  Actor -->|HOD| LangOk
+  Actor -->|Editor| Manual[Language MANUALLY_MODIFIED, and an approved or published article returns to REVIEW]
+  Actor -->|Approver| Kept[Language keeps its approval if it had one, else MANUALLY_MODIFIED]
   Manual --> Review
+  Kept --> ApproveLang[Approver clicks Approve on the language]
+  Review --> ApproveLang
+  ApproveLang --> LangOk
   LangOk --> All{All targets approved?}
   All -->|No| Stay[Article status unchanged]
   All -->|Yes| Approved
-  Approved --> Publish[PUBLISHED]
+  Approved --> Publish[PUBLISHING, then PUBLISHED]
   Publish --> SaveLang
   Approved --> SourceEdit[Edit source text]
   Publish --> SourceEdit
@@ -360,13 +491,13 @@ flowchart TD
 
 Step by step:
 
-1. An editor creates an article (or imports one) as `DRAFT`. An HOD, owner, or superadmin creates it as `APPROVED`. The type defaults to General. They set the source language, write title, description, HTML body, and SEO fields, and pick target languages. The source language is also stored as a translation row so the source text has history.
+1. A new article is saved with one of two buttons. An editor chooses **Save as draft** (`DRAFT`) or **Submit for review** (`REVIEW`). An HOD, owner, or superadmin chooses **Save as draft** (`DRAFT`) or **Save and approve** (`APPROVED`, and every translation saved with it is approved). An approver's draft is not approved until they approve it later. An import stores the status in the file, or `DRAFT`; an approver's import is stored as `APPROVED`. The type defaults to General. They set the source language, write title, description, HTML body, and SEO fields, and pick target languages. The source language is also stored as a translation row so the source text has history.
 2. **Auto-translate** sends the live editor text to the translation service, one target language at a time. An editor’s run sets the article to `TRANSLATING`, then `REVIEW`, and each target is `SYSTEM_GENERATED`. An HOD’s run stores each target as `APPROVED`. A version is appended either way.
 3. For an article, MyMemory translates title, summary, SEO title, and SEO description as four plain-text calls, and the body as one call per HTML text node so tags stay in place. A rich article is often about 20–25 MyMemory calls per language. Gemini sends the whole article in one call and returns the title, summary, body, and SEO fields separately.
-4. An editor saves a language as `MANUALLY_MODIFIED`. If the article was `APPROVED` or `PUBLISHED`, it returns to `REVIEW`.
-5. An HOD saves a language as `APPROVED` immediately. A published article stays `PUBLISHED`. The row stores who approved it and when.
-6. When every language in `target_languages` is `APPROVED`, the article itself can become `APPROVED`.
-7. Publishing sets status to `PUBLISHED` and stamps `published_at`. Leaving `PUBLISHED` clears `published_at`.
+4. Saving a language never approves it. An editor's save stores `MANUALLY_MODIFIED`. If the article was `APPROVED`, `PUBLISHING`, or `PUBLISHED`, it returns to `REVIEW`.
+5. An approver's save keeps the language `APPROVED` if it already was, and otherwise stores `MANUALLY_MODIFIED`. Their save does not move the article back to `REVIEW`. To approve a language, the approver clicks **Approve** on it. The row stores who approved it and when.
+6. When every language in `target_languages` is `APPROVED`, the article becomes `APPROVED`. An approver can also set the article to `APPROVED` from the editor, which approves every target language that has text.
+7. Publishing sends each ticked language to its vendors (section 6.9). The article becomes `PUBLISHING` when the first language is live and `PUBLISHED` when all of them are, and `published_at` is stamped. Leaving `PUBLISHED` clears `published_at`.
 8. Editing the source text of an approved or published article clears approval on every target language and returns the article to `REVIEW`. Changing type, market, schedule, source language, or the target list does not.
 9. Export is separate from approval. On the article list, an editor selects articles and downloads Excel. Source columns are always filled. A language is filled only when that translation is already approved. An article with no approved target language is skipped, and languages that are not approved stay blank.
 
@@ -385,10 +516,10 @@ stateDiagram-v2
   [*] --> MISSING
   MISSING --> SYSTEM_GENERATED: Editor auto-translate
   MISSING --> MANUALLY_MODIFIED: Editor types or imports
-  MISSING --> APPROVED: HOD saves, translates, or imports
-  SYSTEM_GENERATED --> MANUALLY_MODIFIED: Editor saves
-  SYSTEM_GENERATED --> APPROVED: HOD saves or approves
-  MANUALLY_MODIFIED --> APPROVED: HOD saves or approves
+  MISSING --> APPROVED: HOD saves and approves, translates, or imports
+  SYSTEM_GENERATED --> MANUALLY_MODIFIED: Anyone saves
+  SYSTEM_GENERATED --> APPROVED: HOD approves
+  MANUALLY_MODIFIED --> APPROVED: HOD approves
   APPROVED --> MANUALLY_MODIFIED: Editor saves or source text changes
 ```
 
@@ -483,6 +614,43 @@ flowchart TD
 
 On the review rail, an `info` finding is a Note, a `warning` is a Check, and `error` or `critical` is a Blocker. Those labels do not stop publishing.
 
+### 6.9 Publish to vendors
+
+```mermaid
+flowchart TD
+  Vendors[HOD adds vendors in Quality settings] --> Tick[Tick vendors per language on the article]
+  Tick --> When{When?}
+  When -->|Publish now| Run[Send ticked languages]
+  When -->|Scheduled| Cron["/api/cron/publish"]
+  Cron --> Due{Language time passed?}
+  Due -->|No| Wait[Wait for the next run]
+  Due -->|Yes| Run
+  Run --> Check{Article approved and language approved?}
+  Check -->|No| Skip[Skipped with a note]
+  Check -->|Yes| Send[Deliver to vendor]
+  Send --> Pub[content_publications PUBLISHED or FAILED]
+  Pub --> Sync[Article APPROVED, PUBLISHING, or PUBLISHED]
+```
+
+1. A vendor is added under the application's Quality settings (`#publishing`) with an integration type and its credentials. Only active vendors are used.
+2. On the article, each language is ticked for one or more vendors (`content_publish_targets`).
+3. A language's publish time is its own entry in `language_publish_at`, or else `scheduled_publish_at`.
+4. The publish runner (`lib/publish/run.ts`) picks up articles in a publishable status, takes up to 25 per status at a time, and sends every ticked language whose time has passed. **Publish now** sends every ticked language for one article, whatever its time.
+5. The source language goes out from the source content. Any other language must be `APPROVED`, or it is skipped.
+6. Each delivery claims a `content_publications` row as `PENDING`, then stores `PUBLISHED` with the vendor link, or `FAILED` with the error. A language already `PUBLISHED` for that vendor is not sent again. A `PENDING` row that is still in flight is skipped.
+7. The article status is then synced from how many ticked languages are live (section 4.3).
+
+`/published/[id]` redirects to the vendor's public link for a publication, or shows why there is none (missing, pending, failed, or no link returned).
+
+### 6.10 Review emails
+
+1. An article enters `REVIEW` by any path (save, translation run, import, or the quality-review save). The `trg_content_review_notice` trigger queues one `ARTICLE_REVIEW` row in `notification_outbox`.
+2. Nothing is queued when the application has review emails turned off, or when a notice for that article is still queued or was added in the last 15 minutes. A machine translation run moves the article to `REVIEW` once per language, so this keeps it to one email.
+3. `/api/cron/notifications` claims up to 20 queued rows with `claim_notification_outbox` and emails the owner and every member who can approve. The email links to the article through `APP_BASE_URL`.
+4. A row is `SKIPPED` when the article has left `REVIEW`, review emails were turned off, or no approver has an email address. A failed send goes back to `PENDING` and is retried, up to 5 attempts, then ends as `FAILED`. `sent_to` remembers who already got the email, so a retry only goes to the rest. `last_error` holds the reason.
+
+Review emails are switched on or off per application under Settings → General → Notifications.
+
 ---
 
 ## 7. Translation service
@@ -518,13 +686,20 @@ Auto-translate prefers text currently in the editor over the last saved copy, an
 | `/applications/[id]/namespaces` | STRING member | Namespaces |
 | `/applications/[id]/translations` | STRING member | Keys and per-language status |
 | `/applications/[id]/articles` | CONTENT member | Article list, filters, selection, export, bulk delete |
-| `/applications/[id]/articles/[contentId]` | CONTENT member | Article view, quality review, history, comments |
+| `/applications/[id]/articles/[contentId]` | CONTENT member | Article view, quality review, history, activity (audit trail), comments |
 | `/applications/[id]/articles/[contentId]/edit` | CONTENT member who can edit | Dual-pane editor, translate, save, quality review |
+| `/applications/[id]/settings/general` | CONTENT member | Application details and the review-email switch (`#notifications`). HOD and above can change the switch |
+| `/applications/[id]/settings/people` | Owner or superadmin | Members and their roles |
 | `/applications/[id]/settings/types` | CONTENT member who can edit | Content types for that application |
-| `/applications/[id]/settings/quality` | CONTENT member | Scoring weights and terminology. HOD and above can change them |
+| `/applications/[id]/settings/quality` | CONTENT member | Scoring weights, terminology, and publish vendors (`#publishing`). HOD and above can change them |
+| `/published/[id]` | Public | Redirects to the vendor's public link for one publication |
+| `/api/cron/publish` | Cron, with `CRON_SECRET` | Runs scheduled publishing |
+| `/api/cron/notifications` | Cron, with `CRON_SECRET` | Sends queued review emails |
 | `/applications/[id]/import` and `/import` | Editor | Import wizard |
 | `/languages` | Superadmin | Create and activate or deactivate languages |
-| `/roles` | Superadmin | Group account titles into Editor or HOD and above |
+| `/roles` | Superadmin | Default roles: a template copied into each new application |
+| `/job-titles` | Superadmin | The list of job titles. Display only |
+| `/applications/[id]/settings/roles` | `roles.manage` | This application's roles and their permission map |
 | `/logs` | Superadmin | Service call logs: input, output, and token counts. One file per day, deleted after the retention window |
 | `/setup` | Superadmin, or anyone while no superadmin exists yet | Migration checklist |
 
@@ -550,6 +725,10 @@ Local and Vercel configuration (`.env.local` / Vercel project env):
 | `JOGET_FRAME_ANCESTORS` | Origins allowed to iframe the app. Default `*` |
 | `EMBED_ALLOW_DEV` | Local stand-in for Joget. Leave unset in production |
 | `SUPABASE_INSECURE_SSL` | Optional, for corporate SSL inspection |
+| `CRON_SECRET` | Bearer token the cron routes require. Without it, only Vercel Cron on Vercel is accepted |
+| `APP_BASE_URL` | Public Lingo URL, used for the article link in review emails |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | SMTP server for review emails. Port defaults to 465 (TLS). 587 uses STARTTLS. Without host, user, and password, emails are not sent |
+| `MAIL_FROM` | Sender address. Defaults to `SMTP_USER` |
 
 Migrations, in order:
 
@@ -568,6 +747,27 @@ Migrations, in order:
 13. `013_content_types.sql` — per-application content types
 14. `014_translation_quality.sql` — quality categories, terminology, boilerplate, runs, scores, findings, actions
 15. `015_quality_run_version.sql` — one quality run per saved translation version
+16. `016_publish_vendors.sql` — publish vendors, article publish targets, and publications
+17. `017_publish_language_targets.sql` — each article language goes to its own vendors
+18. `018_language_publish_schedule.sql` — per-language publish times and the `PUBLISHING` status
+19. `019_notification_outbox.sql` — review-email queue and the trigger that fills it
+20. `020_review_email_setting.sql` — per-application review-email switch
+21. `021_terminology_per_application.sql` — each application keeps its own terminology. Removes the old shared list
+22. `022_quality_settings_per_application.sql` — each application keeps its own quality checks and weights
+23. `023_content_audit_events.sql` — article audit trail (`content_audit_events`)
+24. `024_catalog.sql` — catalog applications
+25. `025_access_roles.sql` — roles (`access_roles`) and `application_members.access_role_id`. Approvers become Reviewer; everyone else becomes Content writer
+26. `026_access_role_permissions.sql` — permission map per role (`access_role_permissions`). Converts the edit, approve, and manage switches from 025 and drops them
+27. `027_application_roles.sql` — roles per application. Copies the default roles into every application, moves members onto their application's copy, and adds `roles.manage` wherever `people.manage` was
+
+`npm run db:migrate` applies every pending file and records it in `_migrations`.
+
+Cron jobs:
+
+| Job | Schedule | Set up in |
+| --- | --- | --- |
+| Scheduled publishing, `/api/cron/publish` | Daily at 08:00 UTC (16:00 Malaysia time) | `vercel.json` (Vercel Cron). `supabase/cron/notifications.sql` has an optional `pg_cron` job to use instead |
+| Review emails, `/api/cron/notifications` | Every minute, only when something is queued | `supabase/cron/notifications.sql` (`pg_cron` + `pg_net`). Run it once per environment after migration 019, with the app URL and `CRON_SECRET` stored in Vault. It is not a migration |
 
 ```bash
 npm install
@@ -588,4 +788,8 @@ The Joget iframe host must be HTTPS so the session cookie is accepted inside a c
 - Export is an approved-language extract. Unapproved translations stay out of the file on purpose.
 - Version rows are history. Deleting a version removes that snapshot. It does not roll the current translation back by itself. Deleting a version also deletes the quality run attached to it.
 - Quality findings are a reference. They do not gate `PUBLISHED`.
-- Service logs are JSON lines in `logs/service-YYYY-MM-DD.jsonl` on the machine running the app. They are not in Postgres and they are not committed. Files older than `SERVICE_LOG_RETENTION_DAYS` (default 7) are deleted.
+- Scheduled publishing runs once a day by default. A publish time is reached at the next run, not to the minute. Use **Publish now** for an immediate send.
+- The only publish integration in V0.1 is the webhook.site mock. A real vendor is a new class in `lib/publish/integrations/`, added to `registry.ts`.
+- Review emails need SMTP and the `pg_cron` job. Without SMTP, queued rows stay `PENDING` and are retried until they fail.
+- Service logs are JSON lines in `logs/service-YYYY-MM-DD.jsonl` on the machine running the app. They are not in Postgres and they are not committed. Files older than `SERVICE_LOG_RETENTION_DAYS` (default 7) are deleted. Do not use them as an audit record.
+- The article audit trail is `content_audit_events` in Postgres. It is append-only and is kept after an article is deleted. See section 4.5.

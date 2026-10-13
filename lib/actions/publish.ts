@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAppCapability, requireContentAccess } from "@/lib/auth/access";
+import { can } from "@/lib/auth/permissions";
 import { getDb } from "@/lib/db/client";
 import { publishSchemaError, throwPublishError } from "@/lib/publish/errors";
 import { readConfig } from "@/lib/publish/integrations/integration";
@@ -17,6 +18,7 @@ import {
   type VendorRow,
 } from "@/lib/publish/store";
 import type {
+  AppAccess,
   ContentPublication,
   EntityStatus,
   PublishLanguageTarget,
@@ -33,14 +35,14 @@ export type ArticlePublishState = {
   publications: ContentPublication[];
 };
 
-function canConfigure(access: { can_approve: boolean; can_manage: boolean }) {
-  return access.can_approve || access.can_manage;
+function canConfigure(access: AppAccess) {
+  return can(access, "settings.quality");
 }
 
 async function requireVendorAdmin(applicationId: string) {
   const grant = await requireAppCapability(applicationId, "view");
   if (!canConfigure(grant.access)) {
-    throw new Error("Vendor settings are limited to HOD and above.");
+    throw new Error("Your role cannot change vendor settings.");
   }
   return grant;
 }

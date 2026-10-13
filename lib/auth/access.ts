@@ -2,16 +2,25 @@ import { cache } from "react";
 import type { HubActor } from "@/lib/auth/actor";
 import { getActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
+import { isMissingAccessRoles, loadAccessRoles } from "@/lib/auth/access-roles";
 import { bandForLdapRole, loadOrgRoleMap } from "@/lib/auth/org-roles";
 import {
   capabilitiesForRole,
+  ORG_BAND_LABEL,
   parseAppRole,
   roleFromApprovalFlag,
   type AppRole,
 } from "@/lib/auth/roles";
+import {
+  APPROVER_PERMISSIONS,
+  EDITOR_PERMISSIONS,
+  PERMISSION_KEYS,
+  type PermissionKey,
+} from "@/lib/auth/permissions";
 import type { AppAccess, HubUser } from "@/lib/types";
 
-export type AppCapability = "view" | "edit" | "approve" | "manage";
+/** "edit", "approve", and "manage" are shorthands for content.edit, content.approve, and people.manage. */
+export type AppCapability = "view" | "edit" | "approve" | "manage" | PermissionKey;
 
 export type AccessGrant = {
   user: HubUser;
@@ -91,10 +100,11 @@ function literalIlike(value: string): string {
 
 async function findDirectoryUser(identity: Identity): Promise<HubUser | null> {
   const db = await getDb();
+  // Email first: people are invited by email, and Joget or SSO always sends it.
   const lookups: Array<["username" | "employee_id" | "email", string]> = [];
+  if (identity.email) lookups.push(["email", identity.email]);
   if (identity.username) lookups.push(["username", identity.username]);
   if (identity.employeeId) lookups.push(["employee_id", identity.employeeId]);
-  if (identity.email) lookups.push(["email", identity.email]);
 
   for (const [column, value] of lookups) {
     const { data, error } = await db
@@ -108,6 +118,19 @@ async function findDirectoryUser(identity: Identity): Promise<HubUser | null> {
   return null;
 }
 
+/** Add a job title sent by Joget to the list on the Job titles page. It grants nothing. */
+async function rememberJobTitle(title: string): Promise<void> {
+  const db = await getDb();
+  const { data, error } = await db
+    .from("org_role_map")
+    .select("id")
+    .ilike("ldap_role", literalIlike(title))
+    .maybeSingle();
+  if (error || data) return;
+  // A lost race or a missing table only means the title is not listed yet.
+  await db.from("org_role_map").insert({ ldap_role: title, band: "EDITOR" });
+}
+
 async function upsertFromActor(actor: HubActor): Promise<HubUser> {
   const db = await getDb();
   const identity: Identity = {
@@ -119,6 +142,8 @@ async function upsertFromActor(actor: HubActor): Promise<HubUser> {
   const listed = listedAsSuperadmin(keys, identity);
   const existing = await findDirectoryUser(identity);
   const now = new Date().toISOString();
+  const title = blankToNull(actor.title);
+  if (title && title !== existing?.ldap_role) await rememberJobTitle(title);
 
   if (existing) {
     const { data, error } = await db
@@ -130,6 +155,7 @@ async function upsertFromActor(actor: HubActor): Promise<HubUser> {
         display_name: blankToNull(actor.name) ?? existing.display_name,
         is_superadmin: keys.size > 0 ? listed : existing.is_superadmin,
         last_seen_at: now,
+        ...(title ? { ldap_role: title } : {}),
       })
       .eq("id", existing.id)
       .select("*")
@@ -147,6 +173,7 @@ async function upsertFromActor(actor: HubActor): Promise<HubUser> {
       display_name: blankToNull(actor.name) ?? identity.username ?? "User",
       is_superadmin: listed,
       last_seen_at: now,
+      ldap_role: title,
     })
     .select("*")
     .single();
@@ -214,11 +241,43 @@ export function capabilityForReleaseStatus(status: string): AppCapability {
   return "edit";
 }
 
-function allows(access: AppAccess, capability: AppCapability): boolean {
+const CAPABILITY_ALIAS: Record<"edit" | "approve" | "manage", PermissionKey> = {
+  edit: "content.edit",
+  approve: "content.approve",
+  manage: "people.manage",
+};
+
+export function hasPermission(
+  access: Pick<AppAccess, "permissions">,
+  capability: AppCapability
+): boolean {
   if (capability === "view") return true;
-  if (capability === "edit") return access.can_edit;
-  if (capability === "approve") return access.can_approve;
-  return access.can_manage;
+  const key =
+    capability === "edit" || capability === "approve" || capability === "manage"
+      ? CAPABILITY_ALIAS[capability]
+      : capability;
+  return access.permissions.includes(key);
+}
+
+export function accessFromPermissions(
+  role: string | null,
+  permissions: readonly PermissionKey[],
+  isOwner = false
+): AppAccess {
+  return {
+    is_owner: isOwner,
+    role,
+    permissions: [...permissions],
+    can_edit: permissions.includes("content.edit"),
+    can_approve: permissions.includes("content.approve"),
+    can_manage: permissions.includes("people.manage"),
+  };
+}
+
+/** Permissions from the job title group, used before migration 026. */
+export function legacyPermissions(canEdit: boolean, canApprove: boolean): readonly PermissionKey[] {
+  if (canApprove) return APPROVER_PERMISSIONS;
+  return canEdit ? EDITOR_PERMISSIONS : [];
 }
 
 export async function resolveAppAccess(
@@ -226,34 +285,71 @@ export async function resolveAppAccess(
   application: { id: string; owner_user_id: string | null }
 ): Promise<AppAccess | null> {
   if (user.is_superadmin || application.owner_user_id === user.id) {
-    return {
-      is_owner: application.owner_user_id === user.id,
-      role: null,
-      can_edit: true,
-      can_approve: true,
-      can_manage: true,
-    };
+    return accessFromPermissions(
+      null,
+      PERMISSION_KEYS,
+      application.owner_user_id === user.id
+    );
   }
 
   const membership = await loadMembership(application.id, user.id);
   if (!membership) return null;
+  if (membership.access_role_id) {
+    const assigned = (await loadAccessRoles(application.id))?.find(
+      (role) => role.id === membership.access_role_id
+    );
+    if (assigned) return accessFromPermissions(assigned.name, assigned.permissions);
+  }
+
+  // Before migration 026: the job title group decides.
   const map = await loadOrgRoleMap();
   const role = map ? bandForLdapRole(user.ldap_role, map) : membership.role;
   const caps = capabilitiesForRole(role === "ADMIN" ? "HOD" : role);
-  return {
-    is_owner: false,
-    role,
-    can_edit: map ? caps.can_edit : membership.can_edit,
-    can_approve: map ? caps.can_approve : membership.can_approve,
-    can_manage: false,
-  };
+  return accessFromPermissions(
+    ORG_BAND_LABEL[role === "EDITOR" ? "EDITOR" : "HOD"],
+    legacyPermissions(
+      map ? caps.can_edit : membership.can_edit,
+      map ? caps.can_approve : membership.can_approve
+    )
+  );
 }
 
 async function loadMembership(
   applicationId: string,
   userId: string
-): Promise<{ role: AppRole; can_edit: boolean; can_approve: boolean } | null> {
+): Promise<{
+  role: AppRole;
+  can_edit: boolean;
+  can_approve: boolean;
+  access_role_id: string | null;
+} | null> {
   const db = await getDb();
+  const withAccessRole = await db
+    .from("application_members")
+    .select("role, can_edit, can_approve, access_role_id")
+    .eq("application_id", applicationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!withAccessRole.error) {
+    if (!withAccessRole.data) return null;
+    const role =
+      parseAppRole(withAccessRole.data.role) ??
+      roleFromApprovalFlag(!!withAccessRole.data.can_approve);
+    const caps = capabilitiesForRole(role);
+    return {
+      role,
+      can_edit: caps.can_edit,
+      can_approve: caps.can_approve,
+      access_role_id: (withAccessRole.data.access_role_id as string | null) ?? null,
+    };
+  }
+  if (
+    !isMissingAccessRoles(withAccessRole.error) &&
+    !isMissingRoleColumn(withAccessRole.error)
+  ) {
+    throwDb(withAccessRole.error);
+  }
+
   const withRole = await db
     .from("application_members")
     .select("role, can_edit, can_approve")
@@ -274,6 +370,7 @@ async function loadMembership(
       role: roleFromApprovalFlag(canApprove),
       can_edit: !!legacy.data.can_edit,
       can_approve: canApprove,
+      access_role_id: null,
     };
   }
   if (withRole.error) throwDb(withRole.error);
@@ -282,7 +379,12 @@ async function loadMembership(
     parseAppRole(withRole.data.role) ??
     roleFromApprovalFlag(!!withRole.data.can_approve);
   const caps = capabilitiesForRole(role);
-  return { role, can_edit: caps.can_edit, can_approve: caps.can_approve };
+  return {
+    role,
+    can_edit: caps.can_edit,
+    can_approve: caps.can_approve,
+    access_role_id: null,
+  };
 }
 
 async function loadApplication(applicationId: string): Promise<{
@@ -308,7 +410,7 @@ export async function requireAppCapability(
   if (!application) throw new Error("Application not found.");
   const access = await resolveAppAccess(user, application);
   if (!access) throw new Error("You do not have access to this application.");
-  if (!allows(access, capability)) {
+  if (!hasPermission(access, capability)) {
     throw new Error("You do not have permission to do that.");
   }
   return { user, applicationId: application.id, access };
@@ -324,7 +426,7 @@ export async function allowAppCapability(
   if (!application) return false;
   const access = await resolveAppAccess(user, application);
   if (!access) return false;
-  return allows(access, capability);
+  return hasPermission(access, capability);
 }
 
 async function applicationIdFrom(
@@ -382,6 +484,30 @@ export async function requireContentVersionAccess(
     data.content_translation_id as string,
     capability
   );
+}
+
+export async function requireItemAccess(
+  itemId: string,
+  capability: AppCapability
+): Promise<AccessGrant> {
+  const applicationId = await applicationIdFrom("catalog_items", itemId, "Item not found.");
+  return requireAppCapability(applicationId, capability);
+}
+
+export async function requireItemValueAccess(
+  valueId: string,
+  capability: AppCapability
+): Promise<AccessGrant & { itemId: string }> {
+  const db = await getDb();
+  const { data, error } = await db
+    .from("catalog_values")
+    .select("item_id")
+    .eq("id", valueId)
+    .maybeSingle();
+  if (error) throwDb(error);
+  if (!data?.item_id) throw new Error("Value not found.");
+  const grant = await requireItemAccess(data.item_id as string, capability);
+  return { ...grant, itemId: data.item_id as string };
 }
 
 export async function requireTranslationKeyAccess(

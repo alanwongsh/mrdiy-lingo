@@ -7,20 +7,31 @@ export function SettingsChrome({
   application,
   children,
 }: {
-  application: Pick<Application, "id" | "model_type"> & { access: Pick<AppAccess, "can_manage"> };
+  application: Pick<Application, "id" | "model_type" | "item_label"> & {
+    access: Pick<AppAccess, "can_manage" | "permissions">;
+  };
   children: React.ReactNode;
 }) {
+  // Only CONTENT has settings tabs. Catalog and string apps reach People and Roles from their own tabs.
+  const withoutTabs = application.model_type !== "CONTENT";
   return (
     <div>
       <PageHeader
-        title="Settings"
-        description="Article types, review emails, people, translation checks and publish connections."
+        title={withoutTabs ? "Access" : "Settings"}
+        description={
+          withoutTabs
+            ? "Who can open this application, and what each role can do."
+            : "Article types, review emails, people, roles, translation checks and publish connections."
+        }
       />
       <AppSubnav application={application} />
-      <SettingsTabs
-        applicationId={application.id}
-        canManage={application.access.can_manage}
-      />
+      {withoutTabs ? null : (
+        <SettingsTabs
+          applicationId={application.id}
+          canManage={application.access.can_manage}
+          canManageRoles={application.access.permissions.includes("roles.manage")}
+        />
+      )}
       {children}
     </div>
   );

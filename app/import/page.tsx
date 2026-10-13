@@ -32,7 +32,10 @@ export default async function ImportPage() {
           Create an application first.
         </p>
       ) : (
-        <ImportWizard applications={applications} languages={languages} />
+        <ImportWizard
+          applications={applications.filter((app) => app.model_type !== "CATALOG")}
+          languages={languages}
+        />
       )}
     </div>
   );

@@ -23,7 +23,7 @@ export type OrgRoleBand = (typeof ORG_BANDS)[number];
 
 export const ORG_BAND_LABEL: Record<OrgRoleBand, string> = {
   EDITOR: "Edit and draft",
-  HOD: "HOD and above",
+  HOD: "Can approve",
 };
 
 export function parseOrgBand(value: unknown): OrgRoleBand | null {

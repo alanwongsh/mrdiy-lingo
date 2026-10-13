@@ -34,7 +34,7 @@ export async function previewStringImport(input: {
   items: StringImportPreviewItem[];
   summary: ReturnType<typeof summarizePreview>;
 }> {
-  await requireAppCapability(input.applicationId, "edit");
+  await requireAppCapability(input.applicationId, "content.import");
   const buffer = Buffer.from(input.base64, "base64");
   const rows = parseStringTranslationFile(
     buffer.buffer.slice(
@@ -121,7 +121,7 @@ export async function confirmStringImport(input: {
   errors: number;
   translated: number;
 }> {
-  await requireAppCapability(input.applicationId, "edit");
+  await requireAppCapability(input.applicationId, "content.import");
   const preview = await previewStringImport(input);
   const db = await getDb();
   const sourceLanguage = input.defaultSourceLanguage ?? "en";
@@ -232,7 +232,7 @@ export async function previewArticleImport(input: {
   items: ArticleImportPreviewItem[];
   summary: ReturnType<typeof summarizePreview>;
 }> {
-  await requireAppCapability(input.applicationId, "edit");
+  await requireAppCapability(input.applicationId, "content.import");
   const buffer = Buffer.from(input.base64, "base64");
   const rows = parseArticleTranslationFile(
     buffer.buffer.slice(
@@ -265,7 +265,7 @@ export async function confirmArticleImport(input: {
   translated: number;
   typesCreated: number;
 }> {
-  const grant = await requireAppCapability(input.applicationId, "edit");
+  const grant = await requireAppCapability(input.applicationId, "content.import");
   const importedTranslationStatus = grant.access.can_approve
     ? "APPROVED"
     : "MANUALLY_MODIFIED";

@@ -44,7 +44,7 @@ export function PublishVendorsManager({
           The server publishes an approved article at its publish time. An article can
           go to more than one connection.
         </p>
-        {!canConfigure ? <p>HOD and above can add connections.</p> : null}
+        {!canConfigure ? <p>Your role cannot add connections.</p> : null}
       </Card>
 
       {/* <div className="grid gap-3 md:grid-cols-2">

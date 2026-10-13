@@ -169,7 +169,7 @@ export async function createContentType(input: {
   code?: string;
   description?: string;
 }): Promise<ContentTypeRecord> {
-  await requireAppCapability(input.application_id, "edit");
+  await requireAppCapability(input.application_id, "settings.content_types");
   const name = input.name.trim();
   if (!name) throw new Error("Name is required.");
   const code = normalizeContentTypeCode(input.code?.trim() ? input.code : name);
@@ -192,7 +192,7 @@ export async function updateContentType(
   applicationId: string,
   input: { name: string; description: string; status: EntityStatus }
 ): Promise<ContentTypeRecord> {
-  await requireAppCapability(applicationId, "edit");
+  await requireAppCapability(applicationId, "settings.content_types");
   const name = input.name.trim();
   if (!name) throw new Error("Name is required.");
   const status = input.status === "INACTIVE" ? "INACTIVE" : "ACTIVE";
@@ -214,7 +214,7 @@ export async function updateContentType(
 }
 
 export async function deleteContentType(id: string, applicationId: string) {
-  await requireAppCapability(applicationId, "edit");
+  await requireAppCapability(applicationId, "settings.content_types");
   const db = await getDb();
   const { error } = await db
     .from("content_types")

@@ -22,13 +22,14 @@ export async function listOrgRoleMappings(): Promise<OrgRoleMapping[]> {
 
 export async function addOrgRoleMapping(input: {
   ldapRole: string;
-  band: OrgRoleBand;
+  /** Leave out for a job title only. Roles from migrations 025 and 026 decide permissions. */
+  band?: OrgRoleBand;
 }): Promise<void> {
   await requireSuperadmin();
   const ldapRole = normalizeLdapRole(input.ldapRole);
-  const band = parseOrgBand(input.band);
+  const band = input.band === undefined ? "EDITOR" : parseOrgBand(input.band);
   if (!ldapRole || ldapRole.length > 80) {
-    throw new Error("Enter the role stored on the account.");
+    throw new Error("Enter a job title of up to 80 characters.");
   }
   if (!band) throw new Error("Choose a group.");
   const db = await getDb();
@@ -41,14 +42,14 @@ export async function addOrgRoleMapping(input: {
     if (existing.error.code === "42P01") throw new Error(MIGRATION);
     throw new Error(existing.error.message);
   }
-  if (existing.data) throw new Error("That role is already in the map.");
+  if (existing.data) throw new Error("That job title is already on the list.");
   const { error } = await db.from("org_role_map").insert({
     ldap_role: ldapRole,
     band,
   });
   if (error) {
     if (error.code === "42P01") throw new Error(MIGRATION);
-    if (error.code === "23505") throw new Error("That role is already in the map.");
+    if (error.code === "23505") throw new Error("That job title is already on the list.");
     throw new Error(error.message);
   }
   revalidateRoles();

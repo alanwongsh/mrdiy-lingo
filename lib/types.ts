@@ -1,6 +1,7 @@
 import type { AppRole, OrgRoleBand } from "@/lib/auth/roles";
+import type { PermissionKey } from "@/lib/auth/permissions";
 
-export type { AppRole, OrgRoleBand };
+export type { AppRole, OrgRoleBand, PermissionKey };
 
 export type OrgRoleMapping = {
   id: string;
@@ -8,9 +9,19 @@ export type OrgRoleMapping = {
   band: OrgRoleBand;
 };
 
+/** A role, such as Translator or Reviewer. Each application keeps its own. */
+export type AccessRole = {
+  id: string;
+  name: string;
+  description: string;
+  /** The application this role belongs to. Null for a default role copied into new applications. */
+  applicationId: string | null;
+  permissions: PermissionKey[];
+};
+
 export type EntityStatus = "ACTIVE" | "INACTIVE";
 
-export type ApplicationModelType = "STRING" | "CONTENT";
+export type ApplicationModelType = "STRING" | "CONTENT" | "CATALOG";
 
 export type TranslationStatus =
   | "MISSING"
@@ -73,6 +84,8 @@ export type Application = {
   owner_user_id: string | null;
   /** Email approvers when an article enters review. Missing before migration 020. */
   notify_review_email?: boolean;
+  /** CATALOG only: what one record is called, such as SKU. Missing before migration 024. */
+  item_label?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -84,7 +97,7 @@ export type HubUser = {
   email: string | null;
   display_name: string;
   is_superadmin: boolean;
-  /** Role stored on the account, such as Executive or HOD. Grouped by org_role_map. */
+  /** Job title on the account, such as Executive. Shown only; it grants nothing once roles are set up. */
   ldap_role: string | null;
   last_seen_at: string | null;
   created_at: string;
@@ -93,10 +106,15 @@ export type HubUser = {
 
 export type AppAccess = {
   is_owner: boolean;
-  /** Resolved permission group. Null for the owner and for a superadmin. */
-  role: AppRole | null;
+  /** Name of the member's role, such as Reviewer. Null for the owner and for a superadmin. */
+  role: string | null;
+  /** Every permission this person holds here. The flags below are shorthands. */
+  permissions: PermissionKey[];
+  /** content.edit */
   can_edit: boolean;
+  /** content.approve */
   can_approve: boolean;
+  /** people.manage */
   can_manage: boolean;
 };
 
@@ -110,9 +128,15 @@ export type ApplicationMemberView = {
   displayName: string;
   detail: string;
   ldapRole: string | null;
-  role: AppRole | null;
+  /** False until their first sign-in, from Joget or with a password. */
+  signedIn: boolean;
+  /** Whether they can also sign in with email and password, besides Joget. */
+  hasPassword: boolean;
+  accessRoleId: string | null;
+  role: string | null;
   canEdit: boolean;
   canApprove: boolean;
+  canManage: boolean;
 };
 
 export type Namespace = {
@@ -302,6 +326,100 @@ export type ContentTranslationVersion = {
   modifier: string | null;
   created_by: string | null;
   modified_by: string | null;
+  created_at: string;
+};
+
+export type CatalogFieldType = "text" | "long_text" | "code" | "file" | "image";
+
+export type CatalogField = {
+  id: string;
+  application_id: string;
+  code: string;
+  label: string;
+  field_type: CatalogFieldType;
+  /** Off for codes and shared files: the source value is used in every language. */
+  translatable: boolean;
+  required: boolean;
+  sort_order: number;
+  status: EntityStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ItemStatus = "DRAFT" | "REVIEW" | "CHANGES_REQUESTED" | "APPROVED";
+
+export type CatalogItem = {
+  id: string;
+  application_id: string;
+  item_code: string;
+  name: string;
+  source_language: string;
+  target_languages: string[];
+  status: ItemStatus;
+  created_by_name: string | null;
+  created_by_username: string | null;
+  submitted_by_name: string | null;
+  submitted_by_username: string | null;
+  submitted_at: string | null;
+  approved_by_name: string | null;
+  approved_by_username: string | null;
+  approved_by_user_id: string | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** MEMORY: copied from an approved translation of the same source text. */
+export type CatalogValueSource = SourceType | "MEMORY";
+
+export type CatalogValue = {
+  id: string;
+  item_id: string;
+  field_id: string;
+  language_code: string;
+  text_value: string;
+  file_path: string | null;
+  file_name: string | null;
+  file_mime: string | null;
+  file_size: number | null;
+  /** Source row: hash of its text. Target row: hash of the source it was written from. */
+  source_hash: string | null;
+  status: TranslationStatus;
+  source_type: CatalogValueSource;
+  approved_by_username: string | null;
+  approved_by_name: string | null;
+  approved_by_user_id: string | null;
+  approved_at: string | null;
+  updated_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CatalogEventKind =
+  | "CREATED"
+  | "EDITED"
+  | "TRANSLATED"
+  | "SUBMITTED"
+  | "LANGUAGE_APPROVED"
+  | "APPROVED"
+  | "CHANGES_REQUESTED"
+  | "REOPENED"
+  | "DELETED";
+
+export type CatalogEvent = {
+  id: string;
+  item_id: string;
+  application_id: string;
+  item_code: string;
+  event: CatalogEventKind;
+  language_code: string | null;
+  from_status: string | null;
+  to_status: string | null;
+  comment: string | null;
+  detail: Record<string, unknown>;
+  actor_name: string;
+  actor_username: string | null;
+  actor_user_id: string | null;
   created_at: string;
 };
 

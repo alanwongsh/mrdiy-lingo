@@ -506,7 +506,7 @@ export async function saveQualityCategories(input: {
   categories: Array<{ id: string; enabled: boolean; weight: number }>;
 }) {
   assertUuid(input.applicationId, "application");
-  await requireAppCapability(input.applicationId, "approve");
+  await requireAppCapability(input.applicationId, "settings.quality");
   if (input.categories.length === 0 || input.categories.length > 40) {
     throw new Error("Choose the categories to save.");
   }
@@ -549,7 +549,7 @@ export async function setQualityCategoryEnabled(input: {
 }) {
   assertUuid(input.applicationId, "application");
   assertUuid(input.categoryId, "category");
-  await requireAppCapability(input.applicationId, "approve");
+  await requireAppCapability(input.applicationId, "settings.quality");
   const categories = await listQualityCategories(input.applicationId, false);
   const category = categories.find((item) => item.id === input.categoryId);
   if (!category) throw new Error("A category was not found.");
@@ -621,7 +621,7 @@ export async function createTerminologyEntry(input: {
   isActive?: boolean;
 }) {
   assertUuid(input.applicationId, "application");
-  await requireAppCapability(input.applicationId, "edit");
+  await requireAppCapability(input.applicationId, "settings.terminology");
   const db = await getDb();
   const { error } = await db.from("terminology").insert({
     ...terminologyFields(input),
@@ -648,7 +648,7 @@ export async function updateTerminologyEntry(input: {
 }) {
   assertUuid(input.applicationId, "application");
   assertUuid(input.terminologyId, "term");
-  await requireAppCapability(input.applicationId, "edit");
+  await requireAppCapability(input.applicationId, "settings.terminology");
   const db = await getDb();
   const { error } = await db
     .from("terminology")
@@ -674,7 +674,7 @@ export async function deleteTerminologyEntries(input: {
   terminologyIds: string[];
 }) {
   assertUuid(input.applicationId, "application");
-  await requireAppCapability(input.applicationId, "edit");
+  await requireAppCapability(input.applicationId, "settings.terminology");
   const ids = [...new Set(input.terminologyIds)];
   if (ids.length === 0 || ids.length > 100) {
     throw new Error("Choose the words to delete.");
@@ -697,7 +697,7 @@ export async function setTerminologyActive(input: {
 }) {
   assertUuid(input.applicationId, "application");
   assertUuid(input.terminologyId, "term");
-  await requireAppCapability(input.applicationId, "edit");
+  await requireAppCapability(input.applicationId, "settings.terminology");
   const db = await getDb();
   const { error } = await db
     .from("terminology")

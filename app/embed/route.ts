@@ -43,6 +43,13 @@ export async function GET(request: Request) {
       401
     );
   }
+  // People are invited and matched by email, so an account without one cannot be placed.
+  if (!actor.email?.includes("@")) {
+    return plain(
+      "Your Joget account has no email address. Ask IT to add your company email, then reload the page in Joget.",
+      403
+    );
+  }
 
   let session: string;
   try {

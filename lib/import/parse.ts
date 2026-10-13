@@ -35,7 +35,7 @@ export type ArticleImportPreviewItem = ArticleImportRow & {
   existingContentId?: string;
 };
 
-function parseSpreadsheet(buffer: ArrayBuffer, filename: string): string[][] {
+export function parseSpreadsheet(buffer: ArrayBuffer, filename: string): string[][] {
   const lower = filename.toLowerCase();
   if (lower.endsWith(".csv")) {
     const text = new TextDecoder("utf-8").decode(buffer);

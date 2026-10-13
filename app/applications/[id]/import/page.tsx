@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getApplication } from "@/lib/actions/applications";
 import { listLanguages } from "@/lib/actions/languages";
 import { AppSubnav } from "@/components/app-subnav";
@@ -13,6 +13,8 @@ export default async function ApplicationImportPage({
   const { id } = await params;
   const app = await getApplication(id);
   if (!app) notFound();
+  // Catalogs import from their own list page, which knows their fields.
+  if (app.model_type === "CATALOG") redirect(`/applications/${app.id}/items/import`);
   const languages = await listLanguages();
 
   return (

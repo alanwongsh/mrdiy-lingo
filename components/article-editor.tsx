@@ -749,16 +749,16 @@ export function ArticleEditor({
               </p>
             ) : null}
           </div>
-          <Field label="Publish time (all languages)">
+          <Field label="Schedule Publish time (all languages)">
             <input
               type="datetime-local"
               className={inputClass}
               value={scheduledPublishAt}
               onChange={(e) => setScheduledPublishAt(e.target.value)}
             />
-            <p className="text-xs text-[var(--hub-muted)]">
+            {/* <p className="text-xs text-[var(--hub-muted)]">
               Goes live at this time once approved.
-            </p>
+            </p> */}
           </Field>
           <div className="sm:col-span-2 lg:col-span-4">
             <PublishLanguagePicker
@@ -1105,7 +1105,7 @@ export function ArticleEditor({
                 </Button>
               ) : (
                 <span className="text-xs text-slate-500">
-                  HOD and above can approve this language.
+                  Only people who can approve can approve this language.
                 </span>
               )}
               {langStatus === "APPROVED" && targetTranslation?.approved_by_name ? (

@@ -458,7 +458,7 @@ export async function createArticle(input: {
     status = "APPROVED";
   }
   if (isPublishable(status) && !grant.access.can_approve) {
-    throw new Error("Approval is limited to HOD and above.");
+    throw new Error("Your role cannot approve.");
   }
   const db = await getDb();
   const source_content = {
@@ -704,7 +704,7 @@ export async function updateArticle(
 
   const releasing = isPublishable(input.status);
   if (releasing && input.status !== current.status && !grant.access.can_approve) {
-    throw new Error("Approval is limited to HOD and above.");
+    throw new Error("Your role cannot approve.");
   }
 
   const textChanged = sourceContentChanged(
@@ -1177,7 +1177,7 @@ export async function autoTranslateArticle(input: {
   sourceFields?: SourceContentFields;
   /** Prefer live source-language selection over DB when provided. */
   sourceLanguage?: string;
-  /** HOD import: store the translation as approved and leave the article status alone. */
+  /** Approver import: store the translation as approved and leave the article status alone. */
   approveTranslation?: boolean;
 }): Promise<ContentTranslation> {
   const grant = await requireContentAccess(input.contentId, "edit");
@@ -1292,7 +1292,7 @@ export async function autoTranslateArticleLanguages(input: {
   applicationId: string;
   sourceFields?: SourceContentFields;
   sourceLanguage?: string;
-  /** HOD import: approve each generated translation and keep the article approved. */
+  /** Approver import: approve each generated translation and keep the article approved. */
   approveTranslations?: boolean;
 }): Promise<ContentTranslation[]> {
   const grant = await requireContentAccess(input.contentId, "edit");

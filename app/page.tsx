@@ -5,7 +5,21 @@ import { listLanguages } from "@/lib/actions/languages";
 import { getProductStats } from "@/lib/actions/product";
 import { getPressStats } from "@/lib/actions/press";
 import { getCurrentUser } from "@/lib/auth/access";
-import { LinkButton, PageHeader, StatCard, Card, Badge } from "@/components/ui";
+import { appHomePath, appKindLabel } from "@/lib/catalog";
+import { EmptyState, LinkButton, PageHeader, StatCard, Card, Badge } from "@/components/ui";
+
+/** Someone signed in, but nobody has added them to an application yet. */
+function NoAccessYet({ name }: { name: string }) {
+  return (
+    <div>
+      <PageHeader title={`Welcome, ${name}`} />
+      <EmptyState
+        title="No applications yet"
+        description="You have not been added to an application. Ask the application owner or a Lingo admin to add you, then reload this page."
+      />
+    </div>
+  );
+}
 
 export default async function DashboardPage() {
   let apps: Awaited<ReturnType<typeof listApplications>> = [];
@@ -25,11 +39,10 @@ export default async function DashboardPage() {
 
   const firstApp = apps[0];
   if (dbReady && user && !user.is_superadmin && firstApp) {
-    redirect(
-      firstApp.model_type === "CONTENT"
-        ? `/applications/${firstApp.id}/articles`
-        : `/applications/${firstApp.id}`
-    );
+    redirect(appHomePath(firstApp));
+  }
+  if (dbReady && user && !user.is_superadmin) {
+    return <NoAccessYet name={user.display_name} />;
   }
 
   const product = apps.find((a) => a.model_type === "STRING");
@@ -194,11 +207,7 @@ export default async function DashboardPage() {
           {apps.map((app) => (
             <Link
               key={app.id}
-              href={
-                app.model_type === "CONTENT"
-                  ? `/applications/${app.id}/articles`
-                  : `/applications/${app.id}`
-              }
+              href={appHomePath(app)}
               className="hub-accent-link block text-[var(--hub-fg)] no-underline hover:text-[var(--hub-fg)]"
             >
               <Card
@@ -216,7 +225,7 @@ export default async function DashboardPage() {
                     {app.status}
                   </Badge>
                   <Badge tone="info">
-                    {app.model_type === "STRING" ? "Strings" : "Content"}
+                    {appKindLabel(app)}
                   </Badge>
                 </div>
               </Card>

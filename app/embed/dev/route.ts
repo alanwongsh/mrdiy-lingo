@@ -13,7 +13,14 @@ export async function POST(request: Request) {
   const name = String(form.get("name") ?? "").trim() || username;
   const email = String(form.get("email") ?? "").trim() || null;
   const employeeId = String(form.get("employeeId") ?? "").trim() || null;
+  const title = String(form.get("title") ?? "").trim() || null;
   const nextPath = safeNextPath(String(form.get("next") ?? "/"));
+  if (!email?.includes("@")) {
+    return new Response("Enter an email. Joget sign-in is blocked without one.", {
+      status: 400,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+  }
   if (!username) {
     return new Response("Enter a username.", {
       status: 400,
@@ -23,7 +30,7 @@ export async function POST(request: Request) {
 
   let session: string;
   try {
-    session = signActorToken({ username, name, email, employeeId });
+    session = signActorToken({ username, name, email, employeeId, title });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Sign-in failed.";
     return new Response(message, {

@@ -11,6 +11,11 @@ import {
   resolveAppAccess,
 } from "@/lib/auth/access";
 import {
+  copyDefaultRoles,
+  isMissingAccessRoles,
+  loadAccessRoles,
+} from "@/lib/auth/access-roles";
+import {
   bandForLdapRole,
   loadOrgRoleMap,
   normalizeLdapRole,
@@ -20,10 +25,15 @@ import {
   parseAppRole,
   roleFromApprovalFlag,
 } from "@/lib/auth/roles";
+import { canGrantRole } from "@/lib/auth/permissions";
 import { hashPassword } from "@/lib/auth/password";
 import { ensureDefaultContentType } from "@/lib/actions/content-types";
+import { ensureCatalogFields } from "@/lib/actions/catalog";
+import { catalogTemplate } from "@/lib/catalog";
 import { getDb } from "@/lib/db/client";
 import type {
+  AppAccess,
+  AccessRole,
   Application,
   ApplicationMemberView,
   ApplicationModelType,
@@ -109,9 +119,14 @@ export async function createApplication(input: {
   name: string;
   description: string;
   model_type: ApplicationModelType;
+  /** CATALOG only. */
+  item_label?: string;
+  /** CATALOG only: starter fields, such as sku. */
+  template?: string;
 }): Promise<Application> {
-  const user = await requireUser();
+  const user = await requireSuperadmin();
   const db = await getDb();
+  const isCatalog = input.model_type === "CATALOG";
   const { data, error } = await db
     .from("applications")
     .insert({
@@ -120,6 +135,9 @@ export async function createApplication(input: {
       model_type: input.model_type,
       status: "ACTIVE",
       owner_user_id: user.id,
+      ...(isCatalog
+        ? { item_label: input.item_label?.trim().slice(0, 40) || catalogTemplate(input.template).itemLabel }
+        : {}),
     })
     .select("*")
     .single();
@@ -128,6 +146,10 @@ export async function createApplication(input: {
   if (application.model_type === "CONTENT") {
     await ensureDefaultContentType(application.id);
   }
+  if (application.model_type === "CATALOG") {
+    await ensureCatalogFields(application.id, input.template);
+  }
+  await copyDefaultRoles(application.id);
   revalidatePath("/");
   revalidatePath("/applications");
   return application;
@@ -142,7 +164,7 @@ export async function updateApplication(
     model_type: ApplicationModelType;
   }
 ): Promise<Application> {
-  await requireAppCapability(id, "manage");
+  await requireAppCapability(id, "settings.general");
   const db = await getDb();
   const { data, error } = await db
     .from("applications")
@@ -160,6 +182,9 @@ export async function updateApplication(
   if (application.model_type === "CONTENT") {
     await ensureDefaultContentType(application.id);
   }
+  if (application.model_type === "CATALOG") {
+    await ensureCatalogFields(application.id);
+  }
   revalidateApplication(id);
   return application;
 }
@@ -168,7 +193,7 @@ export async function setApplicationStatus(
   id: string,
   status: EntityStatus
 ): Promise<void> {
-  await requireAppCapability(id, "manage");
+  await requireAppCapability(id, "settings.general");
   const db = await getDb();
   const { error } = await db
     .from("applications")
@@ -182,7 +207,7 @@ export async function setReviewEmailNotifications(
   id: string,
   enabled: boolean
 ): Promise<void> {
-  await requireAppCapability(id, "approve");
+  await requireAppCapability(id, "settings.notifications");
   const db = await getDb();
   const { error } = await db
     .from("applications")
@@ -197,10 +222,17 @@ export async function setReviewEmailNotifications(
   revalidatePath(`/applications/${id}/settings/general`);
 }
 
+/** Whether the account has signed in yet, and whether it has a sign-in password. */
+function accountState(row: unknown): { signedIn: boolean; hasPassword: boolean } {
+  const account = (row ?? {}) as { last_seen_at?: string | null; password_hash?: string | null };
+  return { signedIn: !!account.last_seen_at, hasPassword: !!account.password_hash };
+}
+
 export async function listApplicationPeople(applicationId: string): Promise<{
   owner: ApplicationMemberView | null;
   members: ApplicationMemberView[];
   orgRoles: Awaited<ReturnType<typeof loadOrgRoleMap>>;
+  accessRoles: AccessRole[] | null;
 }> {
   await requireAppCapability(applicationId, "manage");
   const db = await getDb();
@@ -228,19 +260,40 @@ export async function listApplicationPeople(applicationId: string): Promise<{
         displayName: user.display_name,
         detail: personDetail(user),
         ldapRole: user.ldap_role ?? null,
+        ...accountState(ownerRow),
+        accessRoleId: null,
         role: null,
         canEdit: true,
         canApprove: true,
+        canManage: true,
       };
     }
   }
 
-  const listed = await db
-    .from("application_members")
-    .select("id, role, can_edit, can_approve, user:hub_users(*)")
-    .eq("application_id", applicationId)
-    .order("created_at", { ascending: true });
-  let rows = listed.data;
+  const accessRoles = await loadAccessRoles(applicationId);
+  type MemberRow = {
+    id: string;
+    role: string | null;
+    can_edit: boolean;
+    can_approve: boolean;
+    access_role_id?: string | null;
+    user: unknown;
+  };
+  let rows: MemberRow[] | null = null;
+  let listed: { data: MemberRow[] | null; error: { message: string; code?: string } | null } =
+    await db
+      .from("application_members")
+      .select("id, role, can_edit, can_approve, access_role_id, user:hub_users(*)")
+      .eq("application_id", applicationId)
+      .order("created_at", { ascending: true });
+  if (listed.error && isMissingAccessRoles(listed.error)) {
+    listed = await db
+      .from("application_members")
+      .select("id, role, can_edit, can_approve, user:hub_users(*)")
+      .eq("application_id", applicationId)
+      .order("created_at", { ascending: true });
+  }
+  rows = listed.data;
   if (listed.error) {
     const missingRole =
       listed.error.code === "42703" && /\brole\b/i.test(listed.error.message);
@@ -255,28 +308,47 @@ export async function listApplicationPeople(applicationId: string): Promise<{
   }
 
   const orgRoles = await loadOrgRoleMap();
-  const members = (rows ?? []).flatMap((row) => {
+  const members = (rows ?? []).flatMap((row): ApplicationMemberView[] => {
     const user = (Array.isArray(row.user) ? row.user[0] : row.user) as HubUser | null;
     if (!user) return [];
+    const base = {
+      membershipId: row.id as string,
+      userId: user.id,
+      displayName: user.display_name,
+      detail: personDetail(user),
+      ldapRole: user.ldap_role ?? null,
+      ...accountState(user),
+    };
+    const assigned = accessRoles?.find((role) => role.id === row.access_role_id);
+    if (assigned) {
+      return [
+        {
+          ...base,
+          accessRoleId: assigned.id,
+          role: assigned.name,
+          canEdit: assigned.permissions.includes("content.edit"),
+          canApprove: assigned.permissions.includes("content.approve"),
+          canManage: assigned.permissions.includes("people.manage"),
+        },
+      ];
+    }
     const stored =
       parseAppRole(row.role) ?? roleFromApprovalFlag(!!row.can_approve);
-    const role = orgRoles ? bandForLdapRole(user.ldap_role, orgRoles) : stored;
-    const caps = capabilitiesForRole(role === "ADMIN" ? "HOD" : role);
+    const band = orgRoles ? bandForLdapRole(user.ldap_role, orgRoles) : stored;
+    const caps = capabilitiesForRole(band === "ADMIN" ? "HOD" : band);
     return [
       {
-        membershipId: row.id as string,
-        userId: user.id,
-        displayName: user.display_name,
-        detail: personDetail(user),
-        ldapRole: user.ldap_role ?? null,
-        role,
+        ...base,
+        accessRoleId: null,
+        role: null,
         canEdit: orgRoles ? caps.can_edit : !!row.can_edit,
         canApprove: orgRoles ? caps.can_approve : !!row.can_approve,
+        canManage: false,
       },
     ];
   });
 
-  return { owner, members, orgRoles };
+  return { owner, members, orgRoles, accessRoles };
 }
 
 function mappedTitle(
@@ -329,6 +401,52 @@ async function assignLdapRole(userId: string, ldapRole: string): Promise<void> {
   const band = bandForLdapRole(title, orgRoles);
   const error = await writeAccountRole(userId, title, band === "ADMIN" ? "HOD" : band);
   if (error) throw new Error(error);
+}
+
+const OWN_ROLE_MESSAGE = "Ask the owner or another manager to change your own role.";
+
+/** Job title from the list on the Job titles page, or null for none. It grants nothing. */
+async function resolveJobTitle(input: string): Promise<string | null> {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  const orgRoles = await loadOrgRoleMap();
+  if (!orgRoles) throw new Error("Run migration 012_org_role_map.sql from Setup.");
+  const title = mappedTitle(trimmed, orgRoles);
+  if (!title) throw new Error("Add that job title on the Job titles page before assigning it.");
+  return title;
+}
+
+/** The chosen role, if the person giving it holds every permission in it. */
+function assignableRole(roles: AccessRole[], id: string, actor: AppAccess): AccessRole {
+  const role = roles.find((item) => item.id === id);
+  if (!role) throw new Error("Choose a role.");
+  if (!canGrantRole(actor, role)) {
+    throw new Error("You can only give a role whose permissions you hold yourself.");
+  }
+  return role;
+}
+
+/** Someone whose role holds more than yours can only be changed by someone who holds it too. */
+function assertCanChangeHolder(
+  roles: AccessRole[],
+  currentRoleId: string | null,
+  actor: AppAccess
+): void {
+  const current = roles.find((item) => item.id === currentRoleId);
+  if (current && !canGrantRole(actor, current)) {
+    throw new Error("This person's role has permissions you do not hold, so you cannot change it.");
+  }
+}
+
+/** Columns that give one membership a role. The older role columns follow it. */
+function membershipRoleColumns(role: AccessRole) {
+  const approves = role.permissions.includes("content.approve");
+  return {
+    access_role_id: role.id,
+    role: approves ? "HOD" : "EDITOR",
+    can_edit: role.permissions.includes("content.edit"),
+    can_approve: approves,
+  };
 }
 
 const ACCOUNT_LOCKED_MESSAGE =
@@ -400,17 +518,18 @@ export async function inviteApplicationMember(input: {
   applicationId: string;
   identity: string;
   ldapRole: string;
+  accessRoleId?: string;
   displayName?: string;
+  /** Optional. With one, they can also sign in on /sign-in without Joget. */
   password?: string;
 }): Promise<{ error?: string }> {
   try {
-    const { user: actor } = await requireAppCapability(input.applicationId, "manage");
+    const { user: actor, access: actorAccess } = await requireAppCapability(input.applicationId, "manage");
     const password = input.password ?? "";
     const displayName = input.displayName?.trim() ?? "";
+    // Joget and SSO match people by email, so every invite is by email.
+    if (!input.identity.includes("@")) return { error: "Enter their email." };
     if (password) {
-      if (!input.identity.includes("@")) {
-        return { error: "Enter an email to give this person a sign-in password." };
-      }
       const problem = passwordProblem(password);
       if (problem) return { error: problem };
     }
@@ -431,6 +550,46 @@ export async function inviteApplicationMember(input: {
       return { error: "That person already owns this application." };
     }
 
+    const accessRoles = await loadAccessRoles(input.applicationId);
+    if (accessRoles) {
+      if (user.id === actor.id && !actor.is_superadmin) {
+        return { error: OWN_ROLE_MESSAGE };
+      }
+      const role = assignableRole(accessRoles, input.accessRoleId ?? "", actorAccess);
+      const existing = await db
+        .from("application_members")
+        .select("access_role_id")
+        .eq("application_id", input.applicationId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (existing.error) return { error: accessErrorMessage(existing.error) };
+      assertCanChangeHolder(
+        accessRoles,
+        (existing.data?.access_role_id as string | null) ?? null,
+        actorAccess
+      );
+      const title = await resolveJobTitle(input.ldapRole);
+      const { error: userError } = await db
+        .from("hub_users")
+        .update({ ldap_role: title })
+        .eq("id", user.id);
+      if (userError) return { error: accessErrorMessage(userError) };
+      const { error } = await db.from("application_members").upsert(
+        {
+          application_id: input.applicationId,
+          user_id: user.id,
+          ...membershipRoleColumns(role),
+        },
+        { onConflict: "application_id,user_id" }
+      );
+      if (error) return { error: accessErrorMessage(error) };
+      const signInError = await writeSignIn(user.id, { displayName, password });
+      if (signInError) return { error: signInError };
+      revalidateApplication(input.applicationId);
+      return {};
+    }
+
+    // Before migration 026: the job title group decides what they can do.
     const trimmedRole = input.ldapRole.trim();
     let storedRole: string | null = null;
     let band: "EDITOR" | "HOD" = "EDITOR";
@@ -512,8 +671,9 @@ export async function updateApplicationMember(input: {
   applicationId: string;
   membershipId: string;
   ldapRole: string;
+  accessRoleId?: string;
 }): Promise<void> {
-  await requireAppCapability(input.applicationId, "manage");
+  const { user: actor, access: actorAccess } = await requireAppCapability(input.applicationId, "manage");
   const db = await getDb();
   const { data: member, error: memberError } = await db
     .from("application_members")
@@ -523,7 +683,38 @@ export async function updateApplicationMember(input: {
     .maybeSingle();
   if (memberError) throw new Error(accessErrorMessage(memberError));
   if (!member?.user_id) throw new Error("That person is not on this application.");
-  await assignLdapRole(member.user_id as string, input.ldapRole);
+
+  const accessRoles = await loadAccessRoles(input.applicationId);
+  if (!accessRoles) {
+    await assignLdapRole(member.user_id as string, input.ldapRole);
+    revalidateApplication(input.applicationId);
+    return;
+  }
+
+  const role = assignableRole(accessRoles, input.accessRoleId ?? "", actorAccess);
+  const title = await resolveJobTitle(input.ldapRole);
+  const current = await db
+    .from("application_members")
+    .select("access_role_id")
+    .eq("id", input.membershipId)
+    .maybeSingle();
+  if (current.error) throw new Error(accessErrorMessage(current.error));
+  const currentRoleId = (current.data?.access_role_id as string | null) ?? null;
+  if (member.user_id === actor.id && !actor.is_superadmin && currentRoleId !== role.id) {
+    throw new Error(OWN_ROLE_MESSAGE);
+  }
+  assertCanChangeHolder(accessRoles, currentRoleId, actorAccess);
+  const { error: userError } = await db
+    .from("hub_users")
+    .update({ ldap_role: title })
+    .eq("id", member.user_id);
+  if (userError) throw new Error(accessErrorMessage(userError));
+  const { error } = await db
+    .from("application_members")
+    .update(membershipRoleColumns(role))
+    .eq("id", input.membershipId)
+    .eq("application_id", input.applicationId);
+  if (error) throw new Error(accessErrorMessage(error));
   revalidateApplication(input.applicationId);
 }
 
@@ -531,8 +722,23 @@ export async function removeApplicationMember(input: {
   applicationId: string;
   membershipId: string;
 }): Promise<void> {
-  await requireAppCapability(input.applicationId, "manage");
+  const { access } = await requireAppCapability(input.applicationId, "manage");
   const db = await getDb();
+  const accessRoles = await loadAccessRoles(input.applicationId);
+  if (accessRoles) {
+    const current = await db
+      .from("application_members")
+      .select("access_role_id")
+      .eq("id", input.membershipId)
+      .eq("application_id", input.applicationId)
+      .maybeSingle();
+    if (current.error) throw new Error(accessErrorMessage(current.error));
+    assertCanChangeHolder(
+      accessRoles,
+      (current.data?.access_role_id as string | null) ?? null,
+      access
+    );
+  }
   const { error } = await db
     .from("application_members")
     .delete()

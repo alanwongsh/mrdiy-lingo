@@ -5,6 +5,7 @@ import { countArticlesNeedingReview } from "@/lib/actions/press";
 import { canOpenSetup, getCurrentUser } from "@/lib/auth/access";
 import { getActor } from "@/lib/auth/actor";
 import { AppFrame } from "@/components/app-frame";
+import { appHomePath, appKindLabel } from "@/lib/catalog";
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
   const actor = await getActor();
@@ -43,7 +44,8 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     { href: "/import", label: "Import" },
   ];
   if (user?.is_superadmin) {
-    nav.push({ href: "/roles", label: "Roles" });
+    nav.push({ href: "/roles", label: "Default roles" });
+    nav.push({ href: "/job-titles", label: "Job titles" });
     nav.push({ href: "/languages", label: "Languages" });
     nav.push({ href: "/logs", label: "Logs" });
   }
@@ -67,10 +69,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     const reviewCount =
       app.model_type === "CONTENT" ? reviewCounts[app.id] ?? 0 : 0;
     return {
-      href:
-        app.model_type === "CONTENT"
-          ? `/applications/${app.id}/articles`
-          : `/applications/${app.id}`,
+      href: appHomePath(app),
       match: `/applications/${app.id}`,
       label: app.name,
       hint:
@@ -78,9 +77,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           ? reviewCount === 1
             ? "1 needs review"
             : `${reviewCount} need review`
-          : app.model_type === "STRING"
-            ? "Strings"
-            : "Content",
+          : appKindLabel(app),
       badge: reviewCount > 0 ? reviewCount : undefined,
     };
   });

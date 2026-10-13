@@ -1,6 +1,8 @@
+import { can } from "@/lib/auth/permissions";
 import Link from "next/link";
 import { listApplications } from "@/lib/actions/applications";
-import { ORG_BAND_LABEL } from "@/lib/auth/roles";
+import { getCurrentUser } from "@/lib/auth/access";
+import { appHomePath, appKindLabel } from "@/lib/catalog";
 import { DbErrorPanel, formatDbError } from "@/lib/db/errors";
 import {
   Badge,
@@ -14,9 +16,15 @@ import {
 export default async function ApplicationsPage() {
   let apps: Awaited<ReturnType<typeof listApplications>> = [];
   let dbError = "";
+  let isSuperadmin = false;
 
   try {
-    apps = await listApplications({ includeInactive: true });
+    const [list, user] = await Promise.all([
+      listApplications({ includeInactive: true }),
+      getCurrentUser(),
+    ]);
+    apps = list;
+    isSuperadmin = !!user?.is_superadmin;
   } catch (e) {
     dbError = formatDbError(e);
   }
@@ -35,14 +43,23 @@ export default async function ApplicationsPage() {
       <PageHeader
         title="Applications"
         description="Top-level apps that own string or content translations."
-        actions={<LinkButton href="/applications/new">New Application</LinkButton>}
+        actions={
+          isSuperadmin ? <LinkButton href="/applications/new">New Application</LinkButton> : null
+        }
       />
       {apps.length === 0 ? (
-        <EmptyState
-          title="No applications yet"
-          description="Create Product or Press to get started."
-          action={<LinkButton href="/applications/new">Create application</LinkButton>}
-        />
+        isSuperadmin ? (
+          <EmptyState
+            title="No applications yet"
+            description="Create Product or Press to get started."
+            action={<LinkButton href="/applications/new">Create application</LinkButton>}
+          />
+        ) : (
+          <EmptyState
+            title="No applications yet"
+            description="You have not been added to an application. Ask the application owner or a Lingo admin to add you."
+          />
+        )
       ) : (
         <div className="space-y-2">
           {apps.map((app) => (
@@ -53,11 +70,7 @@ export default async function ApplicationsPage() {
             >
               <div>
                 <Link
-                  href={
-                    app.model_type === "CONTENT"
-                      ? `/applications/${app.id}/articles`
-                      : `/applications/${app.id}`
-                  }
+                  href={appHomePath(app)}
                   className="font-semibold text-slate-900 no-underline hover:text-[var(--hub-accent)]"
                 >
                   {app.name}
@@ -69,20 +82,15 @@ export default async function ApplicationsPage() {
               <div className="flex items-center gap-2">
                 <Badge tone={statusTone(app.status)}>{app.status}</Badge>
                 <Badge tone="info">
-                  {app.model_type === "STRING" ? "Strings" : "Content"}
+                  {appKindLabel(app)}
                 </Badge>
                 <Badge tone="neutral">
                   {app.access.is_owner
                     ? "Owner"
-                    : app.access.can_manage
-                      ? "Superadmin"
-                      : app.access.role === "HOD" || app.access.role === "ADMIN"
-                        ? ORG_BAND_LABEL.HOD
-                        : app.access.role === "EDITOR"
-                          ? ORG_BAND_LABEL.EDITOR
-                          : "Invited"}
+                    : (app.access.role ??
+                      (app.access.can_manage ? "Superadmin" : "Invited"))}
                 </Badge>
-                {app.access.can_manage ? (
+                {can(app.access, "settings.general") ? (
                   <Link
                     href={`/applications/${app.id}/edit`}
                     className="hub-accent-link text-sm font-semibold"

@@ -195,11 +195,14 @@ export function Field({
   children,
   htmlFor,
   action,
+  required = false,
 }: {
   label: string;
   children: React.ReactNode;
   htmlFor?: string;
   action?: React.ReactNode;
+  /** Shows a red asterisk after the label. */
+  required?: boolean;
 }) {
   // Do NOT wrap controls in <label> — nested TipTap/toolbars steal focus
   // (caret flashes then jumps to the first button, e.g. Bold).
@@ -212,6 +215,11 @@ export function Field({
           className="text-xs font-semibold tracking-wide text-[var(--hub-muted-strong)]"
         >
           {label}
+          {required ? (
+            <span className="ml-0.5 text-red-600" aria-hidden="true">
+              *
+            </span>
+          ) : null}
         </label>
         {action}
       </div>

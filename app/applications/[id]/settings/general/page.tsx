@@ -1,3 +1,4 @@
+import { can } from "@/lib/auth/permissions";
 import { notFound } from "next/navigation";
 import { getApplication } from "@/lib/actions/applications";
 import {
@@ -34,7 +35,7 @@ export default async function SettingsGeneralPage({
             applicationId={app.id}
             contentTypes={contentTypes}
             counts={counts}
-            canEdit={app.access.can_edit}
+            canEdit={can(app.access, "settings.content_types")}
           />
         </SettingsSection>
 
@@ -42,7 +43,7 @@ export default async function SettingsGeneralPage({
           <NotificationSettings
             applicationId={app.id}
             reviewEmail={app.notify_review_email !== false}
-            canConfigure={app.access.can_approve || app.access.can_manage}
+            canConfigure={can(app.access, "settings.notifications")}
             mailReady={mailConfigured()}
           />
         </SettingsSection>

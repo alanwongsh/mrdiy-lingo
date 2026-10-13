@@ -78,8 +78,9 @@ export function ApplicationDetailsForm({
               className={inputClass}
               defaultValue={application.model_type}
             >
-              <option value="STRING">STRING</option>
-              <option value="CONTENT">CONTENT</option>
+              <option value="STRING">UI strings</option>
+              <option value="CONTENT">Content</option>
+              <option value="CATALOG">Catalog</option>
             </select>
           </Field>
         ) : null}

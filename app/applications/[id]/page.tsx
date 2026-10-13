@@ -31,6 +31,7 @@ export default async function ApplicationOverviewPage({
   }
   // Content apps open on Articles; their status counts and People live there and in Settings.
   if (app.model_type === "CONTENT") redirect(`/applications/${id}/articles`);
+  if (app.model_type === "CATALOG") redirect(`/applications/${id}/items`);
   let people: Awaited<ReturnType<typeof listApplicationPeople>> | null = null;
   let user: Awaited<ReturnType<typeof getCurrentUser>> = null;
   try {
@@ -92,6 +93,8 @@ export default async function ApplicationOverviewPage({
           owner={people.owner}
           members={people.members}
           orgRoles={people.orgRoles}
+          accessRoles={people.accessRoles}
+          actorPermissions={app.access.permissions}
           isSuperadmin={!!user?.is_superadmin}
         />
       ) : null}

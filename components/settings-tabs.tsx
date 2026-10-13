@@ -6,16 +6,20 @@ import { usePathname } from "next/navigation";
 export function SettingsTabs({
   applicationId,
   canManage,
+  canManageRoles,
 }: {
   applicationId: string;
-  /** People is only shown to the owner or a superadmin. */
+  /** People is shown to people with people.manage. */
   canManage: boolean;
+  /** Roles is shown to people with roles.manage. */
+  canManageRoles: boolean;
 }) {
   const pathname = usePathname();
   const base = `/applications/${applicationId}/settings`;
   const tabs = [
     { href: `${base}/general`, label: "General" },
     ...(canManage ? [{ href: `${base}/people`, label: "People" }] : []),
+    ...(canManageRoles ? [{ href: `${base}/roles`, label: "Roles" }] : []),
     { href: `${base}/quality`, label: "Quality & publishing" },
   ];
 

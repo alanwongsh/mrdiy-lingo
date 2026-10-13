@@ -538,7 +538,7 @@ export default function NewArticlePage() {
           </p>
         ) : (
           <p className="text-sm text-[var(--hub-muted)]">
-            Save as draft to keep working on it. Submit for review when it is ready, and HOD and above approve it.
+            Save as draft to keep working on it. Submit for review when it is ready, and someone who can approve signs it off.
           </p>
         )}
         {error ? <p className="text-sm text-red-700">{error}</p> : null}

@@ -59,13 +59,13 @@ export function NotificationSettings({
             Email approvers when an article is ready for review
           </span>
           <span className="block text-sm text-[var(--hub-muted)]">
-            The owner and every HOD or Admin with an email address get one email when an article
+            The owner and everyone whose role can approve get one email, if they have an address, when an article
             moves to Review.
           </span>
         </span>
       </label>
       {!canConfigure ? (
-        <p className="text-xs text-[var(--hub-muted)]">Only approvers can change this.</p>
+        <p className="text-xs text-[var(--hub-muted)]">Your role cannot change this.</p>
       ) : null}
       {!mailReady ? (
         <p className="text-xs text-amber-800">

@@ -18,6 +18,8 @@ export type HubActor = {
   name: string;
   email: string | null;
   employeeId?: string | null;
+  /** Role or title from Joget, such as Executive. Shown as the job title only. */
+  title?: string | null;
 };
 
 type TokenPayload = {
@@ -25,6 +27,7 @@ type TokenPayload = {
   n: string;
   e?: string;
   eid?: string;
+  r?: string;
   exp: number;
 };
 
@@ -49,6 +52,7 @@ export function signActorToken(
     n: actor.name,
     e: actor.email ?? "",
     eid: actor.employeeId ?? "",
+    r: actor.title ?? "",
     exp: Math.floor(Date.now() / 1000) + ttlSeconds,
   };
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -78,8 +82,9 @@ export function verifyActorToken(token: string): HubActor | null {
   const name = typeof parsed.n === "string" ? parsed.n.trim() : "";
   const email = typeof parsed.e === "string" ? parsed.e.trim() : "";
   const employeeId = typeof parsed.eid === "string" ? parsed.eid.trim() : "";
+  const title = typeof parsed.r === "string" ? parsed.r.trim().replace(/\s+/g, " ") : "";
   if (!username || username.length > 80 || !name || name.length > 120) return null;
-  if (employeeId.length > 80) return null;
+  if (employeeId.length > 80 || title.length > 80) return null;
   if (!Number.isFinite(parsed.exp)) return null;
 
   const now = Math.floor(Date.now() / 1000);
@@ -91,6 +96,7 @@ export function verifyActorToken(token: string): HubActor | null {
     name,
     email: email || null,
     employeeId: employeeId || null,
+    title: title || null,
   };
 }
 
