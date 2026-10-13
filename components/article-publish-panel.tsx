@@ -291,7 +291,7 @@ export function PublishLanguagePicker({
               ) : !readOnly && onScheduleChange ? (
                 <div className="space-y-1">
                 <label className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--hub-muted)]">
-                  Publish at
+                  Schedule this language for
                   <DateTimePicker
                     compact
                     ariaLabel="Publish time for this language"

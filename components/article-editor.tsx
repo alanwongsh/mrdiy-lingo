@@ -751,15 +751,13 @@ export function ArticleEditor({
               </p>
             ) : null}
           </div>
-          <Field label="Schedule Publish time (all languages)">
+          <Field label="Scheduled publish time (all languages)">
             <DateTimePicker
               ariaLabel="Schedule publish time"
+              ariaLabel="Publish time for all languages"
               value={scheduledPublishAt}
               onChange={setScheduledPublishAt}
             />
-            {/* <p className="text-xs text-[var(--hub-muted)]">
-              Goes live at this time once approved.
-            </p> */}
           </Field>
           <div className="sm:col-span-2 lg:col-span-4">
             <PublishLanguagePicker
