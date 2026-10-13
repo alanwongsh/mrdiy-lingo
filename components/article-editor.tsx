@@ -753,7 +753,6 @@ export function ArticleEditor({
           </div>
           <Field label="Scheduled publish time (all languages)">
             <DateTimePicker
-              ariaLabel="Schedule publish time"
               ariaLabel="Publish time for all languages"
               value={scheduledPublishAt}
               onChange={setScheduledPublishAt}
