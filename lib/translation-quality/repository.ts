@@ -230,13 +230,20 @@ export async function listTerminologyPage(input: {
   };
 }
 
-export async function listActiveBoilerplate() {
+/** This application's boilerplate that is in use. */
+export async function listActiveBoilerplate(applicationId: string) {
   const db = await getDb();
-  const { data, error } = await db
+  const scoped = await db
     .from("boilerplate_phrases")
     .select("*")
+    .eq("application_id", applicationId)
     .eq("is_active", true)
     .order("name");
+  // Before migration 028 the list is shared by every application.
+  const { data, error } =
+    scoped.error?.code === "42703"
+      ? await db.from("boilerplate_phrases").select("*").eq("is_active", true).order("name")
+      : scoped;
   if (error) throw new Error(qualitySchemaMessage(error));
   return (data ?? []).map((row) => mapBoilerplate(row));
 }

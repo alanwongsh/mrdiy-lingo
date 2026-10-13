@@ -1,4 +1,5 @@
 import { AppSubnav } from "@/components/app-subnav";
+import { CollapsibleSection } from "@/components/collapsible-section";
 import { SettingsTabs } from "@/components/settings-tabs";
 import { PageHeader } from "@/components/ui";
 import type { AppAccess, Application } from "@/lib/types";
@@ -37,27 +38,24 @@ export function SettingsChrome({
   );
 }
 
-/** Heading and short help line for one block on a settings tab. */
+/** One block on a settings tab. Folds to its title and a short summary line. */
 export function SettingsSection({
   id,
   title,
   description,
+  defaultOpen = false,
   children,
 }: {
   id?: string;
   title: string;
-  description?: string;
+  /** Shown beside the title while folded. Keep it to a few words. */
+  description?: React.ReactNode;
+  defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <section id={id} className="scroll-mt-6 space-y-3">
-      <div>
-        <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-        {description ? (
-          <p className="mt-0.5 text-sm text-[var(--hub-muted)]">{description}</p>
-        ) : null}
-      </div>
+    <CollapsibleSection id={id} title={title} summary={description} defaultOpen={defaultOpen}>
       {children}
-    </section>
+    </CollapsibleSection>
   );
 }

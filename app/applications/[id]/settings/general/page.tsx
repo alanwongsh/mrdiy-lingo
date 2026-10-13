@@ -22,15 +22,20 @@ export default async function SettingsGeneralPage({
     listContentTypes(app.id, { includeInactive: true }),
     listContentTypeCounts(app.id),
   ]);
+  const reviewEmail = app.notify_review_email !== false;
 
   return (
     <SettingsChrome application={app}>
-      <div className="space-y-10">
+      <div className="space-y-3">
         <SettingsSection
           id="types"
           title="Article types"
-          description="Labels for this app’s articles. New articles start as General. Import creates a type when the file uses one that is not here yet."
+          description={`${contentTypes.length} ${contentTypes.length === 1 ? "type" : "types"}`}
         >
+          <p className="mb-3 text-sm text-[var(--hub-muted)]">
+            Labels for this app’s articles. New articles start as General. Import creates a type
+            when the file uses one that is not here yet.
+          </p>
           <ContentTypesManager
             applicationId={app.id}
             contentTypes={contentTypes}
@@ -39,10 +44,14 @@ export default async function SettingsGeneralPage({
           />
         </SettingsSection>
 
-        <SettingsSection id="notifications" title="Review emails">
+        <SettingsSection
+          id="notifications"
+          title="Review emails"
+          description={reviewEmail ? "On" : "Off"}
+        >
           <NotificationSettings
             applicationId={app.id}
-            reviewEmail={app.notify_review_email !== false}
+            reviewEmail={reviewEmail}
             canConfigure={can(app.access, "settings.notifications")}
             mailReady={mailConfigured()}
           />

@@ -59,6 +59,12 @@ export const PERMISSIONS = [
     hint: "Add, change, and remove terminology entries.",
   },
   {
+    key: "settings.boilerplate",
+    group: "Settings",
+    label: "Boilerplate",
+    hint: "Standard passages, such as the company introduction, that translations must keep word for word.",
+  },
+  {
     key: "people.manage",
     group: "People",
     label: "Manage people",
@@ -93,6 +99,7 @@ export const EDITOR_PERMISSIONS: readonly PermissionKey[] = [
   "content.import",
   "settings.content_types",
   "settings.terminology",
+  "settings.boilerplate",
 ];
 
 /** What an approver could do before roles were mapped by hand. Mirrors migration 026. */

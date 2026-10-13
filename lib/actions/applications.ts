@@ -568,12 +568,15 @@ export async function inviteApplicationMember(input: {
         (existing.data?.access_role_id as string | null) ?? null,
         actorAccess
       );
+      // A blank job title keeps the one already on the account, such as one from Joget.
       const title = await resolveJobTitle(input.ldapRole);
-      const { error: userError } = await db
-        .from("hub_users")
-        .update({ ldap_role: title })
-        .eq("id", user.id);
-      if (userError) return { error: accessErrorMessage(userError) };
+      if (title) {
+        const { error: userError } = await db
+          .from("hub_users")
+          .update({ ldap_role: title })
+          .eq("id", user.id);
+        if (userError) return { error: accessErrorMessage(userError) };
+      }
       const { error } = await db.from("application_members").upsert(
         {
           application_id: input.applicationId,

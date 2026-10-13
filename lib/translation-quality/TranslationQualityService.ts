@@ -89,7 +89,7 @@ export class TranslationQualityService {
     }
     const [terminology, boilerplate, savedDecisions, unsavedDecisions] = await Promise.all([
       listActiveTerminology(request.applicationId),
-      listActiveBoilerplate(),
+      listActiveBoilerplate(request.applicationId),
       listReviewDecisions(request.contentId, request.targetLanguage).catch(() => []),
       listAcceptedDecisions(request.contentId, request.acceptedActionIds ?? []).catch(() => []),
     ]);
@@ -342,7 +342,7 @@ export class TranslationQualityService {
     }
     const [terminology, boilerplate] = await Promise.all([
       listActiveTerminology(request.applicationId),
-      listActiveBoilerplate(),
+      listActiveBoilerplate(request.applicationId),
     ]);
     const input: TranslationQualityInput = {
       sourceLanguage: request.sourceLanguage,
@@ -395,7 +395,7 @@ export class TranslationQualityService {
     const categories = await listQualityCategories(request.applicationId, false);
     const [terminology, boilerplate] = await Promise.all([
       listActiveTerminology(request.applicationId),
-      listActiveBoilerplate(),
+      listActiveBoilerplate(request.applicationId),
     ]);
     const input: TranslationQualityInput = {
       sourceLanguage: request.sourceLanguage,

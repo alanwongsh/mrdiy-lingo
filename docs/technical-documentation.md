@@ -193,7 +193,7 @@ Schema is applied in order from `supabase/migrations/001` through `023`. Setup (
 | `quality_categories` | The checks used to score a translation. `category_type` is `ai` or `rule`. `enabled` turns a check on or off. `configuration.weight` is that check’s share of the score. Seeded checks: message 20, tone 15, structure 15, cross-language 25, terminology 15, boilerplate 10. The code is unique. `enabled` and the weight here are defaults; an application's own setting in `application_quality_settings` overrides them. |
 | `application_quality_settings` | One application's `enabled` and `weight` (1–100) for one quality check. Primary key is application + category. Migration 022 copies the shared settings to every existing application. |
 | `terminology` | A preferred wording for one source language and one target language, plus spellings to avoid. Each row belongs to one application (`application_id`, migration 021). One term is unique per application and language pair, ignoring case. `is_active` includes or excludes it from reviews. |
-| `boilerplate_phrases` | A required standard phrase for one language. The name is unique per language, ignoring case. `expected_usage` is `when_source_present`: the phrase is required when the source contains the matching phrase. Seeded with the company introduction. |
+| `boilerplate_phrases` | A required standard passage for one language. Each row belongs to one application (`application_id`, migration 028); rows with the same name are one passage in different languages. The name is unique per application and language, ignoring case. `expected_usage` is `when_source_present`: the passage is required when the source contains the matching passage. Managed under Settings → Quality. |
 | `quality_runs` | One quality analysis of an article translation. Stores provider, model, languages, status (`pending`, `running`, `completed`, `failed`), overall score, request and response metadata, and an error message. `content_translation_version_id` points at the saved version that was analyzed. That column is unique when it is set, so a saved version keeps one run. A draft analysis leaves it null. Deleting the article or that version deletes the run. |
 | `quality_scores` | One category result on a run: category code, score from 0 to 100, band (`excellent`, `good`, `warning`, `critical`), summary, or an error message when that category did not score. |
 | `quality_findings` | A problem found in a run: severity (`info`, `warning`, `error`, `critical`), title, explanation, source quote, translated quote, suggested wording, and field (`title`, `summary`, or `content`). |
@@ -307,6 +307,7 @@ Every check runs on the server (`lib/auth/access.ts`). Viewing needs membership.
 | `settings.fields` | Catalog fields |
 | `settings.quality` | Quality scoring, checks, and publish vendors |
 | `settings.terminology` | Terminology entries |
+| `settings.boilerplate` | Boilerplate passages |
 | `people.manage` | Add and remove people and give them roles |
 | `roles.manage` | Add, rename, and delete the application's roles and map their permissions |
 
@@ -346,7 +347,7 @@ In the table below, "Editor" means a role with edit only, and "HOD and above" me
 | Analyze, recheck wording, accept or ignore suggestions | ✓ | ✓ | ✓ |
 | Turn checks on or off and change weights (Settings → Quality) | | ✓ | ✓ |
 | Add, edit, turn on or off, and delete terminology | ✓ | ✓ | ✓ |
-| Boilerplate phrases | Database rows only. There is no screen | | |
+| Manage boilerplate under Settings → Quality (`settings.boilerplate`) | ✓ | ✓ | ✓ |
 | **Content types** (Settings → Types) | | | |
 | Add, edit, and delete types | ✓ | ✓ | ✓ |
 | **Publishing** | | | |
@@ -759,6 +760,7 @@ Migrations, in order:
 25. `025_access_roles.sql` — roles (`access_roles`) and `application_members.access_role_id`. Approvers become Reviewer; everyone else becomes Content writer
 26. `026_access_role_permissions.sql` — permission map per role (`access_role_permissions`). Converts the edit, approve, and manage switches from 025 and drops them
 27. `027_application_roles.sql` — roles per application. Copies the default roles into every application, moves members onto their application's copy, and adds `roles.manage` wherever `people.manage` was
+28. `028_boilerplate_per_application.sql` — each application keeps its own boilerplate. Copies the shared phrases into every CONTENT application and adds `settings.boilerplate` wherever `settings.terminology` was
 
 `npm run db:migrate` applies every pending file and records it in `_migrations`.
 

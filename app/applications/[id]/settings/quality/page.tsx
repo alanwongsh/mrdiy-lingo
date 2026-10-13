@@ -7,6 +7,8 @@ import {
   listTerminologyEntries,
 } from "@/lib/actions/quality";
 import { listPublishIntegrationTypes, listPublishVendors } from "@/lib/actions/publish";
+import { listBoilerplate, type BoilerplateSet } from "@/lib/actions/boilerplate";
+import { BoilerplateManager } from "@/components/boilerplate-manager";
 import { PublishVendorsManager } from "@/components/publish-vendors-manager";
 import { QualitySettings } from "@/components/quality-settings";
 import { SettingsChrome, SettingsSection } from "@/components/settings-chrome";
@@ -69,6 +71,14 @@ export default async function SettingsQualityPage({
     }
   }
 
+  let boilerplate: BoilerplateSet[] = [];
+  let boilerplateError = "";
+  try {
+    boilerplate = await listBoilerplate(app.id);
+  } catch (error) {
+    boilerplateError = error instanceof Error ? error.message : "Boilerplate is unavailable.";
+  }
+
   let vendors: PublishVendor[] = [];
   let vendorTypes: PublishIntegrationType[] = [];
   let vendorError = "";
@@ -88,7 +98,7 @@ export default async function SettingsQualityPage({
 
   return (
     <SettingsChrome application={app}>
-      <div className="space-y-10">
+      <div className="space-y-3">
         {terms ? (
           <QualitySettings
             applicationId={app.id}
@@ -107,9 +117,23 @@ export default async function SettingsQualityPage({
         )}
 
         <SettingsSection
+          id="boilerplate"
+          title="Boilerplate"
+          description={`${boilerplate.length} ${boilerplate.length === 1 ? "passage" : "passages"}`}
+        >
+          <BoilerplateManager
+            applicationId={app.id}
+            sets={boilerplate}
+            languages={languages}
+            canEdit={can(app.access, "settings.boilerplate")}
+            loadError={boilerplateError}
+          />
+        </SettingsSection>
+
+        <SettingsSection
           id="publishing"
           title="Publish connections"
-          description="Where approved articles are sent at their publish time."
+          description={`${vendors.length} ${vendors.length === 1 ? "connection" : "connections"}`}
         >
           {vendorError ? <p className="text-sm text-red-700">{vendorError}</p> : null}
           <PublishVendorsManager

@@ -121,20 +121,6 @@ async function writePermissions(roleId: string, permissions: readonly Permission
   if (memberError) throwRoleError(memberError);
 }
 
-export async function updateAccessRoleDetails(
-  input: Scope & { id: string; name: string; description: string }
-): Promise<void> {
-  const { actor, roles } = await authorize(input);
-  const role = changeableRole(roles, input.id, actor);
-  const db = await getDb();
-  const { error } = await db
-    .from("access_roles")
-    .update(cleanDetails(input))
-    .eq("id", role.id);
-  if (error) throwRoleError(error);
-  revalidateRoles(input);
-}
-
 /**
  * Save the grid at once: the permission map (role id to the permissions it holds)
  * and any new roles. Everything is checked before anything is written.
@@ -192,6 +178,31 @@ export async function saveRolePermissions(
     if (error) throwRoleError(error);
     await writePermissions(data.id as string, item.permissions);
   }
+  revalidateRoles(input);
+}
+
+/** Edit one role's name, description, and permissions in one step. */
+export async function updateAccessRole(
+  input: Scope & { id: string; name: string; description: string; permissions: string[] }
+): Promise<void> {
+  const { actor, roles } = await authorize(input);
+  const role = changeableRole(roles, input.id, actor);
+  const details = cleanDetails(input);
+  const clash = roles.find(
+    (item) => item.id !== role.id && item.name.toLowerCase() === details.name.toLowerCase()
+  );
+  if (clash) throw new Error(`A role named “${details.name}” already exists here.`);
+  const permissions = parsePermissions(input.permissions);
+  if (!canGrantRole(actor, { permissions })) {
+    throw new Error("You can only tick permissions you hold yourself.");
+  }
+  const db = await getDb();
+  const { error } = await db.from("access_roles").update(details).eq("id", role.id);
+  if (error) throwRoleError(error);
+  const same =
+    permissions.length === role.permissions.length &&
+    permissions.every((key) => role.permissions.includes(key));
+  if (!same) await writePermissions(role.id, permissions);
   revalidateRoles(input);
 }
 

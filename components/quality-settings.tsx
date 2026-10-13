@@ -9,9 +9,10 @@ import {
   saveQualityCategories,
   updateTerminologyEntry,
 } from "@/lib/actions/quality";
+import { CollapsibleSection } from "@/components/collapsible-section";
 import { FilterSelect, type FilterOption } from "@/components/filter-select";
 import { IconButton, PencilIcon, TrashIcon } from "@/components/icon-button";
-import { Badge, Button, Card, Field, Pagination, inputClass } from "@/components/ui";
+import { Badge, Button, Field, Pagination, inputClass } from "@/components/ui";
 import type { Language } from "@/lib/types";
 import type {
   QualityCategoryConfig,
@@ -268,23 +269,25 @@ export function QualitySettings({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
 
+      <CollapsibleSection
+        id="scoring"
+        title="Scoring"
+        summary={`${drafts.filter((item) => item.enabled).length} of ${drafts.length} checks on`}
+      >
       <form onSubmit={saveScoring}>
-        <Card className="p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-slate-900">Scoring</h2>
-            </div>
-            {canManage ? (
+        <div>
+          {canManage ? (
+            <div className="flex justify-end">
               <Button type="submit" disabled={pending || !scoringDirty}>
                 Save scoring
               </Button>
-            ) : null}
-          </div>
-          <div className="mt-4 grid gap-6 lg:grid-cols-2">
+            </div>
+          ) : null}
+          <div className={`${canManage ? "mt-4 " : ""}grid gap-6 lg:grid-cols-2`}>
             <CategoryList
               title="Written by AI"
               drafts={drafts.filter((item) => item.categoryType === "ai")}
@@ -313,12 +316,19 @@ export function QualitySettings({
               Your role cannot change scoring.
             </p>
           ) : null}
-        </Card>
+        </div>
       </form>
+      </CollapsibleSection>
 
-      <Card className="p-3 sm:p-4">
-        <h2 className="text-base font-semibold text-slate-900">Terminology</h2>
-        <p className="mt-1 mb-4 max-w-2xl text-sm text-slate-500">
+      <CollapsibleSection
+        id="terminology"
+        title="Terminology"
+        summary={`${total} ${total === 1 ? "word" : "words"}`}
+        defaultOpen={Boolean(filters.q || filters.source || filters.target || filters.status || page > 1)}
+      >
+      <div className="space-y-4">
+      <div>
+        <p className="mb-4 max-w-2xl text-sm text-slate-500">
           Preferred wording and spellings to avoid for each language pair.
         </p>
         <form onSubmit={applyFilters}>
@@ -382,7 +392,7 @@ export function QualitySettings({
             </Button>
           </div>
         </form>
-      </Card>
+      </div>
 
       {editor ? (
         <TermForm
@@ -395,7 +405,7 @@ export function QualitySettings({
         />
       ) : null}
 
-      <Card className="overflow-hidden">
+      <div className="overflow-hidden rounded-lg border border-[var(--hub-border)]">
         {canEditTerms && selectedOnPage.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2 border-b border-[var(--hub-border)] px-4 py-3">
             <span className="text-sm text-[var(--hub-muted-strong)]">
@@ -494,7 +504,7 @@ export function QualitySettings({
             </tbody>
           </table>
         </div>
-      </Card>
+      </div>
 
       <Pagination
         page={page}
@@ -508,6 +518,8 @@ export function QualitySettings({
           status: filters.status || undefined,
         }}
       />
+      </div>
+      </CollapsibleSection>
     </div>
   );
 }
@@ -531,7 +543,7 @@ function TermForm({
   const targetOptions = editorOptions(languages, editor.targetLanguage);
 
   return (
-    <Card className="p-4">
+    <div className="rounded-lg border border-[var(--hub-border)] p-4">
       <form className="grid gap-3 sm:grid-cols-2" onSubmit={onSubmit}>
         <div className="sm:col-span-2">
           <h2 className="text-base font-semibold text-slate-900">
@@ -612,7 +624,7 @@ function TermForm({
           </Button>
         </div>
       </form>
-    </Card>
+    </div>
   );
 }
 

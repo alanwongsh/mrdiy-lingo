@@ -13,7 +13,14 @@ import type { OrgRoleBand } from "@/lib/auth/roles";
 import { canGrantRole, type PermissionKey } from "@/lib/auth/permissions";
 import type { AccessRole, ApplicationMemberView, OrgRoleMapping } from "@/lib/types";
 import { FilterSelect, type FilterOption } from "@/components/filter-select";
+import { CollapsibleSection } from "@/components/collapsible-section";
 import { Badge, Button, Card, Field, inputClass } from "@/components/ui";
+
+/**
+ * Job titles are hidden on the People page for now; the code stays so they can come back.
+ * Before the role migrations the job title is still the role picker, so it always shows then.
+ */
+const SHOW_JOB_TITLES = false;
 
 /** Job titles. Grouped by approval only before roles are set up. */
 function JobTitleSelect({
@@ -225,18 +232,21 @@ function MemberRow({
               />
             </div>
           ) : null}
-          <div className="flex items-center gap-2">
-            <span className="text-[var(--hub-muted)]" aria-hidden>
-              {accessRoles ? "Job title" : "Role"}
-            </span>
-            <JobTitleSelect
-              ariaLabel={accessRoles ? "Job title" : "Role"}
-              value={ldapRole}
-              roles={orgRoles}
-              onChange={setLdapRole}
-              grouped={!accessRoles}
-            />
-          </div>
+          {/* Job title is hidden for now. Set SHOW_JOB_TITLES to true to bring it back. */}
+          {SHOW_JOB_TITLES || !accessRoles ? (
+            <div className="flex items-center gap-2">
+              <span className="text-[var(--hub-muted)]" aria-hidden>
+                {accessRoles ? "Job title" : "Role"}
+              </span>
+              <JobTitleSelect
+                ariaLabel={accessRoles ? "Job title" : "Role"}
+                value={ldapRole}
+                roles={orgRoles}
+                onChange={setLdapRole}
+                grouped={!accessRoles}
+              />
+            </div>
+          ) : null}
           <Button
             type="button"
             variant="secondary"
@@ -389,6 +399,7 @@ export function ApplicationAccessPanel({
   }
 
   return (
+    <>
     <Card className="mt-8 p-5">
       <h2 className="text-base font-semibold">People</h2>
       {orgRoles === null ? (
@@ -401,8 +412,8 @@ export function ApplicationAccessPanel({
         </p>
       ) : (
         <p className="mt-1 text-sm text-[var(--hub-muted)]">
-          The role decides what someone can do in this application. The job title is
-          shown only.
+          The role decides what someone can do in this application.
+          {/* {" "}The job title is shown only. */}
         </p>
       )}
 
@@ -455,11 +466,16 @@ export function ApplicationAccessPanel({
         )}
       </div>
 
-      <form onSubmit={invite} className="mt-4 space-y-3 border-t border-[var(--hub-border)] pt-4">
-        <h3 className="text-sm font-semibold">Add person</h3>
+    </Card>
+
+      <div className="mt-3">
+      <CollapsibleSection id="add-person" title="Add person" summary="Invite by email and give them a role">
+      <form onSubmit={invite} className="space-y-3">
         <div
           className={`grid gap-3 sm:items-end ${
-            accessRoles ? "sm:grid-cols-[1fr_14rem_14rem]" : "sm:grid-cols-[1fr_16rem]"
+            accessRoles && SHOW_JOB_TITLES
+              ? "sm:grid-cols-[1fr_14rem_14rem]"
+              : "sm:grid-cols-[1fr_16rem]"
           }`}
         >
           <Field label="Email" required>
@@ -481,14 +497,17 @@ export function ApplicationAccessPanel({
               onChange={setAccessRoleId}
             />
           ) : null}
-          <JobTitleSelect
-            label={accessRoles ? "Job title" : "Role"}
-            fullWidth
-            value={ldapRole}
-            roles={roles}
-            onChange={setLdapRole}
-            grouped={!accessRoles}
-          />
+          {/* Job title is hidden for now. Set SHOW_JOB_TITLES to true to bring it back. */}
+          {SHOW_JOB_TITLES || !accessRoles ? (
+            <JobTitleSelect
+              label={accessRoles ? "Job title" : "Role"}
+              fullWidth
+              value={ldapRole}
+              roles={roles}
+              onChange={setLdapRole}
+              grouped={!accessRoles}
+            />
+          ) : null}
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Name (optional)">
@@ -527,7 +546,9 @@ export function ApplicationAccessPanel({
           {pending ? "Saving…" : "Add person"}
         </Button>
       </form>
+      </CollapsibleSection>
+      </div>
       {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
-    </Card>
+    </>
   );
 }
