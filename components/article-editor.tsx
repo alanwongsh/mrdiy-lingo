@@ -52,6 +52,7 @@ import { TranslationQualityPanel } from "@/components/translation-quality-panel"
 import { saveReviewedContentTranslation } from "@/lib/actions/quality";
 import { applyQualityAction, qualityActionStillOpen } from "@/lib/translation-quality/apply-action";
 import type { QualityAction, QualityTargetField } from "@/lib/translation-quality/types";
+import { DateTimePicker } from "@/components/date-time-picker";
 
 type ArticleWithTranslations = Content & {
   translations: ContentTranslation[];
@@ -751,11 +752,10 @@ export function ArticleEditor({
             ) : null}
           </div>
           <Field label="Schedule Publish time (all languages)">
-            <input
-              type="datetime-local"
-              className={inputClass}
+            <DateTimePicker
+              ariaLabel="Schedule publish time"
               value={scheduledPublishAt}
-              onChange={(e) => setScheduledPublishAt(e.target.value)}
+              onChange={setScheduledPublishAt}
             />
             {/* <p className="text-xs text-[var(--hub-muted)]">
               Goes live at this time once approved.

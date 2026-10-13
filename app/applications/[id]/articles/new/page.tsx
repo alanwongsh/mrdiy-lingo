@@ -32,6 +32,7 @@ import { languageKey } from "@/lib/target-languages";
 import { TranslationQualityPanel } from "@/components/translation-quality-panel";
 import { applyQualityAction, qualityActionStillOpen } from "@/lib/translation-quality/apply-action";
 import type { QualityAction, QualityTargetField } from "@/lib/translation-quality/types";
+import { DateTimePicker } from "@/components/date-time-picker";
 
 type HeldTranslation = {
   fields: SourceContentFields;
@@ -49,6 +50,7 @@ export default function NewArticlePage() {
   const [body, setBody] = useState("");
   const [sourceLanguage, setSourceLanguage] = useState("en");
   const [market, setMarket] = useState("");
+  const [publishAt, setPublishAt] = useState("");
   const [targetLanguages, setTargetLanguages] = useState<string[]>([]);
   const [editingCode, setEditingCode] = useState("");
   const [held, setHeld] = useState<Record<string, HeldTranslation>>({});
@@ -392,10 +394,11 @@ export default function NewArticlePage() {
               </select>
             </Field>
             <Field label="Publish time (optional)">
-              <input
-                type="datetime-local"
+              <DateTimePicker
                 name="scheduled_publish_at"
-                className={inputClass}
+                ariaLabel="Publish time"
+                value={publishAt}
+                onChange={setPublishAt}
               />
               <p className="text-xs text-[var(--hub-muted)]">
                 Goes live at this time once approved.

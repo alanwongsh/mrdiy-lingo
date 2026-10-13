@@ -17,7 +17,8 @@ import {
   waitingEstimate,
   type WaitingEstimate,
 } from "@/lib/publish/schedule";
-import { Badge, Button, inputClass } from "@/components/ui";
+import { Badge, Button } from "@/components/ui";
+import { DateTimePicker } from "@/components/date-time-picker";
 
 // Most urgent first: the collapsed row shows the first one that applies.
 const SUMMARY_ORDER = ["Failed", "Retrying", "Publishing", "Due now", "Waiting", "Scheduled"];
@@ -291,11 +292,11 @@ export function PublishLanguagePicker({
                 <div className="space-y-1">
                 <label className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--hub-muted)]">
                   Publish at
-                  <input
-                    type="datetime-local"
-                    className={`${inputClass} h-8 w-auto py-0 text-xs`}
+                  <DateTimePicker
+                    compact
+                    ariaLabel="Publish time for this language"
                     value={toLocalInput(ownTime)}
-                    onChange={(event) => setLanguageTime(code, event.target.value)}
+                    onChange={(next) => setLanguageTime(code, next)}
                   />
                   {ownTime ? (
                     <button
