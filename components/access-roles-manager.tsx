@@ -9,25 +9,27 @@ import {
   updateAccessRole,
 } from "@/lib/actions/access-roles";
 import {
-  PERMISSION_GROUPS,
   PERMISSION_KEYS,
   canGrantRole,
-  PERMISSIONS,
+  permissionModelNote,
+  permissionsForModel,
   type PermissionKey,
 } from "@/lib/auth/permissions";
-import type { AccessRole } from "@/lib/types";
+import type { AccessRole, ApplicationModelType } from "@/lib/types";
 import { CollapsibleSection } from "@/components/collapsible-section";
 import { FilterSelect } from "@/components/filter-select";
 import { Button, Field, inputClass } from "@/components/ui";
 
 type Run = (task: () => Promise<void>, after?: () => void) => void;
 
+type PermissionList = ReturnType<typeof permissionsForModel>;
+
 function countLabel(count: number) {
   return count === 1 ? "1 person" : `${count} people`;
 }
 
-function groupKeys(group: string): PermissionKey[] {
-  return PERMISSIONS.filter((item) => item.group === group).map((item) => item.key);
+function groupKeys(shown: PermissionList, group: string): PermissionKey[] {
+  return shown.filter((item) => item.group === group).map((item) => item.key);
 }
 
 /**
@@ -35,30 +37,33 @@ function groupKeys(group: string): PermissionKey[] {
  * the others keep their current tick.
  */
 function setGroup(
+  shown: PermissionList,
   held: readonly PermissionKey[],
   group: string,
   on: boolean,
   actorPermissions: readonly PermissionKey[]
 ): PermissionKey[] {
-  const keys = groupKeys(group).filter((key) => actorPermissions.includes(key));
+  const keys = groupKeys(shown, group).filter((key) => actorPermissions.includes(key));
   const rest = held.filter((key) => !keys.includes(key));
   return on ? [...rest, ...keys] : rest;
 }
 
 function GroupCheckbox({
+  shown,
   held,
   group,
   disabled,
   onChange,
   actorPermissions,
 }: {
+  shown: PermissionList;
   held: readonly PermissionKey[];
   group: string;
   disabled: boolean;
   actorPermissions: readonly PermissionKey[];
   onChange: (on: boolean) => void;
 }) {
-  const keys = groupKeys(group);
+  const keys = groupKeys(shown, group);
   const count = keys.filter((key) => held.includes(key)).length;
   const all = count === keys.length;
   const mine = keys.filter((key) => actorPermissions.includes(key));
@@ -90,9 +95,12 @@ function RoleForm({
   run,
   applicationId,
   actorPermissions,
+  shown,
   onDone,
 }: {
   role?: AccessRole;
+  /** The permissions that apply to this application type. Others on the role are kept as they are. */
+  shown: PermissionList;
   /** Roles the signed-in person may copy from. Only used when adding. */
   copyable: AccessRole[];
   pending: boolean;
@@ -190,7 +198,7 @@ function RoleForm({
           Permissions{copyFromId ? " (copied, change as needed)" : ""}
         </legend>
         <div className="grid gap-4 lg:grid-cols-3">
-          {PERMISSION_GROUPS.map((group) => (
+          {[...new Set(shown.map((item) => item.group))].map((group) => (
             <div
               key={group}
               className="overflow-hidden rounded-lg border border-[var(--hub-border-strong)] bg-white shadow-sm"
@@ -198,17 +206,21 @@ function RoleForm({
               <div className="flex items-center justify-between gap-2 border-b border-[var(--hub-border)] bg-slate-50 px-3 py-2 text-xs font-semibold tracking-wide text-[var(--hub-muted-strong)] uppercase">
                 {group}
                 <GroupCheckbox
+                  shown={shown}
                   held={permissions}
                   group={group}
                   actorPermissions={actorPermissions}
                   disabled={pending}
                   onChange={(on) =>
-                    setPermissions((current) => setGroup(current, group, on, actorPermissions))
+                    setPermissions((current) => setGroup(shown, current, group, on, actorPermissions))
                   }
                 />
               </div>
               <div className="space-y-2 p-3">
-                {PERMISSIONS.filter((item) => item.group === group).map((permission) => (
+                {shown.filter((item) => item.group === group).map((permission) => {
+                  // Only the default roles list every type, so say which apps a permission is for.
+                  const note = applicationId ? null : permissionModelNote(permission.key);
+                  return (
                   <label key={permission.key} className="flex items-start gap-2 text-sm">
                     <input
                       type="checkbox"
@@ -220,9 +232,15 @@ function RoleForm({
                     <span>
                       <span className="font-medium text-slate-900">{permission.label}</span>
                       <span className="block text-xs text-[var(--hub-muted)]">{permission.hint}</span>
+                      {note ? (
+                        <span className="mt-0.5 block text-xs font-medium text-[var(--hub-muted-strong)]">
+                          {note}
+                        </span>
+                      ) : null}
                     </span>
                   </label>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -256,8 +274,10 @@ function RoleRow({
   applicationId,
   actorPermissions,
   changeable,
+  shown,
 }: {
   role: AccessRole;
+  shown: PermissionList;
   count: number;
   pending: boolean;
   run: Run;
@@ -276,7 +296,8 @@ function RoleRow({
           <div className="text-sm text-[var(--hub-muted)]">
             {role.description || "No description"} ·{" "}
             {applicationId ? `${countLabel(count)} · ` : null}
-            {role.permissions.length} of {PERMISSIONS.length} permissions
+            {shown.filter((item) => role.permissions.includes(item.key)).length} of {shown.length}{" "}
+            permissions
           </div>
         </div>
         {editing ? null : (
@@ -314,6 +335,7 @@ function RoleRow({
             run={run}
             applicationId={applicationId}
             actorPermissions={actorPermissions}
+            shown={shown}
             onDone={() => setEditing(false)}
           />
         </div>
@@ -326,15 +348,19 @@ export function AccessRolesManager({
   roles,
   memberCounts,
   applicationId,
+  modelType = null,
   actorPermissions = PERMISSION_KEYS,
 }: {
   roles: AccessRole[];
+  /** This application's type, which limits the permissions shown. Null for the default roles. */
+  modelType?: ApplicationModelType | null;
   memberCounts: Record<string, number>;
   /** The application whose roles these are, or null for the default roles. */
   applicationId: string | null;
   /** What the signed-in person holds here. They can only tick these. */
   actorPermissions?: readonly PermissionKey[];
 }) {
+  const shown = permissionsForModel(modelType);
   const changeableRoles = roles.filter((role) =>
     canGrantRole({ permissions: actorPermissions }, role)
   );
@@ -377,6 +403,7 @@ export function AccessRolesManager({
                 applicationId={applicationId}
                 actorPermissions={actorPermissions}
                 changeable={changeableRoles.some((item) => item.id === role.id)}
+                shown={shown}
               />
             ))}
           </ul>
@@ -390,6 +417,7 @@ export function AccessRolesManager({
           run={run}
           applicationId={applicationId}
           actorPermissions={actorPermissions}
+          shown={shown}
         />
       </CollapsibleSection>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}

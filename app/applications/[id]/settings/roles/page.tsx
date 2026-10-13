@@ -29,6 +29,7 @@ export default async function SettingsRolesPage({
       {access ? (
         <AccessRolesManager
           applicationId={app.id}
+          modelType={app.model_type}
           roles={access.roles}
           memberCounts={access.memberCounts}
           actorPermissions={app.access.permissions}
