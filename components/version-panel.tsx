@@ -58,13 +58,33 @@ function CollapseSection({
   );
 }
 
+/** Fixed locale and time zone so server and browser print the same text. */
 function formatWhen(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kuala_Lumpur",
+    day: "2-digit",
     month: "short",
-    day: "numeric",
     year: "numeric",
-  });
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(iso));
 }
+
+/** How a saved version came about, in words a reviewer reads at a glance. */
+function howSaved(v: BaseVersion): string {
+  const who = v.author?.trim();
+  if (v.source_type === "SYSTEM") return "Auto-translated";
+  if (v.source_type === "IMPORT") return who ? `Imported by ${who}` : "Imported";
+  return who ? `Edited by ${who}` : "Edited";
+}
+
+/** Dropdown and heading text: number, time, and who, with no "v" shorthand. */
+function versionLabel(v: BaseVersion, latest: boolean): string {
+  return `Version ${v.version_number}${latest ? " (latest)" : ""} · ${formatWhen(v.created_at)} · ${howSaved(v)}`;
+}
+
+const EDITOR_NOW = "Editor now (not saved)";
 
 export function StringVersionPanel({
   versions,
@@ -91,10 +111,10 @@ export function StringVersionPanel({
 
   const compareOptions = useMemo(
     () => [
-      { id: "current", label: "Current draft", text: draft },
+      { id: "current", label: EDITOR_NOW, text: draft },
       ...versions.map((v) => ({
         id: v.id,
-        label: `v${v.version_number}${v.id === latestId ? " · Latest" : ""}`,
+        label: versionLabel(v, v.id === latestId),
         text: v.translated_content,
       })),
     ],
@@ -158,9 +178,10 @@ export function StringVersionPanel({
                       onClick={() => setExpandedId(open ? null : v.id)}
                     >
                       <span className="text-sm font-semibold text-slate-900">
-                        v{v.version_number}
+                        Version {v.version_number}
                       </span>
                       {isLatest ? <Badge tone="info">Latest</Badge> : null}
+                      <span className="text-xs text-slate-500">{howSaved(v)}</span>
                       <span className="ml-auto text-xs text-slate-500">
                         {formatWhen(v.created_at)}
                       </span>
@@ -177,9 +198,9 @@ export function StringVersionPanel({
                     {open ? (
                       <div className="mt-3 space-y-3 border-t border-black/5 pt-3">
                         <p className="text-xs text-slate-500">
-                          {v.source_type}
-                          {v.author ? ` · ${v.author}` : ""}
-                          {v.author_username ? ` (${v.author_username})` : ""}
+                          {howSaved(v)}
+                          {v.author_username && v.source_type !== "SYSTEM" ? ` (${v.author_username})` : ""}
+                          {` · ${formatWhen(v.created_at)}`}
                         </p>
                         <p className="whitespace-pre-wrap rounded-md bg-white/80 p-2 text-sm text-slate-900">
                           {v.translated_content}
@@ -192,7 +213,7 @@ export function StringVersionPanel({
                                 variant="secondary"
                                 onClick={() => onRestore(v.translated_content)}
                               >
-                                Use
+                                Restore this version
                               </Button>
                             ) : null}
                             {onDelete ? (
@@ -251,10 +272,10 @@ export function ArticleVersionPanel({
 
   const compareOptions = useMemo(
     () => [
-      { id: "current", label: "Current draft", fields: draft },
+      { id: "current", label: EDITOR_NOW, fields: draft },
       ...versions.map((v) => ({
         id: v.id,
-        label: `v${v.version_number}${v.id === latestId ? " · Latest" : ""}`,
+        label: versionLabel(v, v.id === latestId),
         fields: v.translated_content,
       })),
     ],
@@ -318,13 +339,11 @@ export function ArticleVersionPanel({
                       onClick={() => setExpandedId(open ? null : v.id)}
                     >
                       <span className="text-sm font-semibold text-slate-900">
-                        v{v.version_number}
+                        Version {v.version_number}
                       </span>
                       {isLatest ? <Badge tone="info">Latest</Badge> : null}
-                      <span className="ml-auto truncate text-sm text-slate-600">
-                        {v.translated_content.title || "Untitled"}
-                      </span>
-                      <span className="shrink-0 text-xs text-slate-500">
+                      <span className="text-xs text-slate-500">{howSaved(v)}</span>
+                      <span className="ml-auto shrink-0 text-xs text-slate-500">
                         {formatWhen(v.created_at)}
                       </span>
                       <span
@@ -340,9 +359,9 @@ export function ArticleVersionPanel({
                     {open ? (
                       <div className="mt-3 space-y-3 border-t border-black/5 pt-3">
                         <p className="text-xs text-slate-500">
-                          {v.source_type}
-                          {v.author ? ` · ${v.author}` : ""}
-                          {v.author_username ? ` (${v.author_username})` : ""}
+                          {howSaved(v)}
+                          {v.author_username && v.source_type !== "SYSTEM" ? ` (${v.author_username})` : ""}
+                          {` · ${formatWhen(v.created_at)}`}
                         </p>
                         <div className="space-y-2">
                           <CollapseSection label="Title" defaultOpen>
@@ -374,7 +393,7 @@ export function ArticleVersionPanel({
                             variant="secondary"
                             onClick={() => onRestore(v.translated_content)}
                           >
-                            Use
+                            Restore this version
                           </Button>
                           <Button
                             type="button"

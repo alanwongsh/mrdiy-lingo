@@ -567,7 +567,7 @@ export function TranslationQualityPanel({
     for (const item of ordered) onAccept(item.action, item.stored, true);
   }
 
-  const versionLabel = versionNumber ? `v${versionNumber}` : "";
+  const versionLabel = versionNumber ? `version ${versionNumber}` : "";
   const editHref = `/applications/${applicationId}/articles/${contentId}/edit?lang=${encodeURIComponent(languageCode)}`;
   const draftLocked = checkedDraftKey !== null && checkedDraftKey === draftKey;
   const showAnalyze = unsaved ? !draftLocked : canAnalyze && !draftLocked;
@@ -585,7 +585,7 @@ export function TranslationQualityPanel({
       ? ""
       : selected.persisted === false
         ? `Draft ${selected.overallScore}`
-        : `${versionLabel ? `${versionLabel} · ` : ""}${selected.overallScore}`;
+        : `${versionNumber ? `Version ${versionNumber} · ` : ""}${selected.overallScore}`;
   const rankedScores = [...(selected?.scores ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
   const failedCheck = rankedScores.find((score) => score.score == null && score.summary);
   const blockerCount = visibleFindings.filter(

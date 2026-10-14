@@ -157,7 +157,7 @@ function reasonOf(event: ContentAuditEvent): string | null {
 
 function versionOf(event: ContentAuditEvent): string {
   const version = event.detail?.version;
-  return typeof version === "number" ? ` (v${version})` : "";
+  return typeof version === "number" ? ` (version ${version})` : "";
 }
 
 /** Short lines for everything in the entry besides its headline and overall status. */

@@ -100,7 +100,7 @@ export function TextVersionComparer({
   if (options.length < 2) {
     return (
       <p className="text-sm text-slate-600">
-        Need at least two versions (or current draft) to compare.
+        Save the translation at least once to compare versions.
       </p>
     );
   }
@@ -108,7 +108,7 @@ export function TextVersionComparer({
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="From">
+        <Field label="Before">
           <select
             className={inputClass}
             value={leftId}
@@ -121,7 +121,7 @@ export function TextVersionComparer({
             ))}
           </select>
         </Field>
-        <Field label="To">
+        <Field label="After">
           <select
             className={inputClass}
             value={rightId}
@@ -140,14 +140,14 @@ export function TextVersionComparer({
         <Badge tone={summary.changed ? "warn" : "good"}>
           {summary.changed ? "Changes found" : "Identical"}
         </Badge>
-        <Badge tone="bad">Removed segments: {summary.removed}</Badge>
-        <Badge tone="good">Added segments: {summary.added}</Badge>
+        <Badge tone="bad">Removed: {summary.removed}</Badge>
+        <Badge tone="good">Added: {summary.added}</Badge>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="overflow-hidden">
           <div className="border-b border-[var(--hub-border)] bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            From · {left?.label}
+            Before · {left?.label}
           </div>
           <div className="p-3 text-sm whitespace-pre-wrap text-slate-800">
             {left?.text || "—"}
@@ -155,7 +155,7 @@ export function TextVersionComparer({
         </Card>
         <Card className="overflow-hidden">
           <div className="border-b border-[var(--hub-border)] bg-[var(--diy-red-soft)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--diy-red)]">
-            To · {right?.label}
+            After · {right?.label}
           </div>
           <div className="p-3 text-sm whitespace-pre-wrap text-slate-800">
             {right?.text || "—"}
@@ -166,7 +166,7 @@ export function TextVersionComparer({
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--hub-border)] bg-[var(--diy-yellow-soft)] px-3 py-2">
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-            Visual difference
+            What changed
           </div>
           <div className="flex gap-3 text-[11px] text-slate-600">
             <span>
@@ -238,7 +238,7 @@ export function ArticleVersionComparer({
   if (options.length < 2) {
     return (
       <p className="text-sm text-slate-600">
-        Need at least two versions (or current draft) to compare.
+        Save the translation at least once to compare versions.
       </p>
     );
   }
@@ -246,7 +246,7 @@ export function ArticleVersionComparer({
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="From">
+        <Field label="Before">
           <select
             className={inputClass}
             value={leftId}
@@ -259,7 +259,7 @@ export function ArticleVersionComparer({
             ))}
           </select>
         </Field>
-        <Field label="To">
+        <Field label="After">
           <select
             className={inputClass}
             value={rightId}
@@ -309,20 +309,20 @@ export function ArticleVersionComparer({
                   <div className="grid gap-0 border-t border-[var(--hub-border)] lg:grid-cols-2">
                     <div className="border-b border-[var(--hub-border)] p-3 lg:border-r lg:border-b-0">
                       <div className="mb-1 text-[10px] font-semibold uppercase text-slate-400">
-                        From
+                        Before
                       </div>
                       <FieldPreview fieldKey={key} value={leftValue} />
                     </div>
                     <div className="p-3">
                       <div className="mb-1 text-[10px] font-semibold uppercase text-slate-400">
-                        To
+                        After
                       </div>
                       <FieldPreview fieldKey={key} value={rightValue} />
                     </div>
                   </div>
                   <div className="border-t border-[var(--hub-border)] bg-[var(--diy-yellow-soft)]/40 p-3">
                     <div className="mb-1 text-[10px] font-semibold uppercase text-slate-500">
-                      Diff{key === "body" ? " · plain text" : ""}
+                      What changed{key === "body" ? " · plain text" : ""}
                     </div>
                     {summary.changed ? (
                       <DiffText tokens={tokens} />

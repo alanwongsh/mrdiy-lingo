@@ -1129,7 +1129,7 @@ export function ArticleEditor({
                   onDelete={(versionId, versionNumber) => {
                     if (
                       !confirm(
-                        `Delete version v${versionNumber}? This cannot be undone.`
+                        `Delete version ${versionNumber}? This cannot be undone.`
                       )
                     ) {
                       return;
