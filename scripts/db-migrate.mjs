@@ -33,6 +33,10 @@ async function migrate() {
       applied_at timestamptz not null default now()
     );
   `);
+  // Supabase exposes public tables through its API. RLS with no policy closes this one to the
+  // API keys; this script connects as the table owner, so it still reads and writes it.
+  // Safe to repeat, so an existing database is fixed on the next run too.
+  await sql.unsafe(`alter table _migrations enable row level security;`);
 
   const migrationsDir = join(__dirname, "../supabase/migrations");
   const files = readdirSync(migrationsDir)
