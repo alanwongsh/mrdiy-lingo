@@ -25,6 +25,7 @@ import {
 import { overallScore } from "@/lib/translation-quality/scoring/ScoreCalculator";
 import { BoilerplateRule } from "@/lib/translation-quality/rules/BoilerplateRule";
 import { RuleEngine } from "@/lib/translation-quality/rules/RuleEngine";
+import { alignWithBoilerplate } from "@/lib/translation-quality/align-boilerplate";
 import { TerminologyRule } from "@/lib/translation-quality/rules/TerminologyRule";
 import {
   ANALYSIS_FAILED_MESSAGE,
@@ -294,7 +295,7 @@ export class TranslationQualityService {
       categories,
       fields
     );
-    const draft = combineQualityDraft([aiPiece, rulePiece], categories);
+    const draft = alignWithBoilerplate(combineQualityDraft([aiPiece, rulePiece], categories));
     const categoryErrors = draft.scores
       .filter((score) => score.error)
       .map((score) => ({ categoryCode: score.categoryCode, message: score.error ?? "" }));

@@ -7,14 +7,11 @@ import type {
 import {
   clampScore,
   languageCompatible,
+  nearestStretch,
   normalizeSpace,
-  paragraphs,
-  similarity,
 } from "@/lib/translation-quality/text";
 
 const MODIFIED_AT = 0.8;
-
-type Passage = { field: QualityTargetField; raw: string; text: string; score: number };
 
 function translatedFields(input: TranslationQualityInput): { field: QualityTargetField; raw: string }[] {
   return [
@@ -24,35 +21,15 @@ function translatedFields(input: TranslationQualityInput): { field: QualityTarge
   ].filter((item) => item.raw.trim());
 }
 
-/**
- * The stretch of translated text closest to the approved passage, in any field. A paragraph can
- * hold the passage next to other sentences, so runs of about the passage's word count are compared,
- * not only whole paragraphs. Paragraphs sharing few words with the passage are skipped.
- */
-function closestPassage(input: TranslationQualityInput, expected: string): Passage | null {
-  const expectedWords = expected.split(" ").length;
-  const expectedSet = new Set(expected.split(" "));
-  let best: Passage | null = null;
-  const consider = (field: QualityTargetField, raw: string, text: string) => {
-    const score = similarity(normalizeSpace(text), expected);
-    if (!best || score > best.score) best = { field, raw, text, score };
-  };
-
+/** The stretch of translated text closest to the approved passage, in any field. */
+function closestPassage(
+  input: TranslationQualityInput,
+  expected: string
+): { field: QualityTargetField; raw: string; text: string; score: number } | null {
+  let best: { field: QualityTargetField; raw: string; text: string; score: number } | null = null;
   for (const { field, raw } of translatedFields(input)) {
-    for (const paragraph of paragraphs(raw)) {
-      consider(field, raw, paragraph);
-      const words = [...paragraph.matchAll(/\S+/g)];
-      const shared = words.filter((w) => expectedSet.has(w[0].toLowerCase())).length;
-      if (words.length <= expectedWords || shared < expectedSet.size * 0.4) continue;
-      for (let size = Math.max(1, expectedWords - 3); size <= expectedWords + 3; size += 1) {
-        for (let start = 0; start + size <= words.length; start += 1) {
-          const first = words[start];
-          const last = words[start + size - 1];
-          const from = first.index ?? 0;
-          consider(field, raw, paragraph.slice(from, (last.index ?? 0) + last[0].length));
-        }
-      }
-    }
+    const near = nearestStretch(raw, expected);
+    if (near && (!best || near.score > best.score)) best = { field, raw, ...near };
   }
   return best;
 }

@@ -206,3 +206,34 @@ export function languageCompatible(entry: string, article: string): boolean {
 
 export const ANALYSIS_FAILED_MESSAGE =
   "Quality analysis failed. Please try again.";
+
+/**
+ * The stretch of `text` most like `passage`. A paragraph can hold the passage next to other
+ * sentences, so runs of about the passage's word count are compared as well as whole paragraphs.
+ * Paragraphs sharing few words with the passage are skipped to keep long articles fast.
+ */
+export function nearestStretch(text: string, passage: string): { text: string; score: number } | null {
+  const expected = normalizeSpace(passage);
+  if (!expected) return null;
+  const expectedWords = expected.split(" ").length;
+  const expectedSet = new Set(expected.split(" "));
+  let best: { text: string; score: number } | null = null;
+  const consider = (candidate: string) => {
+    const score = similarity(normalizeSpace(candidate), expected);
+    if (!best || score > best.score) best = { text: candidate, score };
+  };
+  for (const paragraph of paragraphs(text)) {
+    consider(paragraph);
+    const words = [...paragraph.matchAll(/\S+/g)];
+    const shared = words.filter((w) => expectedSet.has(w[0].toLowerCase())).length;
+    if (words.length <= expectedWords || shared < expectedSet.size * 0.4) continue;
+    for (let size = Math.max(1, expectedWords - 3); size <= expectedWords + 3; size += 1) {
+      for (let start = 0; start + size <= words.length; start += 1) {
+        const first = words[start];
+        const last = words[start + size - 1];
+        consider(paragraph.slice(first.index ?? 0, (last.index ?? 0) + last[0].length));
+      }
+    }
+  }
+  return best;
+}

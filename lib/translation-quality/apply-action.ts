@@ -1,5 +1,8 @@
 import type { QualityAction, QualityTargetField } from "@/lib/translation-quality/types";
 import type { SourceContentFields } from "@/lib/types";
+import { htmlToText, nearestStretch } from "@/lib/translation-quality/text";
+
+const NEAR_COPY = 0.8;
 
 function fieldKey(field: QualityTargetField): keyof SourceContentFields {
   if (field === "content") return "body";
@@ -547,6 +550,16 @@ function applyToText(current: string, action: QualityAction): string {
   }
 
   if (action.actionType === "insert" && proposed) {
+    // Two checks can ask for the same missing text (the model's "missing summary" and the
+    // boilerplate rule). Never add it twice: fill around what is there, or fix a near-copy.
+    const proposedPlain = htmlToText(proposed);
+    const currentPlain = htmlToText(current);
+    if (currentPlain && foldText(proposedPlain).includes(foldText(currentPlain))) return proposed;
+    const near = currentPlain ? nearestStretch(currentPlain, proposedPlain) : null;
+    if (near && near.score >= NEAR_COPY) {
+      const fixed = replaceVisible(current, near.text, proposedPlain);
+      if (fixed !== null) return fixed;
+    }
     const at = action.startOffset;
     if (typeof at === "number" && at >= 0 && at <= current.length) {
       return current.slice(0, at) + proposed + current.slice(at);
@@ -582,6 +595,14 @@ export function applyQualityAction(
 ): SourceContentFields {
   const key = fieldKey(action.targetField);
   const current = fields[key] ?? "";
+  // Already there word for word, for example after an overlapping suggestion was accepted.
+  if (
+    action.actionType === "insert" &&
+    action.proposedText &&
+    containsVisibleText(current, htmlToText(action.proposedText))
+  ) {
+    return fields;
+  }
   const next = applyToText(current, action);
   if (next === current) {
     throw new Error("This suggestion no longer matches the translation.");
