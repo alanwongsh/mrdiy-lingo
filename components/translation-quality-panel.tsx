@@ -79,9 +79,14 @@ function fieldText(draft: SourceContentFields, field: QualityFinding["targetFiel
 
 function locateFinding(
   draft: SourceContentFields,
-  finding: QualityFinding
+  finding: QualityFinding,
+  action?: QualityAction | null
 ): { field: QualityAction["targetField"]; hidden: boolean; inLink: boolean; snippet: string } | null {
   const needle = (finding.translatedText ?? "").trim();
+  // Missing text has nothing to point at; it is added to the field the action names.
+  if (!needle && action?.actionType === "insert" && action.proposedText?.trim()) {
+    return { field: action.targetField, hidden: false, inLink: false, snippet: "" };
+  }
   if (!needle) return null;
   const preferred = finding.targetField ? [finding.targetField] : [];
   const fields = [...preferred, "content", "summary", "title"] as const;
@@ -542,7 +547,7 @@ export function TranslationQualityPanel({
     if (!selected) return [];
     const storedAction = selected.actions.find((item) => item.findingId === finding.id);
     const action = storedAction ?? fallbackAction(finding);
-    const place = locateFinding(draft, finding);
+    const place = locateFinding(draft, finding, action);
     const open =
       canApply &&
       canReview &&
@@ -732,7 +737,7 @@ export function TranslationQualityPanel({
                 {visibleFindings.map((finding) => {
                   const storedAction = selected.actions.find((item) => item.findingId === finding.id);
                   const action = storedAction ?? fallbackAction(finding);
-                  const place = locateFinding(draft, finding);
+                  const place = locateFinding(draft, finding, action);
                   const mark = findingMark(finding.severity);
                   const pending =
                     canApply &&
@@ -970,7 +975,7 @@ export function TranslationQualityPanel({
               <ul className="mt-3 space-y-3">
                 {visibleFindings.map((finding) => {
                   const action = selected.actions.find((item) => item.findingId === finding.id);
-                  const place = locateFinding(draft, finding);
+                  const place = locateFinding(draft, finding, action);
                   const pending =
                     (isDraftPreview || isLatest) &&
                     canApply &&

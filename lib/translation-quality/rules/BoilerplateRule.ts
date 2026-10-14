@@ -126,7 +126,18 @@ export class BoilerplateRule implements TranslationQualityRule {
       const closest = closestPassage(input, expected);
       const modified = !!closest && closest.score >= MODIFIED_AT;
       penalty += modified ? 25 : 50;
-      const html = /<[a-z][\s\S]*>/i.test(targetRaw);
+      // A missing passage goes into the field it sits in on the source: title, description, or body.
+      const sourceField: QualityTargetField = sourcePhrase
+        ? (
+            [
+              ["summary", input.sourceSummary],
+              ["title", input.sourceTitle],
+              ["content", input.sourceContent],
+            ] as const
+          ).find(([, text]) => normalizeSpace(text ?? "").includes(normalizeSpace(sourcePhrase.phrase)))?.[0] ??
+          "content"
+        : "content";
+      const html = sourceField === "content" && /<[a-z][\s\S]*>/i.test(targetRaw || input.sourceContent || "");
       const proposed = html ? `<p>${escapeHtml(phrase.phrase)}</p>` : phrase.phrase;
       // Accept swaps the changed wording in place, in whichever field holds it.
       const original = modified ? closest.text : undefined;
@@ -141,7 +152,7 @@ export class BoilerplateRule implements TranslationQualityRule {
         sourceText: sourcePhrase?.phrase,
         translatedText: canReplace ? original : undefined,
         suggestedText: canReplace ? phrase.phrase : proposed,
-        targetField: canReplace && closest ? closest.field : "content",
+        targetField: canReplace && closest ? closest.field : sourceField,
         actionType: canReplace ? "replace" : "insert",
       });
     }
