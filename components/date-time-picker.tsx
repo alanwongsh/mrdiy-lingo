@@ -2,11 +2,14 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { FilterSelect } from "@/components/filter-select";
+import { useTimeZone } from "@/components/time-zone";
+import { timeZoneLabel, toZonedInput } from "@/lib/datetime";
 
 /**
  * Date and time picker in the app's own style, in place of the browser's
  * datetime-local popup, which cannot follow the theme.
- * The value uses the datetime-local format, "YYYY-MM-DDTHH:mm" in local time, or "".
+ * The value uses the datetime-local format, "YYYY-MM-DDTHH:mm" in the viewer's
+ * time zone (useTimeZone), or "". Convert with toZonedInput / fromZonedInput.
  */
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
@@ -70,10 +73,13 @@ export function DateTimePicker({
   compact?: boolean;
   disabled?: boolean;
 }) {
+  const timeZone = useTimeZone();
+  // "Now" on the viewer's wall clock, the same zone the value is in.
+  const zonedNow = () => parse(toZonedInput(new Date(), timeZone)) ?? new Date();
   const selected = parse(value);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState(() => {
-    const base = selected ?? new Date();
+    const base = selected ?? zonedNow();
     return { year: base.getFullYear(), month: base.getMonth() };
   });
   const rootRef = useRef<HTMLDivElement>(null);
@@ -97,7 +103,7 @@ export function DateTimePicker({
 
   function toggle() {
     if (!open) {
-      const base = selected ?? new Date();
+      const base = selected ?? zonedNow();
       setView({ year: base.getFullYear(), month: base.getMonth() });
     }
     setOpen((current) => !current);
@@ -112,7 +118,7 @@ export function DateTimePicker({
   }
 
   function setTime(hours: number, minutes: number) {
-    const base = selected ?? new Date();
+    const base = selected ?? zonedNow();
     onChange(format(new Date(base.getFullYear(), base.getMonth(), base.getDate(), hours, minutes)));
   }
 
@@ -123,7 +129,7 @@ export function DateTimePicker({
     });
   }
 
-  const today = new Date();
+  const today = zonedNow();
   const minutes = Array.from({ length: 60 / MINUTE_STEP }, (_, index) => index * MINUTE_STEP);
   if (selected && !minutes.includes(selected.getMinutes())) {
     minutes.push(selected.getMinutes());
@@ -133,7 +139,7 @@ export function DateTimePicker({
   const label = selected
     ? `${selected.getDate()} ${MONTHS[selected.getMonth()]} ${selected.getFullYear()}, ${
         selected.getHours() % 12 === 0 ? 12 : selected.getHours() % 12
-      }:${pad(selected.getMinutes())} ${selected.getHours() < 12 ? "AM" : "PM"}`
+      }:${pad(selected.getMinutes())} ${selected.getHours() < 12 ? "AM" : "PM"} (${timeZoneLabel(timeZone)})`
     : placeholder;
 
   return (
@@ -258,7 +264,7 @@ export function DateTimePicker({
                 type="button"
                 className="text-sm font-semibold text-[var(--hub-accent)] hover:underline"
                 onClick={() => {
-                  const now = new Date();
+                  const now = zonedNow();
                   now.setSeconds(0, 0);
                   onChange(format(now));
                   setView({ year: now.getFullYear(), month: now.getMonth() });

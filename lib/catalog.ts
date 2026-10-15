@@ -1,3 +1,4 @@
+import { formatDateTime } from "@/lib/datetime";
 import type {
   ApplicationModelType,
   CatalogField,
@@ -190,19 +191,7 @@ export type ItemImportResult = {
   ignoredColumns: string[];
 };
 
-/**
- * Fixed locale and time zone, so the server render and the browser print the same text
- * (otherwise React reports a hydration mismatch). Same format as the article screens.
- */
-export function formatStamp(iso: string | null | undefined): string {
-  if (!iso) return "";
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Kuala_Lumpur",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(new Date(iso));
+/** Same format as the article screens, in the viewer's time zone (see lib/datetime). */
+export function formatStamp(iso: string | null | undefined, timeZone: string): string {
+  return formatDateTime(iso, timeZone);
 }

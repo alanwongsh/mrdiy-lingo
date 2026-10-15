@@ -11,6 +11,8 @@ import type { ContentLifecycleStatus, Language } from "@/lib/types";
 import { IconButton, PencilIcon, TrashIcon } from "@/components/icon-button";
 import { Badge, Button, Card, statusTone } from "@/components/ui";
 import { marketName } from "@/lib/markets";
+import { useTimeZone } from "@/components/time-zone";
+import { formatDate } from "@/lib/datetime";
 
 const STATUS_LABEL: Record<ContentLifecycleStatus, string> = {
   DRAFT: "Draft",
@@ -26,7 +28,7 @@ function excerpt(article: ArticleListItem) {
   return raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function formatWhen(value: string) {
+function formatWhen(value: string, timeZone: string) {
   const diff = Date.now() - new Date(value).getTime();
   const minutes = Math.round(diff / 60000);
   if (minutes < 1) return "Just now";
@@ -35,11 +37,7 @@ function formatWhen(value: string) {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.round(hours / 24);
   if (days < 14) return `${days}d ago`;
-  return new Date(value).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return formatDate(value, timeZone);
 }
 
 function translationLine(article: ArticleListItem) {
@@ -68,6 +66,7 @@ export function ArticleListTable({
   /** content.edit: shows edit and delete. Export stays for everyone. */
   canEdit: boolean;
 }) {
+  const timeZone = useTimeZone();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -310,7 +309,7 @@ export function ArticleListTable({
                       </Badge>
                       <span className="text-xs text-[var(--hub-muted)]">
                         {article.market ? `${article.market} · ` : ""}
-                        {formatWhen(article.updated_at)}
+                        {formatWhen(article.updated_at, timeZone)}
                       </span>
                     </div>
                   </td>
@@ -338,7 +337,7 @@ export function ArticleListTable({
                   </td>
                   <td className="hidden text-right sm:table-cell">
                     <div className="text-sm text-[var(--hub-muted-strong)]">
-                      {formatWhen(article.updated_at)}
+                      {formatWhen(article.updated_at, timeZone)}
                     </div>
                     {due.kind === "overdue" || due.kind === "due_soon" ? (
                       <div

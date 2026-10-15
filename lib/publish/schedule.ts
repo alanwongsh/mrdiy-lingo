@@ -1,3 +1,4 @@
+import { formatDateTime, fromZonedInput, toZonedInput } from "@/lib/datetime";
 import { languageKey } from "@/lib/target-languages";
 import type { ContentLifecycleStatus, PublicationStatus } from "@/lib/types";
 
@@ -53,33 +54,18 @@ export function nextPublishStatus(
   return next === current ? null : next;
 }
 
-/** ISO time -> value for <input type="datetime-local"> in the viewer's time zone. */
-export function toLocalInput(iso: string | null | undefined) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+/** ISO time -> value for the date-time picker, in the viewer's time zone. */
+export function toLocalInput(iso: string | null | undefined, timeZone: string) {
+  return toZonedInput(iso, timeZone);
 }
 
-export function fromLocalInput(value: string): string | null {
-  if (!value.trim()) return null;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString();
+export function fromLocalInput(value: string, timeZone: string): string | null {
+  return fromZonedInput(value, timeZone);
 }
 
-/** Same zone and style as the rest of the article pages, so server and browser render alike. */
-export function formatWhen(iso: string) {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Kuala_Lumpur",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(new Date(iso));
+/** Same style as the rest of the article pages, in the viewer's time zone. */
+export function formatWhen(iso: string, timeZone: string) {
+  return formatDateTime(iso, timeZone);
 }
 
 function formatIn(ms: number) {
@@ -106,6 +92,7 @@ export function waitingEstimate(input: {
   articleStatus: ContentLifecycleStatus | string;
   translationApproved: boolean;
   publishAt: string | null;
+  timeZone: string;
   now?: number;
 }): WaitingEstimate {
   const now = input.now ?? Date.now();
@@ -144,7 +131,7 @@ export function waitingEstimate(input: {
   }
   return {
     label: "Scheduled",
-    detail: `${formatWhen(input.publishAt)} (${formatIn(at - now)})`,
+    detail: `${formatWhen(input.publishAt, input.timeZone)} (${formatIn(at - now)})`,
     tone: "info",
   };
 }

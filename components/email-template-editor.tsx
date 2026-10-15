@@ -16,6 +16,8 @@ import {
   type ReviewTemplateField,
 } from "@/lib/notifications/review-template";
 import { Button, Card, Field, inputClass, textareaClass } from "@/components/ui";
+import { useTimeZone } from "@/components/time-zone";
+import { formatDateTime } from "@/lib/datetime";
 
 type Control = HTMLInputElement | HTMLTextAreaElement;
 
@@ -30,6 +32,7 @@ export function EmailTemplateEditor({
   mailReady: boolean;
   senderOverridden: boolean;
 }) {
+  const timeZone = useTimeZone();
   const router = useRouter();
   const [saved, setSaved] = useState(initialTemplate);
   const [draft, setDraft] = useState(initialTemplate);
@@ -204,7 +207,7 @@ export function EmailTemplateEditor({
           </div>
           {updatedAt ? (
             <p className="text-xs text-[var(--hub-muted)]">
-              Last saved {new Date(updatedAt).toLocaleString()}
+              Last saved {formatDateTime(updatedAt, timeZone)}
             </p>
           ) : null}
         </Card>

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Badge, Card, statusTone } from "@/components/ui";
 import type { ContentAuditEvent, ContentAuditEventKind } from "@/lib/types";
+import { useTimeZone } from "@/components/time-zone";
+import { formatDateTime } from "@/lib/datetime";
 
 const PREVIEW = 10;
 /** Rows saved before action ids existed are grouped when the same person wrote them this close together. */
@@ -90,16 +92,6 @@ function groupEvents(events: ContentAuditEvent[]): ActivityGroup[] {
     lastAt = at;
   }
   return groups;
-}
-
-function formatWhen(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 function statusName(status: string) {
@@ -242,6 +234,7 @@ export function ArticleActivity({
   events: ContentAuditEvent[];
   loadError?: string;
 }) {
+  const timeZone = useTimeZone();
   const [showAll, setShowAll] = useState(false);
   const groups = groupEvents(events);
   const visible = showAll ? groups : groups.slice(0, PREVIEW);
@@ -292,7 +285,7 @@ export function ArticleActivity({
                     <StatusMove from={head.from_status} to={head.to_status} />
                   ) : null}
                   <span className="ml-auto text-xs text-slate-400">
-                    {formatWhen(group.at)}
+                    {formatDateTime(group.at, timeZone)}
                   </span>
                 </div>
                 {lines.map((line, index) => (

@@ -2,6 +2,7 @@ import { ServiceLogList } from "@/components/service-log-list";
 import { PageHeader } from "@/components/ui";
 import { getCurrentUser } from "@/lib/auth/access";
 import { listServiceLogs, serviceLogConfig } from "@/lib/service-log";
+import { requestTimeZone } from "@/lib/time-zone.server";
 
 export default async function LogsPage({
   searchParams,
@@ -47,6 +48,7 @@ export default async function LogsPage({
           pageSize={logs.pageSize}
           total={logs.total}
           source={source}
+          timeZone={await requestTimeZone()}
         />
       )}
     </div>

@@ -3,7 +3,9 @@ import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { TimeZoneProvider } from "@/components/time-zone";
 import { getActor, isAnonymousPath, safeNextPath } from "@/lib/auth/actor";
+import { requestTimeZone } from "@/lib/time-zone.server";
 import "./globals.css";
 
 const hubSans = IBM_Plex_Sans({
@@ -49,6 +51,7 @@ export default async function RootLayout({
   } 
 
   const bare = path === "/sign-in" || setupWithoutSession;
+  const timeZone = await requestTimeZone();
 
   return (
     <html
@@ -56,7 +59,9 @@ export default async function RootLayout({
       className={`${hubSans.variable} ${hubMono.variable} h-full antialiased`}
     >
       <body className="min-h-dvh">
-        {bare ? children : <AppShell>{children}</AppShell>}
+        <TimeZoneProvider initialTimeZone={timeZone}>
+          {bare ? children : <AppShell>{children}</AppShell>}
+        </TimeZoneProvider>
       </body>
     </html>
   );

@@ -4,6 +4,8 @@ import { useState } from "react";
 import { ITEM_STATUS_LABEL } from "@/lib/catalog";
 import { Badge, Card } from "@/components/ui";
 import type { CatalogEvent, CatalogEventKind, ItemStatus } from "@/lib/types";
+import { useTimeZone } from "@/components/time-zone";
+import { formatDateTime } from "@/lib/datetime";
 
 const PREVIEW = 10;
 /** Rows saved before action ids existed are grouped when the same person wrote them this close together. */
@@ -63,16 +65,6 @@ function groupEvents(events: CatalogEvent[]): ActivityGroup[] {
   return groups;
 }
 
-function formatWhen(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 function statusTone(status: string): "neutral" | "good" | "bad" | "info" {
   if (status === "APPROVED") return "good";
   if (status === "CHANGES_REQUESTED") return "bad";
@@ -128,6 +120,7 @@ export function CatalogActivity({
   itemLabel: string;
   languageName: (code: string) => string;
 }) {
+  const timeZone = useTimeZone();
   const [showAll, setShowAll] = useState(false);
   const groups = groupEvents(events);
   const visible = showAll ? groups : groups.slice(0, PREVIEW);
@@ -268,7 +261,7 @@ export function CatalogActivity({
                   ) : head.event === "CREATED" || head.event === "DELETED" ? (
                     <StatusMove from={null} to={head.to_status ?? head.from_status} />
                   ) : null}
-                  <span className="ml-auto text-xs text-slate-400">{formatWhen(group.at)}</span>
+                  <span className="ml-auto text-xs text-slate-400">{formatDateTime(group.at, timeZone)}</span>
                 </div>
                 {lines.map((line, index) => (
                   <p key={index} className="mt-1 text-xs text-slate-500">

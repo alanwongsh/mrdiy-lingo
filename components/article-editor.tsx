@@ -53,6 +53,8 @@ import { saveReviewedContentTranslation } from "@/lib/actions/quality";
 import { applyQualityAction, qualityActionStillOpen } from "@/lib/translation-quality/apply-action";
 import type { QualityAction, QualityTargetField } from "@/lib/translation-quality/types";
 import { DateTimePicker } from "@/components/date-time-picker";
+import { useTimeZone } from "@/components/time-zone";
+import { formatDateTime } from "@/lib/datetime";
 
 type ArticleWithTranslations = Content & {
   translations: ContentTranslation[];
@@ -122,18 +124,6 @@ function writeClipboard(text: string): Promise<void> {
   if (copied) return Promise.resolve();
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
   return Promise.reject(new Error("Could not copy."));
-}
-
-function formatStamp(iso: string) {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Kuala_Lumpur",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(new Date(iso));
 }
 
 function resolveTargets(
@@ -225,6 +215,7 @@ export function ArticleEditor({
   publishEnabled: boolean;
 }) {
   const router = useRouter();
+  const timeZone = useTimeZone();
   const [pending, startTransition] = useTransition();
   const [isTranslating, setIsTranslating] = useState(false);
   const [translatingLabel, setTranslatingLabel] = useState("");
@@ -234,8 +225,9 @@ export function ArticleEditor({
   const [editingOpen, setEditingOpen] = useState(true);
   const [status, setStatus] = useState(article.status);
   const [contentType, setContentType] = useState(article.content_type);
-  const [scheduledPublishAt, setScheduledPublishAt] = useState(
-    toLocalInput(article.scheduled_publish_at)
+  // UTC; converted to the viewer's zone only at the picker.
+  const [scheduledPublishAt, setScheduledPublishAt] = useState<string | null>(
+    article.scheduled_publish_at ?? null
   );
   const [languageVendors, setLanguageVendors] = useState(publishTargets);
   const [languageSchedule, setLanguageSchedule] = useState(article.language_publish_at);
@@ -367,7 +359,7 @@ export function ArticleEditor({
   useEffect(() => {
     setStatus(article.status);
     setContentType(article.content_type);
-    setScheduledPublishAt(toLocalInput(article.scheduled_publish_at));
+    setScheduledPublishAt(article.scheduled_publish_at ?? null);
     setLanguageSchedule(article.language_publish_at);
     setLanguageVendors(publishTargets);
     setSource(article.source_content);
@@ -553,7 +545,7 @@ export function ArticleEditor({
           source_language: sourceLanguage,
           source_content: article.source_content,
           status,
-          scheduled_publish_at: fromLocalInput(scheduledPublishAt),
+          scheduled_publish_at: scheduledPublishAt,
           ...scheduleChange(),
           target_languages: targetLanguages,
           market: market || null,
@@ -679,7 +671,7 @@ export function ArticleEditor({
             body: liveBody,
           },
           status,
-          scheduled_publish_at: fromLocalInput(scheduledPublishAt),
+          scheduled_publish_at: scheduledPublishAt,
           ...scheduleChange(),
           target_languages: targetLanguages,
           market: market || null,
@@ -759,8 +751,8 @@ export function ArticleEditor({
               <Field label="Scheduled publish time (all languages)">
                 <DateTimePicker
                   ariaLabel="Publish time for all languages"
-                  value={scheduledPublishAt}
-                  onChange={setScheduledPublishAt}
+                  value={toLocalInput(scheduledPublishAt, timeZone)}
+                  onChange={(value) => setScheduledPublishAt(fromLocalInput(value, timeZone))}
                 />
               </Field>
               <div className="sm:col-span-2 lg:col-span-4">
@@ -778,7 +770,7 @@ export function ArticleEditor({
                   onPublish={publishNow}
                   onChange={setLanguageVendors}
                   articleStatus={article.status}
-                  scheduledPublishAt={fromLocalInput(scheduledPublishAt)}
+                  scheduledPublishAt={scheduledPublishAt}
                   languageSchedule={languageSchedule}
                   approvedLanguages={article.translations
                     .filter((row) => row.status === "APPROVED")
@@ -793,7 +785,7 @@ export function ArticleEditor({
           <span>
             Published:{" "}
             <strong className="font-semibold text-slate-900">
-              {article.published_at ? formatStamp(article.published_at) : "—"}
+              {article.published_at ? formatDateTime(article.published_at, timeZone) : "—"}
             </strong>
           </span>
           {/* <span className="text-slate-300">·</span>

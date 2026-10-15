@@ -1,0 +1,103 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="lingo-phase1-architecture" name="Phase 1 Architecture">
+<mxGraphModel dx="1414" dy="777" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+  <root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+    <mxCell id="title" value="&lt;b&gt;Lingo – Phase 1 Architecture (Temporary Solution)&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot; color=&quot;#64748B&quot;&gt;Vercel + Supabase · to be replaced by AWS&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;fontSize=16;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+      <mxGeometry x="40" y="20" width="520" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="users" value="&lt;b&gt;Users (browser)&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Writers · Translators · Reviewers · Admins&lt;/font&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#475569;fontSize=12;fontColor=#0F172A;" vertex="1" parent="1">
+      <mxGeometry x="220" y="90" width="220" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="vercel" value="Vercel" style="rounded=1;arcSize=3;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#0F172A;verticalAlign=top;align=left;spacingLeft=12;spacingTop=6;fontSize=14;fontStyle=1;fontColor=#0F172A;" vertex="1" parent="1">
+      <mxGeometry x="40" y="170" width="500" height="380" as="geometry" />
+    </mxCell>
+    <mxCell id="edge" value="&lt;b&gt;Vercel Edge Network&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;HTTPS · TLS · CDN&lt;/font&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0F172A;fontSize=12;fontColor=#0F172A;" vertex="1" parent="1">
+      <mxGeometry x="70" y="205" width="440" height="44" as="geometry" />
+    </mxCell>
+    <mxCell id="next" value="Next.js app – serverless functions" style="rounded=1;arcSize=3;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#334155;verticalAlign=top;align=left;spacingLeft=12;spacingTop=6;fontSize=12;fontStyle=1;fontColor=#334155;" vertex="1" parent="1">
+      <mxGeometry x="70" y="270" width="440" height="190" as="geometry" />
+    </mxCell>
+    <mxCell id="session" value="&lt;b&gt;Session check&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;signed cookie · proxy.ts&lt;/font&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#4F46E5;fontSize=12;fontColor=#0F172A;" vertex="1" parent="1">
+      <mxGeometry x="90" y="305" width="180" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="pages" value="&lt;b&gt;Pages &amp;amp; server actions&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;roles and permissions&lt;/font&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#4F46E5;fontSize=12;fontColor=#0F172A;" vertex="1" parent="1">
+      <mxGeometry x="310" y="305" width="180" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="cronroutes" value="&lt;b&gt;Cron routes&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;/api/cron/*&lt;/font&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#4F46E5;fontSize=12;fontColor=#0F172A;" vertex="1" parent="1">
+      <mxGeometry x="90" y="390" width="180" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="vcron" value="&lt;b&gt;Vercel Cron&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;publishing – off in production&lt;/font&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#94A3B8;fontSize=12;fontColor=#0F172A;dashed=1;fontColor=#64748B;" vertex="1" parent="1">
+      <mxGeometry x="70" y="485" width="200" height="48" as="geometry" />
+    </mxCell>
+    <mxCell id="github" value="&lt;b&gt;GitHub&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;main branch&lt;/font&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#475569;fontSize=12;fontColor=#0F172A;" vertex="1" parent="1">
+      <mxGeometry x="590" y="100" width="190" height="48" as="geometry" />
+    </mxCell>
+    <mxCell id="gemini" value="&lt;b&gt;Google Gemini API&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;translation · quality review&lt;/font&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontSize=12;fontColor=#0F172A;" vertex="1" parent="1">
+      <mxGeometry x="590" y="302" width="190" height="56" as="geometry" />
+    </mxCell>
+    <mxCell id="smtp" value="&lt;b&gt;SMTP server&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;review emails&lt;/font&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#D97706;fontSize=12;fontColor=#0F172A;" vertex="1" parent="1">
+      <mxGeometry x="590" y="387" width="190" height="56" as="geometry" />
+    </mxCell>
+    <mxCell id="extlabel" value="External services" style="text;html=1;align=left;fontSize=12;fontStyle=1;fontColor=#D97706;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+      <mxGeometry x="590" y="272" width="190" height="24" as="geometry" />
+    </mxCell>
+    <mxCell id="supabase" value="Supabase" style="rounded=1;arcSize=3;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#059669;verticalAlign=top;align=left;spacingLeft=12;spacingTop=6;fontSize=14;fontStyle=1;fontColor=#059669;" vertex="1" parent="1">
+      <mxGeometry x="40" y="590" width="740" height="170" as="geometry" />
+    </mxCell>
+    <mxCell id="pgcron" value="&lt;b&gt;pg_cron + pg_net&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;every minute · secret in Vault&lt;/font&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#059669;fontSize=12;fontColor=#0F172A;" vertex="1" parent="1">
+      <mxGeometry x="70" y="650" width="200" height="56" as="geometry" />
+    </mxCell>
+    <mxCell id="pg" value="&lt;b&gt;PostgreSQL 17&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;content · users · audit · email queue&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;size=12;fillColor=#FFFFFF;strokeColor=#059669;fontSize=12;fontColor=#0F172A;" vertex="1" parent="1">
+      <mxGeometry x="310" y="625" width="200" height="110" as="geometry" />
+    </mxCell>
+    <mxCell id="e1" value="HTTPS" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#475569;fontSize=10;fontColor=#334155;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="users" target="edge">
+      <mxGeometry relative="1" as="geometry"></mxGeometry>
+    </mxCell>
+    <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#475569;fontSize=10;fontColor=#334155;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="edge" target="session">
+      <mxGeometry relative="1" as="geometry"></mxGeometry>
+    </mxCell>
+    <mxCell id="e3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#475569;fontSize=10;fontColor=#334155;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="session" target="pages">
+      <mxGeometry relative="1" as="geometry"></mxGeometry>
+    </mxCell>
+    <mxCell id="e4" value="Supabase API (HTTPS)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#475569;fontSize=10;fontColor=#334155;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="pages" target="pg">
+      <mxGeometry relative="1" as="geometry"></mxGeometry>
+    </mxCell>
+    <mxCell id="e5" value="translate · score" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#475569;fontSize=10;fontColor=#334155;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="pages" target="gemini">
+      <mxGeometry relative="1" as="geometry"></mxGeometry>
+    </mxCell>
+    <mxCell id="e6" value="send review emails" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#475569;fontSize=10;fontColor=#334155;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="cronroutes" target="smtp">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points"><mxPoint x="540" y="415" /></Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e7" value="HTTPS + CRON_SECRET" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#475569;fontSize=10;fontColor=#334155;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="pgcron" target="cronroutes">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points"><mxPoint x="55" y="678" /><mxPoint x="55" y="415" /></Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#475569;fontSize=10;fontColor=#334155;labelBackgroundColor=#FFFFFF;dashed=1;strokeColor=#94A3B8;fontColor=#64748B;exitX=0.5;exitY=0;entryX=0.4;entryY=1;" edge="1" parent="1" source="vcron" target="cronroutes">
+      <mxGeometry relative="1" as="geometry"></mxGeometry>
+    </mxCell>
+    <mxCell id="e9" value="auto deploy" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#475569;fontSize=10;fontColor=#334155;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;entryX=1;entryY=0.1;" edge="1" parent="1" source="github" target="next">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points"><mxPoint x="685" y="289" /></Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="lgline1" style="endArrow=block;endFill=1;html=1;strokeColor=#475569;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="40" y="795" as="sourcePoint" /><mxPoint x="90" y="795" as="targetPoint" /></mxGeometry>
+    </mxCell>
+    <mxCell id="lgtext1" value="Request or data flow" style="text;html=1;align=left;fontSize=11;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+      <mxGeometry x="98" y="783" width="160" height="24" as="geometry" />
+    </mxCell>
+    <mxCell id="lgline2" style="endArrow=block;endFill=1;html=1;dashed=1;strokeColor=#94A3B8;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="270" y="795" as="sourcePoint" /><mxPoint x="320" y="795" as="targetPoint" /></mxGeometry>
+    </mxCell>
+    <mxCell id="lgtext2" value="Switched off in production" style="text;html=1;align=left;fontSize=11;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+      <mxGeometry x="328" y="783" width="180" height="24" as="geometry" />
+    </mxCell>
+  </root>
+</mxGraphModel>
+  </diagram>
+</mxfile>

@@ -254,3 +254,31 @@ flowchart TD
   Rail --> Again[Analyze again]
   Again --> Analyze
 ```
+
+---
+
+## 12. Project roadmap
+
+Weeks start on the 1st, 8th, 15th and 22nd of each month.
+
+```mermaid
+gantt
+  title Lingo Translation Hub roadmap - pre-CNY launch
+  dateFormat YYYY-MM-DD
+  axisFormat %d %b
+  section Build
+    PoC Development (Developer)                   :poc, 2026-10-01, 2026-10-15
+    Showcase and Approval (Business Owner)        :show, 2026-10-15, 2026-11-01
+  section Environments
+    Staging Environment Setup (Architect)         :stg, 2026-11-01, 2026-11-08
+  section Parallel track
+    UAT Execution on Staging (Business Owner)     :uat, 2026-11-08, 2026-11-22
+    Production Infra Setup (Architect)            :infra, 2026-11-08, 2026-11-22
+  section Stabilise
+    Bug Fixes and Continuous Touchup (Developer)  :fix, 2026-11-15, 2026-12-15
+  section Launch
+    Production Cutover and Launch (Arch + Dev)    :crit, cut, 2026-12-15, 2027-01-01
+    Post-Launch Hypercare Support (Developer)     :care, 2027-01-01, 2027-02-01
+  section Holiday
+    Chinese New Year Break                        :done, cny, 2027-02-01, 2027-02-28
+```

@@ -25,13 +25,13 @@ import type {
   TranslationQualityResult,
 } from "@/lib/translation-quality/types";
 import { FilterSelect } from "./filter-select";
+import { useTimeZone } from "@/components/time-zone";
+import { formatDateTime, formatTime, isSameDay } from "@/lib/datetime";
 
-function formatRunWhen(iso: string) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  if (date.toDateString() === new Date().toDateString()) return `Today ${time}`;
-  return `${date.toLocaleDateString()} ${time}`;
+function formatRunWhen(iso: string, timeZone: string) {
+  if (Number.isNaN(new Date(iso).getTime())) return iso;
+  if (isSameDay(iso, new Date(), timeZone)) return `Today ${formatTime(iso, timeZone)}`;
+  return formatDateTime(iso, timeZone);
 }
 
 function scoreTone(score: QualityScore): "good" | "warn" | "bad" | "neutral" {
@@ -232,6 +232,7 @@ export function TranslationQualityPanel({
   /** Score the text in memory. Used on the new-draft page before an article exists. */
   sessionOnly?: boolean;
 }) {
+  const timeZone = useTimeZone();
   const [pending, startTransition] = useTransition();
   const requestKey = sessionOnly
     ? `session:${languageCode}`
@@ -942,7 +943,7 @@ export function TranslationQualityPanel({
             <p className="text-xs text-slate-500">
               {selected.metadata.provider}
               {selected.metadata.model ? ` · ${selected.metadata.model}` : ""}
-              {selected.createdAt ? ` · ${formatRunWhen(selected.createdAt)}` : ""}
+              {selected.createdAt ? ` · ${formatRunWhen(selected.createdAt, timeZone)}` : ""}
             </p>
           </div>
           {selected.metadata.partial ? (
@@ -1089,7 +1090,7 @@ export function TranslationQualityPanel({
                   }`}
                   onClick={() => openRun(run.id)}
                 >
-                  <span className="block font-semibold">{formatRunWhen(run.createdAt)}</span>
+                  <span className="block font-semibold">{formatRunWhen(run.createdAt, timeZone)}</span>
                   <span className="block">
                     {run.overallScore == null ? run.status : `Score ${run.overallScore}`}
                     {run.model ? ` · ${run.model}` : ` · ${run.provider}`}

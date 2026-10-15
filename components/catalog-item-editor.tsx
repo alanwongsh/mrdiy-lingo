@@ -33,6 +33,7 @@ import { FilterMultiSelect, FilterSelect } from "@/components/filter-select";
 import { CatalogActivity } from "@/components/catalog-activity";
 import { LabelChipInput } from "@/components/label-chip-input";
 import { Badge, Button, Card, Field, inputClass, statusTone, textareaClass } from "@/components/ui";
+import { useTimeZone } from "@/components/time-zone";
 
 type TextMap = Record<string, string>;
 
@@ -87,6 +88,7 @@ export function CatalogItemEditor({
   canEdit: boolean;
   canApprove: boolean;
 }) {
+  const timeZone = useTimeZone();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState("");
@@ -241,9 +243,9 @@ export function CatalogItemEditor({
           <Badge tone={statusTone_}>{ITEM_STATUS_LABEL[item.status]}</Badge>
           <span className="text-xs text-[var(--hub-muted)]">
             {item.status === "APPROVED" && item.approved_by_name
-              ? `Approved by ${item.approved_by_name} · ${formatStamp(item.approved_at)}`
+              ? `Approved by ${item.approved_by_name} · ${formatStamp(item.approved_at, timeZone)}`
               : item.status === "REVIEW" && item.submitted_by_name
-                ? `Submitted by ${item.submitted_by_name} · ${formatStamp(item.submitted_at)}`
+                ? `Submitted by ${item.submitted_by_name} · ${formatStamp(item.submitted_at, timeZone)}`
                 : item.created_by_name
                   ? `Created by ${item.created_by_name}`
                   : null}

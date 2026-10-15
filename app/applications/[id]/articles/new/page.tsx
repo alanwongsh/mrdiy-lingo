@@ -34,6 +34,8 @@ import { TranslationQualityPanel } from "@/components/translation-quality-panel"
 import { applyQualityAction, qualityActionStillOpen } from "@/lib/translation-quality/apply-action";
 import type { QualityAction, QualityTargetField } from "@/lib/translation-quality/types";
 import { DateTimePicker } from "@/components/date-time-picker";
+import { useTimeZone } from "@/components/time-zone";
+import { fromZonedInput } from "@/lib/datetime";
 
 type HeldTranslation = {
   fields: SourceContentFields;
@@ -43,6 +45,7 @@ type HeldTranslation = {
 export default function NewArticlePage() {
   const { id: applicationId } = useParams<{ id: string }>();
   const router = useRouter();
+  const timeZone = useTimeZone();
   const [languages, setLanguages] = useState<Language[]>([]);
   const [contentTypes, setContentTypes] = useState<ContentTypeRecord[]>([]);
   const [contentType, setContentType] = useState(DEFAULT_CONTENT_TYPE_CODE);
@@ -305,7 +308,7 @@ export default function NewArticlePage() {
           sourceFields,
           market: market || null,
           targetLanguages,
-          scheduledPublishAt: publishing && scheduled ? new Date(scheduled).toISOString() : null,
+          scheduledPublishAt: publishing && scheduled ? fromZonedInput(scheduled, timeZone) : null,
           mode,
           translations: targetLanguages.flatMap((code) => {
             const row = heldRef.current[languageKey(code)];

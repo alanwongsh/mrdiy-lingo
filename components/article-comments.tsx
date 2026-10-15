@@ -7,15 +7,8 @@ import { addArticleComment } from "@/lib/actions/comments";
 import type { ArticleComment, Language } from "@/lib/types";
 import { Button, textareaClass } from "@/components/ui";
 import { FilterSelect } from "@/components/filter-select";
-
-function formatWhen(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+import { useTimeZone } from "@/components/time-zone";
+import { formatDateTime } from "@/lib/datetime";
 
 export function ArticleComments({
   applicationId,
@@ -34,6 +27,7 @@ export function ArticleComments({
   actor: { username: string; name: string } | null;
   loadError?: string;
 }) {
+  const timeZone = useTimeZone();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
@@ -181,7 +175,7 @@ export function ArticleComments({
                         {comment.author_username}
                       </span>
                       <span className="ml-auto text-xs text-slate-400">
-                        {formatWhen(comment.created_at)}
+                        {formatDateTime(comment.created_at, timeZone)}
                       </span>
                     </div>
                     <p className="mt-1.5 whitespace-pre-wrap break-words text-sm text-slate-800">

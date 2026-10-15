@@ -7,6 +7,7 @@ import { useState, useTransition } from "react";
 import { translateItems, type ItemListItem, type TranslateStats } from "@/lib/actions/catalog";
 import { formatStamp, ITEM_STATUS_LABEL, type LanguageProgress } from "@/lib/catalog";
 import { Badge, Button, Card, statusTone } from "@/components/ui";
+import { useTimeZone } from "@/components/time-zone";
 
 export function translateSummary(stats: TranslateStats): string {
   const parts = [`${stats.written} value${stats.written === 1 ? "" : "s"} written`];
@@ -50,6 +51,7 @@ export function CatalogItemList({
   itemLabel: string;
   canEdit: boolean;
 }) {
+  const timeZone = useTimeZone();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [selected, setSelected] = useState<string[]>([]);
@@ -172,7 +174,7 @@ export function CatalogItemList({
                     </div>
                   </td>
                   <td className="text-xs whitespace-nowrap text-[var(--hub-muted)]">
-                    {formatStamp(item.updated_at)}
+                    {formatStamp(item.updated_at, timeZone)}
                   </td>
                 </tr>
               ))

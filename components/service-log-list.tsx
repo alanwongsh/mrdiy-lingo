@@ -1,5 +1,6 @@
 import { Badge, Button, Card, Pagination } from "@/components/ui";
 import type { ServiceLog } from "@/lib/service-log";
+import { formatDateTimeSeconds } from "@/lib/datetime";
 
 function usageLabel(metadata: Record<string, unknown>) {
   const usage = metadata.usage;
@@ -16,15 +17,6 @@ function usageLabel(metadata: Record<string, unknown>) {
     if (typeof value === "number") parts.push(`${name} ${value.toLocaleString()}`);
   }
   return parts.join(" · ");
-}
-
-function when(value: string) {
-  return new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "medium",
-    timeStyle: "medium",
-    hour12: false,
-    timeZone: "Asia/Kuala_Lumpur",
-  }).format(new Date(value));
 }
 
 function TextBlock({ label, text }: { label: string; text: string }) {
@@ -44,12 +36,15 @@ export function ServiceLogList({
   pageSize,
   total,
   source,
+  timeZone,
 }: {
   logs: ServiceLog[];
   page: number;
   pageSize: number;
   total: number;
   source: string;
+  /** Viewer's zone, from requestTimeZone(). */
+  timeZone: string;
 }) {
   return (
     <div>
@@ -79,7 +74,7 @@ export function ServiceLogList({
                       <Badge tone={log.ok ? "good" : "bad"}>{log.ok ? "OK" : "Failed"}</Badge>
                       <Badge tone="info">{log.source}</Badge>
                       {model ? <span className="text-sm text-slate-700">{model}</span> : null}
-                      <span className="text-sm text-slate-500">{when(log.createdAt)}</span>
+                      <span className="text-sm text-slate-500">{formatDateTimeSeconds(log.createdAt, timeZone)}</span>
                       {log.durationMs != null ? (
                         <span className="text-sm text-slate-500">{log.durationMs.toLocaleString()} ms</span>
                       ) : null}

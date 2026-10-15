@@ -7,6 +7,8 @@ import {
   ArticleVersionComparer,
   TextVersionComparer,
 } from "@/components/version-diff";
+import { useTimeZone } from "@/components/time-zone";
+import { formatDateTime } from "@/lib/datetime";
 
 type BaseVersion = {
   id: string;
@@ -58,19 +60,6 @@ function CollapseSection({
   );
 }
 
-/** Fixed locale and time zone so server and browser print the same text. */
-function formatWhen(iso: string) {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Kuala_Lumpur",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(new Date(iso));
-}
-
 /** How a saved version came about, in words a reviewer reads at a glance. */
 function howSaved(v: BaseVersion): string {
   const who = v.author?.trim();
@@ -80,8 +69,8 @@ function howSaved(v: BaseVersion): string {
 }
 
 /** Dropdown and heading text: number, time, and who, with no "v" shorthand. */
-function versionLabel(v: BaseVersion, latest: boolean): string {
-  return `Version ${v.version_number}${latest ? " (latest)" : ""} · ${formatWhen(v.created_at)} · ${howSaved(v)}`;
+function versionLabel(v: BaseVersion, latest: boolean, timeZone: string): string {
+  return `Version ${v.version_number}${latest ? " (latest)" : ""} · ${formatDateTime(v.created_at, timeZone)} · ${howSaved(v)}`;
 }
 
 const EDITOR_NOW = "Editor now (not saved)";
@@ -105,6 +94,7 @@ export function StringVersionPanel({
   /** Leave out to show history without Delete. */
   onDelete?: (versionId: string, versionNumber: number) => void;
 }) {
+  const timeZone = useTimeZone();
   const [tab, setTab] = useState<"list" | "compare">("list");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const latestId = versions[0]?.id;
@@ -114,11 +104,11 @@ export function StringVersionPanel({
       { id: "current", label: EDITOR_NOW, text: draft },
       ...versions.map((v) => ({
         id: v.id,
-        label: versionLabel(v, v.id === latestId),
+        label: versionLabel(v, v.id === latestId, timeZone),
         text: v.translated_content,
       })),
     ],
-    [draft, versions, latestId]
+    [draft, versions, latestId, timeZone]
   );
 
   return (
@@ -183,7 +173,7 @@ export function StringVersionPanel({
                       {isLatest ? <Badge tone="info">Latest</Badge> : null}
                       <span className="text-xs text-slate-500">{howSaved(v)}</span>
                       <span className="ml-auto text-xs text-slate-500">
-                        {formatWhen(v.created_at)}
+                        {formatDateTime(v.created_at, timeZone)}
                       </span>
                       <span
                         className={`text-xs font-semibold ${
@@ -200,7 +190,7 @@ export function StringVersionPanel({
                         <p className="text-xs text-slate-500">
                           {howSaved(v)}
                           {v.author_username && v.source_type !== "SYSTEM" ? ` (${v.author_username})` : ""}
-                          {` · ${formatWhen(v.created_at)}`}
+                          {` · ${formatDateTime(v.created_at, timeZone)}`}
                         </p>
                         <p className="whitespace-pre-wrap rounded-md bg-white/80 p-2 text-sm text-slate-900">
                           {v.translated_content}
@@ -266,6 +256,7 @@ export function ArticleVersionPanel({
   onRestore: (fields: ArticleVersion["translated_content"]) => void;
   onDelete: (versionId: string, versionNumber: number) => void;
 }) {
+  const timeZone = useTimeZone();
   const [tab, setTab] = useState<"list" | "compare">("list");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const latestId = versions[0]?.id;
@@ -275,11 +266,11 @@ export function ArticleVersionPanel({
       { id: "current", label: EDITOR_NOW, fields: draft },
       ...versions.map((v) => ({
         id: v.id,
-        label: versionLabel(v, v.id === latestId),
+        label: versionLabel(v, v.id === latestId, timeZone),
         fields: v.translated_content,
       })),
     ],
-    [draft, versions, latestId]
+    [draft, versions, latestId, timeZone]
   );
 
   return (
@@ -344,7 +335,7 @@ export function ArticleVersionPanel({
                       {isLatest ? <Badge tone="info">Latest</Badge> : null}
                       <span className="text-xs text-slate-500">{howSaved(v)}</span>
                       <span className="ml-auto shrink-0 text-xs text-slate-500">
-                        {formatWhen(v.created_at)}
+                        {formatDateTime(v.created_at, timeZone)}
                       </span>
                       <span
                         className={`shrink-0 text-xs font-semibold ${
@@ -361,7 +352,7 @@ export function ArticleVersionPanel({
                         <p className="text-xs text-slate-500">
                           {howSaved(v)}
                           {v.author_username && v.source_type !== "SYSTEM" ? ` (${v.author_username})` : ""}
-                          {` · ${formatWhen(v.created_at)}`}
+                          {` · ${formatDateTime(v.created_at, timeZone)}`}
                         </p>
                         <div className="space-y-2">
                           <CollapseSection label="Title" defaultOpen>

@@ -20,6 +20,8 @@ import type {
   TranslationStatus,
 } from "@/lib/types";
 import { FilterSelect } from "./filter-select";
+import { useTimeZone } from "@/components/time-zone";
+import { formatDateTime } from "@/lib/datetime";
 
 const STATUS_LABEL: Record<ContentLifecycleStatus, string> = {
   DRAFT: "Draft",
@@ -256,18 +258,6 @@ function decorateField(value: string, marks: ReviewMark[], locateText?: string) 
 
 function isLayout(value: string | null): value is ViewLayout {
   return LAYOUTS.some((layout) => layout.id === value);
-}
-
-function formatStamp(iso: string) {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Kuala_Lumpur",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(new Date(iso));
 }
 
 function languageName(languages: Language[], code: string) {
@@ -740,6 +730,7 @@ export function ArticleView({
   /** False while publishing is switched off: no publish time or providers shown. */
   publishEnabled: boolean;
 }) {
+  const timeZone = useTimeZone();
   const options = Array.from(
     new Set([
       article.source_language,
@@ -991,7 +982,7 @@ export function ArticleView({
         {publishEnabled && article.scheduled_publish_at ? (
           <span>
             Due{" "}
-            {formatStamp(article.scheduled_publish_at)}
+            {formatDateTime(article.scheduled_publish_at, timeZone)}
           </span>
         ) : null}
       </Card>

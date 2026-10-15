@@ -19,6 +19,7 @@ import {
 } from "@/lib/publish/schedule";
 import { Badge, Button } from "@/components/ui";
 import { DateTimePicker } from "@/components/date-time-picker";
+import { useTimeZone } from "@/components/time-zone";
 
 // Most urgent first: the collapsed row shows the first one that applies.
 const SUMMARY_ORDER = ["Failed", "Retrying", "Publishing", "Due now", "Waiting", "Scheduled"];
@@ -31,7 +32,8 @@ function languageSummary(
     checked: boolean;
     estimate: WaitingEstimate | null;
   }>,
-  publishAt: string | null
+  publishAt: string | null,
+  timeZone: string
 ): { label: string; tone: WaitingEstimate["tone"] | "good"; detail: string; providers: string } {
   const ticked = rows.filter((row) => row.checked);
   const providers = ticked.map((row) => row.vendor.name).join(", ");
@@ -51,7 +53,7 @@ function languageSummary(
     return {
       label: "Waiting",
       tone: "neutral",
-      detail: `${partly}${publishAt ? formatWhen(publishAt) : ""}`,
+      detail: `${partly}${publishAt ? formatWhen(publishAt, timeZone) : ""}`,
       providers,
     };
   }
@@ -111,6 +113,7 @@ export function PublishLanguagePicker({
   /** Edit mode only. Receives the whole per-language schedule. */
   onScheduleChange?: (schedule: Record<string, string>) => void;
 }) {
+  const timeZone = useTimeZone();
   // Languages with a failed send start open so the error is visible.
   const [openKeys, setOpenKeys] = useState<Set<string>>(
     () =>
@@ -158,7 +161,7 @@ export function PublishLanguagePicker({
   function setLanguageTime(code: string, value: string) {
     if (!onScheduleChange) return;
     const next = { ...languageSchedule };
-    const iso = fromLocalInput(value);
+    const iso = fromLocalInput(value, timeZone);
     if (iso) next[languageKey(code)] = iso;
     else delete next[languageKey(code)];
     onScheduleChange(next);
@@ -191,6 +194,7 @@ export function PublishLanguagePicker({
               articleStatus,
               translationApproved: approved.has(languageKey(code)),
               publishAt,
+              timeZone,
             })
           : null;
       return { vendor, publication, published, checked, estimate };
@@ -217,7 +221,7 @@ export function PublishLanguagePicker({
         {tickedLanguages.length > 0 ? (
           <span className="text-xs font-normal text-[var(--hub-muted)]" suppressHydrationWarning>
             {liveLanguages.length} of {tickedLanguages.length} live
-            {nextUp ? ` · Next: ${languageLabel(languages, nextUp.code)}, ${formatWhen(nextUp.at)}` : ""}
+            {nextUp ? ` · Next: ${languageLabel(languages, nextUp.code)}, ${formatWhen(nextUp.at, timeZone)}` : ""}
           </span>
         ) : null}
       </legend>
@@ -238,7 +242,7 @@ export function PublishLanguagePicker({
             const ownTime = languageSchedule[languageKey(code)] ?? null;
             const publishAt = languagePublishAt(schedule, code);
             const rows = rowsByLanguage.get(code)!;
-            const summary = languageSummary(rows, publishAt);
+            const summary = languageSummary(rows, publishAt, timeZone);
             const isOpen = openKeys.has(languageKey(code));
             const panelId = `publish-lang-${languageKey(code)}`;
             const ticked = rows.filter((row) => row.checked);
@@ -285,7 +289,7 @@ export function PublishLanguagePicker({
               <div id={panelId} className="space-y-2 border-t border-[var(--hub-border)] bg-slate-50/60 px-3 py-2 pl-8">
               {allLive ? (
                 <p className="text-xs text-[var(--hub-muted)]">
-                  {liveAt ? `Published ${formatWhen(liveAt)}.` : "Published."} The publish time can no
+                  {liveAt ? `Published ${formatWhen(liveAt, timeZone)}.` : "Published."} The publish time can no
                   longer be changed.
                 </p>
               ) : !readOnly && onScheduleChange ? (
@@ -295,7 +299,7 @@ export function PublishLanguagePicker({
                   <DateTimePicker
                     compact
                     ariaLabel="Publish time for this language"
-                    value={toLocalInput(ownTime)}
+                    value={toLocalInput(ownTime, timeZone)}
                     onChange={(next) => setLanguageTime(code, next)}
                   />
                   {ownTime ? (
@@ -308,7 +312,7 @@ export function PublishLanguagePicker({
                     </button>
                   ) : (
                     <span>
-                      {scheduledPublishAt ? `Article time: ${formatWhen(scheduledPublishAt)}` : "No article time"}
+                      {scheduledPublishAt ? `Article time: ${formatWhen(scheduledPublishAt, timeZone)}` : "No article time"}
                     </span>
                   )}
                 </label>
@@ -321,7 +325,7 @@ export function PublishLanguagePicker({
                 </div>
               ) : publishAt ? (
                 <p className="text-xs text-[var(--hub-muted)]">
-                  {ownTime ? "Own publish time" : "Article time"}: {formatWhen(publishAt)}
+                  {ownTime ? "Own publish time" : "Article time"}: {formatWhen(publishAt, timeZone)}
                 </p>
               ) : null}
               <ul className="space-y-1">

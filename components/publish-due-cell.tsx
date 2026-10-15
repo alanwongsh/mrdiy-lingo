@@ -4,17 +4,8 @@ import { useEffect, useState } from "react";
 import type { ContentLifecycleStatus } from "@/lib/types";
 import { Badge } from "@/components/ui";
 import { getPublishDueState } from "@/lib/publish-due";
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return "";
-  return new Date(value).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import { useTimeZone } from "@/components/time-zone";
+import { formatDateTime } from "@/lib/datetime";
 
 export function PublishDueCell({
   scheduledPublishAt,
@@ -25,6 +16,7 @@ export function PublishDueCell({
   publishedAt: string | null | undefined;
   status: ContentLifecycleStatus;
 }) {
+  const timeZone = useTimeZone();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -57,7 +49,7 @@ export function PublishDueCell({
       ) : null}
       {scheduledPublishAt ? (
         <div className="text-xs text-[var(--hub-muted)]">
-          {formatDate(scheduledPublishAt)}
+          {formatDateTime(scheduledPublishAt, timeZone)}
         </div>
       ) : null}
     </div>
