@@ -441,7 +441,7 @@ function LayoutSwitch({
             }
             className={`rounded-md px-3 py-1.5 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-[var(--hub-accent-ring)] ${
               active
-                ? "bg-[var(--diy-red)] text-white shadow-sm"
+                ? "bg-[var(--hub-accent-fill)] text-[var(--hub-on-accent)] shadow-sm"
                 : "text-slate-600 hover:bg-[var(--diy-yellow-soft)] hover:text-slate-900"
             }`}
             onClick={() => onChange(layout.id)}

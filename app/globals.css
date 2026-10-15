@@ -1,13 +1,18 @@
 @import "tailwindcss";
 
 :root {
-  /* MR.DIY brand */
+  /* MR.DIY brand + orange UI accent */
   --diy-red: #e30613;
   --diy-red-dark: #b80510;
   --diy-red-soft: #fde8ea;
   --diy-yellow: #ffc20e;
   --diy-yellow-soft: #fff4cc;
   --diy-yellow-dark: #c99200;
+  --diy-orange: #b85c00;
+  --diy-orange-dark: #964b00;
+  --diy-orange-soft: #fff0db;
+  --diy-orange-bright: #fb923c;
+  --diy-orange-bright-dark: #f97316;
 
   --background: #f6f7f9;
   --foreground: #111827;
@@ -20,10 +25,13 @@
   --hub-muted: #6b7280;
   --hub-muted-strong: #4b5563;
   --hub-hover: #f3f4f6;
-  --hub-accent: var(--diy-red);
-  --hub-accent-hover: var(--diy-red-dark);
-  --hub-accent-soft: var(--diy-red-soft);
-  --hub-accent-ring: rgba(227, 6, 19, 0.28);
+  --hub-accent: var(--diy-orange);
+  --hub-accent-hover: var(--diy-orange-dark);
+  --hub-accent-soft: var(--diy-orange-soft);
+  --hub-accent-fill: var(--diy-orange-bright);
+  --hub-accent-fill-hover: var(--diy-orange-bright-dark);
+  --hub-on-accent: #ffffff;
+  --hub-accent-ring: rgba(251, 146, 60, 0.4);
   --hub-yellow: var(--diy-yellow);
   --hub-yellow-soft: var(--diy-yellow-soft);
   --hub-sidebar: ghostwhite;
@@ -58,7 +66,7 @@ body {
   overflow-x: clip;
   background-color: var(--hub-bg);
   background-image:
-    radial-gradient(1100px 520px at 0% 0%, #ffe0e3 0%, transparent 58%),
+    radial-gradient(1100px 520px at 0% 0%, #fff4e5 0%, transparent 58%),
     radial-gradient(900px 460px at 100% 0%, #fff3c4 0%, transparent 52%);
   background-repeat: no-repeat;
   background-attachment: fixed;
@@ -72,10 +80,10 @@ body {
 }
 
 input[type="checkbox"] {
-  accent-color: var(--hub-accent);
+  accent-color: var(--hub-accent-fill);
 }
 input[type="radio"] {
-  accent-color: var(--hub-accent);
+  accent-color: var(--hub-accent-fill);
 }
 
 .hub-main {
@@ -91,12 +99,12 @@ input[type="radio"] {
 }
 
 .hub-text-button {
-  color: var(--diy-red);
+  color: var(--hub-accent);
   font-weight: 600;
 }
 
 .hub-text-button:hover {
-  color: var(--diy-red-dark);
+  color: var(--hub-accent-hover);
   text-decoration: underline;
 }
 
@@ -191,7 +199,7 @@ textarea {
 }
 
 .html-editor-surface a {
-  color: var(--diy-red);
+  color: var(--hub-accent);
   text-decoration: underline;
 }
 
@@ -210,7 +218,7 @@ textarea {
 }
 
 .tiptap img.ProseMirror-selectednode {
-  outline: 2px solid var(--diy-red);
+  outline: 2px solid var(--hub-accent);
   outline-offset: 2px;
 }
 

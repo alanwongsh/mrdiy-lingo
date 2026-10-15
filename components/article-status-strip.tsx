@@ -55,7 +55,7 @@ export function ArticleStatusStrip({
             aria-current={selected ? "page" : undefined}
             className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
               selected
-                ? "border-[var(--diy-red)] bg-[var(--diy-red)] text-white"
+                ? "border-[var(--hub-accent-fill)] bg-[var(--hub-accent-fill)] text-[var(--hub-on-accent)]"
                 : "border-[var(--hub-border)] bg-white text-slate-700 hover:border-[var(--hub-border-strong)] hover:bg-[var(--diy-yellow-soft)]"
             }`}
           >

@@ -46,7 +46,7 @@ function SidebarBody({
   return (
     <>
       <div className="relative border-b border-[var(--hub-border)] px-4 py-5">
-        <div className="absolute inset-x-0 top-0 h-1 bg-[var(--diy-red)]" />
+        <div className="absolute inset-x-0 top-0 h-1 bg-[var(--hub-accent-fill)]" />
         <Link href="/" className="block text-center" onClick={onNavigate}>
           {/*
             Brand lockup: circular master logo alone carries MR.DIY + tagline.
@@ -93,7 +93,7 @@ function SidebarBody({
             <div className="text-sm font-semibold text-[var(--hub-sidebar-fg)]">{actor.name}</div>
             <div className="mt-0.5 break-all">{actor.username}</div>
             {isSuperadmin ? (
-              <div className="mt-0.5 font-semibold text-[var(--diy-red)]">Superadmin</div>
+              <div className="mt-0.5 font-semibold text-[var(--hub-accent)]">Superadmin</div>
             ) : null}
             <form action="/embed/sign-out" method="post" className="mt-1">
               <button

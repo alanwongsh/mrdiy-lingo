@@ -42,7 +42,7 @@ function CollapseSection({
     <div className="rounded-md border border-slate-200 bg-white/80">
       <button
         type="button"
-        className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs font-semibold tracking-wide text-[var(--diy-red)] uppercase"
+        className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs font-semibold tracking-wide text-[var(--hub-accent)] uppercase"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >
@@ -189,7 +189,7 @@ export function StringVersionPanel({
                         className={`text-xs font-semibold ${
                           open
                             ? "text-[color:var(--diy-yellow-dark)]"
-                            : "text-[var(--diy-red)]"
+                            : "text-[var(--hub-accent)]"
                         }`}
                       >
                         {open ? "Hide" : "Show"}
@@ -350,7 +350,7 @@ export function ArticleVersionPanel({
                         className={`shrink-0 text-xs font-semibold ${
                           open
                             ? "text-[color:var(--diy-yellow-dark)]"
-                            : "text-[var(--diy-red)]"
+                            : "text-[var(--hub-accent)]"
                         }`}
                       >
                         {open ? "Hide" : "Show"}

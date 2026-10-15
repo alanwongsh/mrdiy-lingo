@@ -297,7 +297,7 @@ export function ArticleListTable({
                     />
                   </td>
                   <td>
-                    <Link href={href} className="block font-semibold text-[var(--diy-red)] hover:text-[var(--diy-red-dark)] hover:underline">
+                    <Link href={href} className="block font-semibold text-[var(--hub-accent)] hover:text-[var(--hub-accent-hover)] hover:underline">
                       {article.title}
                     </Link>
                     <p className="mt-0.5 line-clamp-1 max-w-md text-xs text-[var(--hub-muted)]">

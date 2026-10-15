@@ -73,7 +73,7 @@ export function LabelChipInput({
                 type="button"
                 disabled={disabled}
                 aria-label={`Remove ${chip.label}`}
-                className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-500 hover:bg-white hover:text-[var(--diy-red)]"
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-500 hover:bg-white hover:text-[var(--hub-accent)]"
                 onClick={() => onRemove(chip)}
               >
                 ×
@@ -135,7 +135,7 @@ export function LabelChipInput({
                 onClick={() => add(option.label)}
                 className={`flex w-full rounded-md px-2 py-1.5 text-left text-sm ${
                   index === active
-                    ? "bg-[var(--diy-red)] font-semibold text-white"
+                    ? "bg-[var(--hub-accent-fill)] font-semibold text-[var(--hub-on-accent)]"
                     : "text-slate-700 hover:bg-[var(--diy-yellow-soft)] hover:text-slate-900"
                 }`}
               >

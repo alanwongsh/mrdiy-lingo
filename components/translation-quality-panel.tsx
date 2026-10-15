@@ -1084,7 +1084,7 @@ export function TranslationQualityPanel({
                   type="button"
                   className={`rounded-lg border px-3 py-1.5 text-left text-xs ${
                     run.id === selectedId
-                      ? "border-[var(--diy-red)] bg-[var(--diy-red-soft)] text-slate-900"
+                      ? "border-[var(--hub-accent)] bg-[var(--hub-accent-soft)] text-slate-900"
                       : "border-[var(--hub-border)] bg-white text-slate-600"
                   }`}
                   onClick={() => openRun(run.id)}

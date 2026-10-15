@@ -137,7 +137,7 @@ export function FilterSelect({
                   aria-selected={!value}
                   className={`flex w-full rounded-md px-2 py-1.5 text-left text-sm ${
                     !value
-                      ? "bg-[var(--diy-red)] font-semibold text-white"
+                      ? "bg-[var(--hub-accent-fill)] font-semibold text-[var(--hub-on-accent)]"
                       : "text-slate-700 hover:bg-[var(--diy-yellow-soft)] hover:text-slate-900"
                   }`}
                   onClick={() => {
@@ -170,7 +170,7 @@ export function FilterSelect({
                     aria-selected={active}
                     className={`flex min-w-0 flex-1 rounded-md px-2 py-1.5 text-left text-sm ${
                       active
-                        ? "bg-[var(--diy-red)] font-semibold text-white"
+                        ? "bg-[var(--hub-accent-fill)] font-semibold text-[var(--hub-on-accent)]"
                         : "text-slate-700 hover:bg-[var(--diy-yellow-soft)] hover:text-slate-900"
                     }`}
                     onClick={() => {
@@ -289,7 +289,7 @@ export function FilterMultiSelect({
                   <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[var(--diy-yellow-soft)]">
                     <input
                       type="checkbox"
-                      className="accent-[var(--diy-red)]"
+                      className="accent-[var(--hub-accent-fill)]"
                       checked={checked}
                       onChange={() => toggle(o.value)}
                     />

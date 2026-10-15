@@ -458,9 +458,9 @@ export default function NewArticlePage() {
 
         {editingCode ? (
           <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-            <Card className="overflow-hidden border-[var(--diy-red)]/20">
-              <div className="border-b border-[var(--hub-border)] bg-[var(--diy-red-soft)] px-4 py-3">
-                <span className="block text-xs font-semibold tracking-wide text-[var(--diy-red)] uppercase">
+            <Card className="overflow-hidden border-[var(--hub-accent)]/20">
+              <div className="border-b border-[var(--hub-border)] bg-[var(--hub-accent-soft)] px-4 py-3">
+                <span className="block text-xs font-semibold tracking-wide text-[var(--hub-accent)] uppercase">
                   Editing
                 </span>
                 <span className="mt-0.5 block font-semibold text-slate-900">

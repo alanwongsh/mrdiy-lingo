@@ -47,7 +47,7 @@ export function NotificationSettings({
       >
         <input
           type="checkbox"
-          className="mt-0.5 accent-[var(--diy-red)]"
+          className="mt-0.5 accent-[var(--hub-accent-fill)]"
           checked={enabled}
           disabled={!canConfigure || pending}
           onChange={(e) => {

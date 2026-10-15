@@ -39,7 +39,7 @@ export function SettingsTabs({
             aria-selected={active}
             className={`rounded-md px-3 py-1.5 text-sm font-semibold whitespace-nowrap transition ${
               active
-                ? "bg-[var(--diy-red)] text-white shadow-sm"
+                ? "bg-[var(--hub-accent-fill)] text-[var(--hub-on-accent)] shadow-sm"
                 : "text-slate-600 hover:bg-[var(--diy-yellow-soft)] hover:text-slate-900"
             }`}
           >

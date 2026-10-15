@@ -268,7 +268,7 @@ export function ImportWizard({
 
         <Field label="Upload Excel / CSV">
           <div className="flex flex-wrap items-center gap-3">
-            <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-lg bg-[var(--hub-accent)] px-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--hub-accent-hover)]">
+            <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-lg bg-[var(--hub-accent-fill)] px-3.5 text-sm font-semibold text-[var(--hub-on-accent)] shadow-sm transition hover:bg-[var(--hub-accent-fill-hover)]">
               Choose file
               <input
                 type="file"

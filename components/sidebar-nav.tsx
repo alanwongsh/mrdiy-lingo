@@ -58,7 +58,7 @@ export function SidebarNav({
             </span>
             {item.badge ? (
               <span
-                className="mt-0.5 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[var(--diy-red)] px-1.5 text-[11px] font-bold text-white"
+                className="mt-0.5 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[var(--hub-accent-fill)] px-1.5 text-[11px] font-bold text-[var(--hub-on-accent)]"
               >
                 {item.badge}
               </span>

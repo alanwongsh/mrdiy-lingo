@@ -44,7 +44,7 @@ function ToolbarButton({
       disabled={disabled}
       className={`rounded px-2 py-1 text-xs font-semibold disabled:opacity-40 ${
         active
-          ? "bg-white text-[var(--diy-red)] shadow-sm"
+          ? "bg-white text-[var(--hub-accent)] shadow-sm"
           : "text-slate-700 hover:bg-white"
       } ${className}`}
       onMouseDown={(e) => {
@@ -374,7 +374,7 @@ export const HtmlEditor = forwardRef<
         // Auto-link only text written as an address.
         shouldAutoLink: looksLikeTypedAddress,
         HTMLAttributes: {
-          class: "text-[var(--diy-red)] underline",
+          class: "text-[var(--hub-accent)] underline",
         },
       }),
       Placeholder.configure({

@@ -200,7 +200,7 @@ export function LanguageMultiSelect({
                 ) : null}
                 <button
                   type="button"
-                  className="ml-0.5 rounded-full px-1 text-[var(--diy-red)] hover:bg-[var(--diy-red-soft)]"
+                  className="ml-0.5 rounded-full px-1 text-[var(--hub-accent)] hover:bg-[var(--hub-accent-soft)]"
                   aria-label={`Remove ${lang?.name ?? code}`}
                   onClick={() => toggle(code)}
                 >

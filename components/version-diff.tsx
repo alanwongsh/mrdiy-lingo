@@ -154,7 +154,7 @@ export function TextVersionComparer({
           </div>
         </Card>
         <Card className="overflow-hidden">
-          <div className="border-b border-[var(--hub-border)] bg-[var(--diy-red-soft)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--diy-red)]">
+          <div className="border-b border-[var(--hub-border)] bg-[var(--hub-accent-soft)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--hub-accent)]">
             After · {right?.label}
           </div>
           <div className="p-3 text-sm whitespace-pre-wrap text-slate-800">
@@ -294,10 +294,10 @@ export function ArticleVersionComparer({
                   setOpenOverrides((current) => ({ ...current, [key]: !open }))
                 }
               >
-                <span className="text-[var(--diy-red)]" aria-hidden>
+                <span className="text-[var(--hub-accent)]" aria-hidden>
                   {open ? "▾" : "▸"}
                 </span>
-                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--diy-red)]">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--hub-accent)]">
                   {label}
                 </span>
                 <Badge tone={summary.changed ? "warn" : "good"}>

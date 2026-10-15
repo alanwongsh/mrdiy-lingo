@@ -38,12 +38,12 @@ export function CollapsibleSection({
       className="group scroll-mt-6 overflow-hidden rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel)] shadow-[var(--hub-shadow)]"
     >
       <summary className="flex cursor-pointer list-none items-center gap-2 bg-slate-50 px-4 py-3 select-none group-open:border-b group-open:border-[var(--hub-border)] [&::-webkit-details-marker]:hidden">
-        <span className="text-[var(--diy-red)]" aria-hidden>
+        <span className="text-[var(--hub-accent)]" aria-hidden>
           <span className="group-open:hidden">▸</span>
           <span className="hidden group-open:inline">▾</span>
         </span>
         <span className="min-w-0">
-          <span className="block text-xs font-semibold tracking-wide text-[var(--diy-red)] uppercase">
+          <span className="block text-xs font-semibold tracking-wide text-[var(--hub-accent)] uppercase">
             {title}
           </span>
           {summary ? (

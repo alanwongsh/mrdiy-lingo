@@ -35,7 +35,7 @@ export function PageHeader({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="mb-2 flex h-1.5 w-12 overflow-hidden rounded-full">
-            <span className="w-2/3 bg-[var(--diy-red)]" />
+            <span className="w-2/3 bg-[var(--hub-accent-fill)]" />
             <span className="w-1/3 bg-[var(--diy-yellow)]" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight break-words text-[var(--hub-fg)] sm:text-[1.75rem]">
@@ -65,7 +65,7 @@ export function Button({
 }) {
   const styles = {
     primary:
-      "bg-[var(--hub-accent)] text-white shadow-sm hover:bg-[var(--hub-accent-hover)] hover:-translate-y-px active:translate-y-0 focus-visible:ring-2 focus-visible:ring-[var(--hub-accent-ring)]",
+      "bg-[var(--hub-accent-fill)] text-[var(--hub-on-accent)] shadow-sm hover:bg-[var(--hub-accent-fill-hover)] hover:-translate-y-px active:translate-y-0 focus-visible:ring-2 focus-visible:ring-[var(--hub-accent-ring)]",
     secondary:
       "border border-[var(--hub-border-strong)] bg-white text-slate-800 shadow-sm hover:border-[var(--hub-accent)] hover:bg-[var(--hub-accent-soft)] hover:text-[var(--hub-accent)] focus-visible:ring-2 focus-visible:ring-[var(--hub-accent-ring)]",
     danger:
@@ -94,7 +94,7 @@ export function LinkButton({
 }) {
   const styles =
     variant === "primary"
-      ? "bg-[var(--hub-accent)] text-white shadow-sm hover:bg-[var(--hub-accent-hover)] hover:-translate-y-px"
+      ? "bg-[var(--hub-accent-fill)] text-[var(--hub-on-accent)] shadow-sm hover:bg-[var(--hub-accent-fill-hover)] hover:-translate-y-px"
       : "border border-[var(--hub-border-strong)] bg-white text-slate-800 shadow-sm hover:border-[var(--hub-accent)] hover:bg-[var(--hub-accent-soft)] hover:text-[var(--hub-accent)]";
   return (
     <Link
@@ -141,7 +141,7 @@ export function StatCard({
 }) {
   const bar = {
     default: "bg-slate-300",
-    accent: "bg-[var(--hub-accent)]",
+    accent: "bg-[var(--hub-accent-fill)]",
     good: "bg-emerald-500",
     warn: "bg-amber-500",
     info: "bg-sky-500",

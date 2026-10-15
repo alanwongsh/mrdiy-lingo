@@ -854,11 +854,11 @@ export function ArticleEditor({
                 aria-expanded={sourceOpen}
                 onClick={() => setSourceOpen((open) => !open)}
               >
-                <span className="text-[var(--diy-red)]" aria-hidden>
+                <span className="text-[var(--hub-accent)]" aria-hidden>
                   {sourceOpen ? "▾" : "▸"}
                 </span>
                 <span>
-                  <span className="block text-xs font-semibold tracking-wide text-[var(--diy-red)] uppercase">
+                  <span className="block text-xs font-semibold tracking-wide text-[var(--hub-accent)] uppercase">
                     Source
                   </span>
                   <span className="mt-0.5 block font-semibold text-slate-900">
@@ -915,9 +915,9 @@ export function ArticleEditor({
 
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
         {/* Not overflow-hidden: the language menu must be able to open past a collapsed card. */}
-        <Card className="border-[var(--diy-red)]/20">
+        <Card className="border-[var(--hub-accent)]/20">
           <div
-            className={`rounded-t-xl bg-[var(--diy-red-soft)] px-4 py-3 ${
+            className={`rounded-t-xl bg-[var(--hub-accent-soft)] px-4 py-3 ${
               editingOpen ? "border-b border-[var(--hub-border)]" : "rounded-b-xl"
             }`}
           >
@@ -929,10 +929,10 @@ export function ArticleEditor({
                   aria-expanded={editingOpen}
                   onClick={() => setEditingOpen((open) => !open)}
                 >
-                  <span className="text-[var(--diy-red)]" aria-hidden>
+                  <span className="text-[var(--hub-accent)]" aria-hidden>
                     {editingOpen ? "▾" : "▸"}
                   </span>
-                  <span className="text-xs font-semibold tracking-wide text-[var(--diy-red)] uppercase">
+                  <span className="text-xs font-semibold tracking-wide text-[var(--hub-accent)] uppercase">
                     Editing
                   </span>
                 </button>

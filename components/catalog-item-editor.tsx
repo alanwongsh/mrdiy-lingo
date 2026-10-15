@@ -559,7 +559,7 @@ function LayoutSwitch({ value, onChange }: { value: Layout; onChange: (layout: L
             title={layout.title}
             className={`rounded-md px-3 py-1.5 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-[var(--hub-accent-ring)] ${
               active
-                ? "bg-[var(--diy-red)] text-white shadow-sm"
+                ? "bg-[var(--hub-accent-fill)] text-[var(--hub-on-accent)] shadow-sm"
                 : "text-slate-600 hover:bg-[var(--diy-yellow-soft)] hover:text-slate-900"
             }`}
             onClick={() => onChange(layout.id)}
@@ -929,7 +929,7 @@ function SourceInput({
               disabled={uploading}
               onClick={() => (option === "text" ? void switchToText() : setChoice("file"))}
               className={`rounded-md px-2.5 py-1 ${
-                mode === option ? "bg-[var(--diy-red)] text-white" : "text-slate-600 hover:bg-[var(--diy-yellow-soft)]"
+                mode === option ? "bg-[var(--hub-accent-fill)] text-[var(--hub-on-accent)]" : "text-slate-600 hover:bg-[var(--diy-yellow-soft)]"
               }`}
             >
               {option === "text" ? "Text" : "File"}

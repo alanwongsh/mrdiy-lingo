@@ -205,7 +205,7 @@ export function CatalogNewItem({
                         onClick={() => updateEntry(entry.key, { mode: option })}
                         className={`rounded-md px-2.5 py-1 ${
                           entry.mode === option
-                            ? "bg-[var(--diy-red)] text-white"
+                            ? "bg-[var(--hub-accent-fill)] text-[var(--hub-on-accent)]"
                             : "text-slate-600 hover:bg-[var(--diy-yellow-soft)]"
                         }`}
                       >

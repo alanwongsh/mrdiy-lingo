@@ -167,7 +167,7 @@ export function DateTimePicker({
           <div className="mb-2 flex items-center justify-between">
             <button
               type="button"
-              className="rounded-md px-2 py-1 text-[var(--diy-red)] hover:bg-[var(--diy-yellow-soft)]"
+              className="rounded-md px-2 py-1 text-[var(--hub-accent)] hover:bg-[var(--diy-yellow-soft)]"
               aria-label="Previous month"
               onClick={() => moveMonth(-1)}
             >
@@ -181,7 +181,7 @@ export function DateTimePicker({
             </span>
             <button
               type="button"
-              className="rounded-md px-2 py-1 text-[var(--diy-red)] hover:bg-[var(--diy-yellow-soft)]"
+              className="rounded-md px-2 py-1 text-[var(--hub-accent)] hover:bg-[var(--diy-yellow-soft)]"
               aria-label="Next month"
               onClick={() => moveMonth(1)}
             >
@@ -207,7 +207,7 @@ export function DateTimePicker({
                   aria-pressed={isSelected}
                   className={`h-8 rounded-md text-sm transition ${
                     isSelected
-                      ? "bg-[var(--hub-accent)] font-semibold text-white"
+                      ? "bg-[var(--hub-accent-fill)] font-semibold text-[var(--hub-on-accent)]"
                       : isToday
                         ? "font-semibold text-[var(--hub-accent)] ring-1 ring-[var(--hub-accent)] ring-inset hover:bg-[var(--diy-yellow-soft)]"
                         : outside
@@ -268,7 +268,7 @@ export function DateTimePicker({
               </button>
               <button
                 type="button"
-                className="rounded-md bg-[var(--hub-accent)] px-3 py-1 text-sm font-semibold text-white hover:bg-[var(--hub-accent-hover)]"
+                className="rounded-md bg-[var(--hub-accent-fill)] px-3 py-1 text-sm font-semibold text-[var(--hub-on-accent)] hover:bg-[var(--hub-accent-fill-hover)]"
                 onClick={() => setOpen(false)}
               >
                 Done

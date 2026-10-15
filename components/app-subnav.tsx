@@ -64,7 +64,7 @@ export function AppSubnav({
                 aria-current={active ? "page" : undefined}
                 className={`rounded-lg px-3 py-2 text-center text-sm font-medium whitespace-nowrap transition sm:px-3.5 sm:text-left ${
                   active
-                    ? "bg-[var(--diy-red)] text-white shadow-sm"
+                    ? "bg-[var(--hub-accent-fill)] text-[var(--hub-on-accent)] shadow-sm"
                     : "text-slate-600 hover:bg-[var(--diy-yellow-soft)] hover:text-slate-900"
                 }`}
               >

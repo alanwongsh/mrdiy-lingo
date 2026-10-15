@@ -198,11 +198,11 @@ export function StringKeyEditor({
           </div>
         </Card>
 
-        <Card className="overflow-hidden border-[var(--diy-red)]/20">
-          <div className="border-b border-[var(--hub-border)] bg-[var(--diy-red-soft)] px-4 py-3">
+        <Card className="overflow-hidden border-[var(--hub-accent)]/20">
+          <div className="border-b border-[var(--hub-border)] bg-[var(--hub-accent-soft)] px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
               <div>
-                <div className="text-xs font-semibold tracking-wide text-[var(--diy-red)] uppercase">
+                <div className="text-xs font-semibold tracking-wide text-[var(--hub-accent)] uppercase">
                   Editing
                 </div>
                 <div className="mt-0.5 font-semibold text-slate-900">
