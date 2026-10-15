@@ -80,10 +80,10 @@ body {
 }
 
 input[type="checkbox"] {
-  accent-color: var(--hub-accent-fill);
+  accent-color: var(--hub-accent);
 }
 input[type="radio"] {
-  accent-color: var(--hub-accent-fill);
+  accent-color: var(--hub-accent);
 }
 
 .hub-main {
