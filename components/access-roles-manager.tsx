@@ -350,6 +350,7 @@ export function AccessRolesManager({
   applicationId,
   modelType = null,
   actorPermissions = PERMISSION_KEYS,
+  publishing = true,
 }: {
   roles: AccessRole[];
   /** This application's type, which limits the permissions shown. Null for the default roles. */
@@ -359,8 +360,10 @@ export function AccessRolesManager({
   applicationId: string | null;
   /** What the signed-in person holds here. They can only tick these. */
   actorPermissions?: readonly PermissionKey[];
+  /** False hides the publishing wording while publishing is switched off. */
+  publishing?: boolean;
 }) {
-  const shown = permissionsForModel(modelType);
+  const shown = permissionsForModel(modelType, { publishing });
   const changeableRoles = roles.filter((role) =>
     canGrantRole({ permissions: actorPermissions }, role)
   );

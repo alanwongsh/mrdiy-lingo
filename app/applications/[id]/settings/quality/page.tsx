@@ -7,6 +7,7 @@ import {
   listTerminologyEntries,
 } from "@/lib/actions/quality";
 import { listPublishIntegrationTypes, listPublishVendors } from "@/lib/actions/publish";
+import { isProduction } from "@/lib/env";
 import { listBoilerplate, type BoilerplateSet } from "@/lib/actions/boilerplate";
 import { BoilerplateManager } from "@/components/boilerplate-manager";
 import { PublishVendorsManager } from "@/components/publish-vendors-manager";
@@ -79,20 +80,23 @@ export default async function SettingsQualityPage({
     boilerplateError = error instanceof Error ? error.message : "Boilerplate is unavailable.";
   }
 
+  const publishing = !isProduction();
   let vendors: PublishVendor[] = [];
   let vendorTypes: PublishIntegrationType[] = [];
   let vendorError = "";
-  try {
-    [vendors, vendorTypes] = await Promise.all([
-      listPublishVendors(app.id),
-      listPublishIntegrationTypes(),
-    ]);
-  } catch (error) {
-    vendorError = error instanceof Error ? error.message : "Publish settings are unavailable.";
+  if (publishing) {
     try {
-      vendorTypes = await listPublishIntegrationTypes();
-    } catch {
-      vendorTypes = [];
+      [vendors, vendorTypes] = await Promise.all([
+        listPublishVendors(app.id),
+        listPublishIntegrationTypes(),
+      ]);
+    } catch (error) {
+      vendorError = error instanceof Error ? error.message : "Publish settings are unavailable.";
+      try {
+        vendorTypes = await listPublishIntegrationTypes();
+      } catch {
+        vendorTypes = [];
+      }
     }
   }
 
@@ -130,20 +134,22 @@ export default async function SettingsQualityPage({
           />
         </SettingsSection>
 
-        <SettingsSection
-          id="publishing"
-          title="Publish connections"
-          description={`${vendors.length} ${vendors.length === 1 ? "connection" : "connections"}`}
-        >
-          {vendorError ? <p className="text-sm text-red-700">{vendorError}</p> : null}
-          <PublishVendorsManager
-            applicationId={app.id}
-            vendors={vendors}
-            types={vendorTypes}
-            canConfigure={can(app.access, "settings.quality")}
-            disabled={Boolean(vendorError)}
-          />
-        </SettingsSection>
+        {publishing ? (
+          <SettingsSection
+            id="publishing"
+            title="Publish connections"
+            description={`${vendors.length} ${vendors.length === 1 ? "connection" : "connections"}`}
+          >
+            {vendorError ? <p className="text-sm text-red-700">{vendorError}</p> : null}
+            <PublishVendorsManager
+              applicationId={app.id}
+              vendors={vendors}
+              types={vendorTypes}
+              canConfigure={can(app.access, "settings.quality")}
+              disabled={Boolean(vendorError)}
+            />
+          </SettingsSection>
+        ) : null}
       </div>
     </SettingsChrome>
   );

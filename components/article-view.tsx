@@ -727,6 +727,7 @@ export function ArticleView({
   publishVendors,
   publishTargets,
   publications,
+  publishEnabled,
 }: {
   article: Article;
   languages: Language[];
@@ -736,6 +737,8 @@ export function ArticleView({
   publishVendors: PublishVendorChoice[];
   publishTargets: { language_code: string; vendor_id: string }[];
   publications: ContentPublication[];
+  /** False while publishing is switched off: no publish time or providers shown. */
+  publishEnabled: boolean;
 }) {
   const options = Array.from(
     new Set([
@@ -985,7 +988,7 @@ export function ArticleView({
         <span aria-hidden>·</span>
         <span>Source {languageName(languages, article.source_language)}</span>
         <Badge tone={statusTone(article.status)}>{STATUS_LABEL[article.status]}</Badge>
-        {article.scheduled_publish_at ? (
+        {publishEnabled && article.scheduled_publish_at ? (
           <span>
             Due{" "}
             {formatStamp(article.scheduled_publish_at)}
@@ -993,24 +996,26 @@ export function ArticleView({
         ) : null}
       </Card>
 
-      <PublishLanguagePicker
-        applicationId={applicationId}
-        languages={languages}
-        sourceLanguage={article.source_language}
-        languageCodes={article.target_languages ?? []}
-        vendors={publishVendors}
-        selected={publishTargets}
-        publications={publications}
-        ready
-        readOnly
-        onChange={() => {}}
-        articleStatus={article.status}
-        scheduledPublishAt={article.scheduled_publish_at}
-        languageSchedule={article.language_publish_at}
-        approvedLanguages={article.translations
-          .filter((row) => row.status === "APPROVED")
-          .map((row) => row.language_code)}
-      />
+      {publishEnabled ? (
+        <PublishLanguagePicker
+          applicationId={applicationId}
+          languages={languages}
+          sourceLanguage={article.source_language}
+          languageCodes={article.target_languages ?? []}
+          vendors={publishVendors}
+          selected={publishTargets}
+          publications={publications}
+          ready
+          readOnly
+          onChange={() => {}}
+          articleStatus={article.status}
+          scheduledPublishAt={article.scheduled_publish_at}
+          languageSchedule={article.language_publish_at}
+          approvedLanguages={article.translations
+            .filter((row) => row.status === "APPROVED")
+            .map((row) => row.language_code)}
+        />
+      ) : null}
 
       <Card className="overflow-visible">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--hub-border)] px-4 py-3">

@@ -2,6 +2,7 @@ import { AppSubnav } from "@/components/app-subnav";
 import { CollapsibleSection } from "@/components/collapsible-section";
 import { SettingsTabs } from "@/components/settings-tabs";
 import { PageHeader } from "@/components/ui";
+import { isProduction } from "@/lib/env";
 import type { AppAccess, Application } from "@/lib/types";
 
 export function SettingsChrome({
@@ -15,6 +16,7 @@ export function SettingsChrome({
 }) {
   // Only CONTENT has settings tabs. Catalog and string apps reach People and Roles from their own tabs.
   const withoutTabs = application.model_type !== "CONTENT";
+  const publishing = !isProduction();
   return (
     <div>
       <PageHeader
@@ -22,7 +24,9 @@ export function SettingsChrome({
         description={
           withoutTabs
             ? "Who can open this application, and what each role can do."
-            : "Article types, review emails, people, roles, translation checks and publish connections."
+            : publishing
+              ? "Article types, review emails, people, roles, translation checks and publish connections."
+              : "Article types, review emails, people, roles and translation checks."
         }
       />
       <AppSubnav application={application} />
@@ -31,6 +35,7 @@ export function SettingsChrome({
           applicationId={application.id}
           canManage={application.access.can_manage}
           canManageRoles={application.access.permissions.includes("roles.manage")}
+          publishing={publishing}
         />
       )}
       {children}

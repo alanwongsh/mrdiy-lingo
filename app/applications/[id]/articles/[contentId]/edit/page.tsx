@@ -66,6 +66,7 @@ export default async function ArticleEditPage({
         publications={publish.publications}
         publishReady={publish.ready}
         publishNotice={publish.notice}
+        publishEnabled={publish.enabled}
       />
     </div>
   );

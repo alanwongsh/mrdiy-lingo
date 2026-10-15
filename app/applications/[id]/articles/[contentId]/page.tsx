@@ -89,6 +89,7 @@ export default async function ArticleDetailPage({
         publishVendors={publish.vendors}
         publishTargets={publish.targets}
         publications={publish.publications}
+        publishEnabled={publish.enabled}
       />
       <ArticleActivity events={activity} loadError={activityError} />
       <ArticleComments

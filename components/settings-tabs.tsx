@@ -7,12 +7,15 @@ export function SettingsTabs({
   applicationId,
   canManage,
   canManageRoles,
+  publishing,
 }: {
   applicationId: string;
   /** People is shown to people with people.manage. */
   canManage: boolean;
   /** Roles is shown to people with roles.manage. */
   canManageRoles: boolean;
+  /** False while publishing is switched off. */
+  publishing: boolean;
 }) {
   const pathname = usePathname();
   const base = `/applications/${applicationId}/settings`;
@@ -20,7 +23,7 @@ export function SettingsTabs({
     { href: `${base}/general`, label: "General" },
     ...(canManage ? [{ href: `${base}/people`, label: "People" }] : []),
     ...(canManageRoles ? [{ href: `${base}/roles`, label: "Roles" }] : []),
-    { href: `${base}/quality`, label: "Quality & publishing" },
+    { href: `${base}/quality`, label: publishing ? "Quality & publishing" : "Quality" },
   ];
 
   return (

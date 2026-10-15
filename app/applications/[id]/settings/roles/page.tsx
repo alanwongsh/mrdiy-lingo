@@ -3,6 +3,7 @@ import { listAccessRoles } from "@/lib/actions/access-roles";
 import { getApplication } from "@/lib/actions/applications";
 import { can } from "@/lib/auth/permissions";
 import { DbErrorPanel, formatDbError } from "@/lib/db/errors";
+import { isProduction } from "@/lib/env";
 import { AccessRolesManager } from "@/components/access-roles-manager";
 import { SettingsChrome } from "@/components/settings-chrome";
 import { Card } from "@/components/ui";
@@ -33,6 +34,7 @@ export default async function SettingsRolesPage({
           roles={access.roles}
           memberCounts={access.memberCounts}
           actorPermissions={app.access.permissions}
+          publishing={!isProduction()}
         />
       ) : (
         <Card className="p-5 text-sm text-amber-800">

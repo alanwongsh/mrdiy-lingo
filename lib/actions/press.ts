@@ -34,6 +34,7 @@ import { normalizeMarket } from "@/lib/markets";
 import { buildArticleWorkbook } from "@/lib/export/articles";
 import { replaceArticlePublishTargets } from "@/lib/publish/store";
 import { publishSchemaError } from "@/lib/publish/errors";
+import { isProduction } from "@/lib/env";
 import { syncArticlePublishStatus } from "@/lib/publish/run";
 import { isPublishable, normalizeLanguageSchedule } from "@/lib/publish/schedule";
 import {
@@ -490,7 +491,7 @@ export async function createArticle(input: {
       market: normalizeMarket(input.market),
       submitted_by_name: actor?.name ?? null,
       submitted_by_username: actor?.username ?? null,
-      scheduled_publish_at: input.scheduled_publish_at || null,
+      scheduled_publish_at: isProduction() ? null : input.scheduled_publish_at || null,
       ...publishTimestampPatch(status, null),
     })
     .select("*")
@@ -749,10 +750,12 @@ export async function updateArticle(
     status: nextStatus,
     ...publishTimestampPatch(nextStatus, current.published_at),
   };
-  if (input.scheduled_publish_at !== undefined) {
+  // With publishing off, publish times and providers are left as they are.
+  const canSetPublishing = !isProduction();
+  if (canSetPublishing && input.scheduled_publish_at !== undefined) {
     patch.scheduled_publish_at = input.scheduled_publish_at || null;
   }
-  if (input.language_publish_at !== undefined) {
+  if (canSetPublishing && input.language_publish_at !== undefined) {
     patch.language_publish_at = normalizeLanguageSchedule(input.language_publish_at);
   }
   if (input.target_languages !== undefined) {
@@ -826,7 +829,7 @@ export async function updateArticle(
       await persistArticleStatus(id, applicationId, "APPROVED");
     }
   }
-  if (input.publish_targets !== undefined) {
+  if (canSetPublishing && input.publish_targets !== undefined) {
     await replaceArticlePublishTargets(id, applicationId, input.publish_targets, [
       input.source_language,
       ...nextTargets,

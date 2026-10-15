@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireAppCapability, requireContentAccess } from "@/lib/auth/access";
 import { can } from "@/lib/auth/permissions";
 import { getDb } from "@/lib/db/client";
+import { isProduction } from "@/lib/env";
 import { publishSchemaError, throwPublishError } from "@/lib/publish/errors";
 import { readConfig } from "@/lib/publish/integrations/integration";
 import { getPublishIntegration, listPublishIntegrations } from "@/lib/publish/integrations/registry";
@@ -29,6 +30,8 @@ import type {
 import type { PublishIntegrationType } from "@/lib/publish/integrations/integration";
 
 export type ArticlePublishState = {
+  /** False when publishing is switched off for this deployment. Hide every publish control. */
+  enabled: boolean;
   ready: boolean;
   notice: string;
   vendors: PublishVendorChoice[];
@@ -40,7 +43,12 @@ function canConfigure(access: AppAccess) {
   return can(access, "settings.quality");
 }
 
+function requirePublishingEnabled() {
+  if (isProduction()) throw new UserFacingError("Publishing is not available yet.");
+}
+
 async function requireVendorAdmin(applicationId: string) {
+  requirePublishingEnabled();
   const grant = await requireAppCapability(applicationId, "view");
   if (!canConfigure(grant.access)) {
     throw new UserFacingError("Your role cannot change vendor settings.");
@@ -80,6 +88,7 @@ export async function listPublishIntegrationTypes(): Promise<PublishIntegrationT
 
 export async function listPublishVendors(applicationId: string): Promise<PublishVendor[]> {
   const grant = await requireAppCapability(applicationId, "view");
+  if (isProduction()) return [];
   const includeEndpoint = canConfigure(grant.access);
   const rows = await listVendorRows(applicationId);
   return rows.map((row) => toVendor(row, includeEndpoint));
@@ -87,6 +96,9 @@ export async function listPublishVendors(applicationId: string): Promise<Publish
 
 export async function getArticlePublish(contentId: string): Promise<ArticlePublishState> {
   const grant = await requireContentAccess(contentId, "view");
+  if (isProduction()) {
+    return { enabled: false, ready: false, notice: "", vendors: [], targets: [], publications: [] };
+  }
   try {
     const [vendors, targets, publications] = await Promise.all([
       listVendorRows(grant.applicationId),
@@ -95,6 +107,7 @@ export async function getArticlePublish(contentId: string): Promise<ArticlePubli
     ]);
     const names = new Map(vendors.map((vendor) => [vendor.id, vendor.name]));
     return {
+      enabled: true,
       ready: true,
       notice: "",
       vendors: vendors.map((vendor) => ({
@@ -124,6 +137,7 @@ export async function getArticlePublish(contentId: string): Promise<ArticlePubli
       throw error;
     }
     return {
+      enabled: true,
       ready: false,
       notice:
         schema?.message ??
@@ -202,6 +216,7 @@ export async function publishArticleNow(
   applicationId: string,
   targets: PublishLanguageTarget[]
 ): Promise<PublishRunResult> {
+  requirePublishingEnabled();
   const grant = await requireContentAccess(contentId, "edit");
   if (grant.applicationId !== applicationId) throw new UserFacingError("Article not found.");
   const db = await getDb();

@@ -7,6 +7,7 @@ import { getApplication } from "@/lib/actions/applications";
 import { listContentTypes } from "@/lib/actions/content-types";
 import { listLanguages } from "@/lib/actions/languages";
 import { previewTranslateArticle, saveNewArticle } from "@/lib/actions/press";
+import { checkIsProduction } from "@/lib/actions/env";
 import { DEFAULT_CONTENT_TYPE_CODE } from "@/lib/content-types";
 import type {
   ContentTypeRecord,
@@ -56,6 +57,7 @@ export default function NewArticlePage() {
   const [held, setHeld] = useState<Record<string, HeldTranslation>>({});
   const [bodyEpoch, setBodyEpoch] = useState(0);
   const [canApprove, setCanApprove] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [createdId, setCreatedId] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [translatingLabel, setTranslatingLabel] = useState("");
@@ -81,6 +83,7 @@ export default function NewArticlePage() {
     getApplication(applicationId).then((app) => {
       setCanApprove(!!app?.access.can_approve);
     });
+    checkIsProduction().then((production) => setPublishing(!production));
   }, [applicationId]);
 
   useEffect(() => {
@@ -302,7 +305,7 @@ export default function NewArticlePage() {
           sourceFields,
           market: market || null,
           targetLanguages,
-          scheduledPublishAt: scheduled ? new Date(scheduled).toISOString() : null,
+          scheduledPublishAt: publishing && scheduled ? new Date(scheduled).toISOString() : null,
           mode,
           translations: targetLanguages.flatMap((code) => {
             const row = heldRef.current[languageKey(code)];
@@ -393,17 +396,19 @@ export default function NewArticlePage() {
                 ))}
               </select>
             </Field>
-            <Field label="Publish time (optional)">
-              <DateTimePicker
-                name="scheduled_publish_at"
-                ariaLabel="Publish time"
-                value={publishAt}
-                onChange={setPublishAt}
-              />
-              <p className="text-xs text-[var(--hub-muted)]">
-                Goes live at this time once approved.
-              </p>
-            </Field>
+            {publishing ? (
+              <Field label="Publish time (optional)">
+                <DateTimePicker
+                  name="scheduled_publish_at"
+                  ariaLabel="Publish time"
+                  value={publishAt}
+                  onChange={setPublishAt}
+                />
+                <p className="text-xs text-[var(--hub-muted)]">
+                  Goes live at this time once approved.
+                </p>
+              </Field>
+            ) : null}
           </div>
           <Field label="Description">
             <textarea

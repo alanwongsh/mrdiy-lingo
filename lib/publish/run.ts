@@ -3,6 +3,7 @@ import { recordStatusChange } from "@/lib/audit";
 import { getDb } from "@/lib/db/client";
 import { throwPublishError } from "@/lib/publish/errors";
 import { deliverToVendor, publicationInFlight } from "@/lib/publish/deliver";
+import { isProduction } from "@/lib/env";
 import type { PublishArticle } from "@/lib/publish/integrations/integration";
 import type { SourceContentFields } from "@/lib/types";
 import { isDue, isPublishable, languagePublishAt, nextPublishStatus } from "@/lib/publish/schedule";
@@ -46,6 +47,7 @@ const BATCH = 25;
 
 export async function runDuePublications(applicationId?: string): Promise<PublishRunResult> {
   const result: PublishRunResult = { due: 0, delivered: 0, failed: 0, skipped: 0, notes: [] };
+  if (isProduction()) return result;
   const nowIso = new Date().toISOString();
   const db = await getDb();
 
@@ -169,6 +171,7 @@ export async function runDuePublications(applicationId?: string): Promise<Publis
 /** Sends one article's ticked languages now. The publish time is not required. */
 export async function publishContentNow(contentId: string): Promise<PublishRunResult> {
   const result: PublishRunResult = { due: 0, delivered: 0, failed: 0, skipped: 0, notes: [] };
+  if (isProduction()) return result;
   const db = await getDb();
   const { data, error } = await db
     .from("content")

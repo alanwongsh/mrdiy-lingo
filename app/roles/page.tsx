@@ -3,6 +3,7 @@ import { OrgRoleMap } from "@/components/org-role-map";
 import { listAccessRoles } from "@/lib/actions/access-roles";
 import { listOrgRoleMappings } from "@/lib/actions/org-roles";
 import { getCurrentUser } from "@/lib/auth/access";
+import { isProduction } from "@/lib/env";
 import { DbErrorPanel, formatDbError } from "@/lib/db/errors";
 import { PageHeader } from "@/components/ui";
 
@@ -72,6 +73,7 @@ export default async function DefaultRolesPage() {
         applicationId={null}
         roles={access.roles}
         memberCounts={access.memberCounts}
+        publishing={!isProduction()}
       />
     </div>
   );

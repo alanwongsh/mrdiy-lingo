@@ -205,6 +205,7 @@ export function ArticleEditor({
   publications,
   publishReady,
   publishNotice,
+  publishEnabled,
 }: {
   applicationId: string;
   article: ArticleWithTranslations;
@@ -220,6 +221,8 @@ export function ArticleEditor({
   publications: ContentPublication[];
   publishReady: boolean;
   publishNotice?: string;
+  /** False while publishing is switched off: no publish time or provider controls. */
+  publishEnabled: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -751,36 +754,40 @@ export function ArticleEditor({
               </p>
             ) : null}
           </div>
-          <Field label="Scheduled publish time (all languages)">
-            <DateTimePicker
-              ariaLabel="Publish time for all languages"
-              value={scheduledPublishAt}
-              onChange={setScheduledPublishAt}
-            />
-          </Field>
-          <div className="sm:col-span-2 lg:col-span-4">
-            <PublishLanguagePicker
-              applicationId={applicationId}
-              languages={languages}
-              sourceLanguage={sourceLanguage}
-              languageCodes={targetLanguages}
-              vendors={publishVendors}
-              selected={languageVendors}
-              publications={publications}
-              ready={publishReady}
-              notice={publishNotice}
-              publishing={pending}
-              onPublish={publishNow}
-              onChange={setLanguageVendors}
-              articleStatus={article.status}
-              scheduledPublishAt={fromLocalInput(scheduledPublishAt)}
-              languageSchedule={languageSchedule}
-              approvedLanguages={article.translations
-                .filter((row) => row.status === "APPROVED")
-                .map((row) => row.language_code)}
-              onScheduleChange={setLanguageSchedule}
-            />
-          </div>
+          {publishEnabled ? (
+            <>
+              <Field label="Scheduled publish time (all languages)">
+                <DateTimePicker
+                  ariaLabel="Publish time for all languages"
+                  value={scheduledPublishAt}
+                  onChange={setScheduledPublishAt}
+                />
+              </Field>
+              <div className="sm:col-span-2 lg:col-span-4">
+                <PublishLanguagePicker
+                  applicationId={applicationId}
+                  languages={languages}
+                  sourceLanguage={sourceLanguage}
+                  languageCodes={targetLanguages}
+                  vendors={publishVendors}
+                  selected={languageVendors}
+                  publications={publications}
+                  ready={publishReady}
+                  notice={publishNotice}
+                  publishing={pending}
+                  onPublish={publishNow}
+                  onChange={setLanguageVendors}
+                  articleStatus={article.status}
+                  scheduledPublishAt={fromLocalInput(scheduledPublishAt)}
+                  languageSchedule={languageSchedule}
+                  approvedLanguages={article.translations
+                    .filter((row) => row.status === "APPROVED")
+                    .map((row) => row.language_code)}
+                  onScheduleChange={setLanguageSchedule}
+                />
+              </div>
+            </>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
           <span>

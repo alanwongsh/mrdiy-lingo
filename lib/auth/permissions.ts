@@ -100,10 +100,30 @@ const MODEL_LABELS: Record<ApplicationModelType, string> = {
   STRING: "Strings",
 };
 
-/** The permissions that mean something in this type of application. Null lists all of them. */
-export function permissionsForModel(model: ApplicationModelType | null) {
-  return PERMISSIONS.filter(
+export type PermissionEntry = {
+  key: PermissionKey;
+  group: string;
+  label: string;
+  hint: string;
+  models?: readonly ApplicationModelType[];
+};
+
+/**
+ * The permissions that mean something in this type of application. Null lists all of them.
+ * With publishing switched off, settings.quality drops its publishing wording.
+ */
+export function permissionsForModel(
+  model: ApplicationModelType | null,
+  options: { publishing?: boolean } = {}
+): PermissionEntry[] {
+  const list: PermissionEntry[] = PERMISSIONS.filter(
     (item) => !model || !("models" in item) || (item.models as readonly string[]).includes(model)
+  );
+  if (options.publishing !== false) return list;
+  return list.map((item) =>
+    item.key === "settings.quality"
+      ? { ...item, label: "Quality scoring", hint: "Scoring weights and quality checks." }
+      : item
   );
 }
 
