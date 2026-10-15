@@ -653,6 +653,8 @@ flowchart TD
 
 Review emails are switched on or off per application under Settings → General → Notifications.
 
+A superadmin edits the email under **Email templates** (`/email-templates`): sender name, subject and full HTML body. All three can use `{{article_title}}`, `{{application_name}}`, `{{submitter_name}}` and `{{article_url}}`; values are HTML-escaped in the body. The plain-text copy is made from the HTML. A blank field, or a missing `email_templates` row, uses the built-in default in `lib/notifications/review-template.ts`. The editor shows a live preview with a sample article.
+
 ---
 
 ## 7. Translation service
@@ -730,7 +732,7 @@ Local and Vercel configuration (`.env.local` / Vercel project env):
 | `CRON_SECRET` | Bearer token the cron routes require. Without it, only Vercel Cron on Vercel is accepted |
 | `APP_BASE_URL` | Public Lingo URL, used for the article link in review emails |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | SMTP server for review emails. Port defaults to 465 (TLS). 587 uses STARTTLS. Without host, user, and password, emails are not sent |
-| `MAIL_FROM` | Sender address. Defaults to `SMTP_USER` |
+| `MAIL_FROM` | Full sender, such as `MR DIY Lingo <noreply@example.com>`. Replaces the sender name set under Email templates. Gmail needs a verified "Send mail as" alias. Unset, emails come from `SMTP_USER` |
 
 Migrations, in order:
 
@@ -762,6 +764,7 @@ Migrations, in order:
 26. `026_access_role_permissions.sql` — permission map per role (`access_role_permissions`). Converts the edit, approve, and manage switches from 025 and drops them
 27. `027_application_roles.sql` — roles per application. Copies the default roles into every application, moves members onto their application's copy, and adds `roles.manage` wherever `people.manage` was
 28. `028_boilerplate_per_application.sql` — each application keeps its own boilerplate. Copies the shared phrases into every CONTENT application and adds `settings.boilerplate` wherever `settings.terminology` was
+29. `029_email_templates.sql` — `email_templates` table holding the superadmin sender name, subject and HTML body of system emails, one row per kind (`ARTICLE_REVIEW`)
 
 `npm run db:migrate` applies every pending file and records it in `_migrations`.
 

@@ -47,6 +47,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     nav.push({ href: "/roles", label: "Default roles" });
     nav.push({ href: "/job-titles", label: "Job titles" });
     nav.push({ href: "/languages", label: "Languages" });
+    nav.push({ href: "/email-templates", label: "Email templates" });
     nav.push({ href: "/logs", label: "Logs" });
   }
   if (setupOpen) {

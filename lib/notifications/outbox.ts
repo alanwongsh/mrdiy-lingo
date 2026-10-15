@@ -1,6 +1,13 @@
 import { getDb } from "@/lib/db/client";
 import { resolveAppAccess } from "@/lib/auth/access";
 import { mailConfigured, sendMail } from "@/lib/mail";
+import {
+  DEFAULT_REVIEW_TEMPLATE,
+  renderReviewEmail,
+  resolveReviewTemplate,
+  type ReviewTemplate,
+} from "@/lib/notifications/review-template";
+import { isMissingEmailTemplates, loadSavedReviewTemplate } from "@/lib/notifications/template-store";
 import type { HubUser } from "@/lib/types";
 
 export type OutboxRunResult = {
@@ -36,10 +43,6 @@ type ReviewArticle = {
 
 const BATCH = 20;
 const MAX_ATTEMPTS = 5;
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
-}
 
 function articleUrl(article: ReviewArticle): string | null {
   const base = process.env.APP_BASE_URL?.trim().replace(/\/+$/, "");
@@ -83,24 +86,25 @@ async function approverEmails(
   return [...emails];
 }
 
-function reviewMessage(article: ReviewArticle) {
-  const appName = article.application?.name ?? "Lingo";
-  const submitter = article.submitted_by_name?.trim();
-  const url = articleUrl(article);
-  const subject = `Review needed: ${article.title}`;
-  const text = [
-    `"${article.title}" is ready for review in ${appName}.`,
-    submitter ? `Submitted by ${submitter}.` : "",
-    url ? `Open it: ${url}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-  const html = [
-    `<p><strong>${escapeHtml(article.title)}</strong> is ready for review in ${escapeHtml(appName)}.</p>`,
-    submitter ? `<p>Submitted by ${escapeHtml(submitter)}.</p>` : "",
-    url ? `<p><a href="${escapeHtml(url)}">Open the article</a></p>` : "",
-  ].join("");
-  return { subject, text, html };
+function reviewMessage(article: ReviewArticle, template: ReviewTemplate) {
+  return renderReviewEmail(template, {
+    article_title: article.title,
+    application_name: article.application?.name ?? "Lingo",
+    submitter_name: article.submitted_by_name?.trim() || "A team member",
+    article_url: articleUrl(article) ?? "",
+  });
+}
+
+/** Superadmin wording when saved, else the built-in default. */
+async function reviewTemplate(notes: string[]): Promise<ReviewTemplate> {
+  try {
+    return resolveReviewTemplate(await loadSavedReviewTemplate());
+  } catch (error) {
+    if (!isMissingEmailTemplates(error as { code?: string })) {
+      notes.push(`Email template: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return DEFAULT_REVIEW_TEMPLATE;
+  }
 }
 
 async function settle(id: string, patch: Record<string, unknown>) {
@@ -112,7 +116,11 @@ async function settle(id: string, patch: Record<string, unknown>) {
   if (error) throw new Error(error.message);
 }
 
-async function deliverReviewNotice(row: OutboxRow, result: OutboxRunResult) {
+async function deliverReviewNotice(
+  row: OutboxRow,
+  template: ReviewTemplate,
+  result: OutboxRunResult
+) {
   const db = await getDb();
   const { data, error } = await db
     .from("content")
@@ -147,7 +155,7 @@ async function deliverReviewNotice(row: OutboxRow, result: OutboxRunResult) {
     return;
   }
 
-  const message = reviewMessage(article);
+  const message = reviewMessage(article, template);
   const sentTo = [...alreadySent];
   const errors: string[] = [];
   for (const to of recipients) {
@@ -199,10 +207,11 @@ export async function deliverPendingNotifications(): Promise<OutboxRunResult> {
   if (error) throw new Error(error.message);
   const rows = (data ?? []) as OutboxRow[];
   result.claimed = rows.length;
+  const template = rows.length > 0 ? await reviewTemplate(result.notes) : DEFAULT_REVIEW_TEMPLATE;
 
   for (const row of rows) {
     try {
-      await deliverReviewNotice(row, result);
+      await deliverReviewNotice(row, template, result);
     } catch (rowError) {
       const message = rowError instanceof Error ? rowError.message : String(rowError);
       result.notes.push(`${row.id}: ${message}`);

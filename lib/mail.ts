@@ -27,17 +27,31 @@ function getTransport(): Transporter {
   return transport;
 }
 
+/** True when MAIL_FROM fixes the whole sender, so a template's sender name is ignored. */
+export function mailFromOverridden(): boolean {
+  return Boolean(process.env.MAIL_FROM?.trim());
+}
+
 export async function sendMail(input: {
   to: string;
   subject: string;
   text: string;
   html: string;
+  /** Sender name shown in the inbox. */
+  fromName?: string;
 }): Promise<void> {
   await getTransport().sendMail({
-    from: process.env.MAIL_FROM?.trim() || process.env.SMTP_USER!.trim(),
+    // Gmail only sends as the signed-in account or a verified alias, so by
+    // default keep that address and show the template's name in front of it.
+    from: process.env.MAIL_FROM?.trim() || {
+      name: input.fromName?.trim() || "MR DIY Lingo (No-Reply)",
+      address: process.env.SMTP_USER!.trim(),
+    },
     to: input.to,
     subject: input.subject,
     text: input.text,
     html: input.html,
+    // Asks mail servers not to send out-of-office replies back.
+    headers: { "Auto-Submitted": "auto-generated" },
   });
 }
