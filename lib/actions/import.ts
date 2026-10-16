@@ -23,8 +23,9 @@ import {
 import { ensureContentType } from "@/lib/actions/content-types";
 import type { ContentLifecycleStatus, SourceContentFields } from "@/lib/types";
 import { emptySourceContent } from "@/lib/types";
-import { requireAppCapability } from "@/lib/auth/access";
+import { requireAppCapability, requireChosenMarket } from "@/lib/auth/access";
 import { normalizeTargetLanguages } from "@/lib/target-languages";
+import { errorMessage } from "@/lib/errors";
 
 export async function previewStringImport(input: {
   applicationId: string;
@@ -228,11 +229,13 @@ export async function previewArticleImport(input: {
   applicationId: string;
   filename: string;
   base64: string;
+  /** Used for rows without a market column value. */
+  defaultMarket?: string;
 }): Promise<{
   items: ArticleImportPreviewItem[];
   summary: ReturnType<typeof summarizePreview>;
 }> {
-  await requireAppCapability(input.applicationId, "content.import");
+  const grant = await requireAppCapability(input.applicationId, "content.import");
   const buffer = Buffer.from(input.base64, "base64");
   const rows = parseArticleTranslationFile(
     buffer.buffer.slice(
@@ -246,7 +249,12 @@ export async function previewArticleImport(input: {
     if (!row.title) {
       return { ...row, action: "ERROR", error: "Missing title" };
     }
-    return { ...row, action: "NEW" };
+    try {
+      const market = requireChosenMarket(grant.access, row.market || input.defaultMarket);
+      return { ...row, market, action: "NEW" };
+    } catch (error) {
+      return { ...row, action: "ERROR", error: errorMessage(error, "Invalid market") };
+    }
   });
 
   return { items, summary: summarizePreview(items) };
@@ -257,6 +265,8 @@ export async function confirmArticleImport(input: {
   filename: string;
   base64: string;
   translateLanguages?: string[];
+  /** Used for rows without a market column value. */
+  defaultMarket?: string;
 }): Promise<{
   imported: number;
   updated: number;
@@ -309,6 +319,7 @@ export async function confirmArticleImport(input: {
         source_language: item.source_language,
         source_content: fields,
         content_type: type.code,
+        market: item.market,
         // TRANSLATING is retired; older files that still use it import as drafts.
         status:
           item.status === "TRANSLATING"

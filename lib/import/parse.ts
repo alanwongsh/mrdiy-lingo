@@ -24,6 +24,8 @@ export type ArticleImportRow = {
   source_language: string;
   content_type: string;
   status: string;
+  /** Market code from the file. Empty means the default market chosen in the wizard. */
+  market: string;
   fields: SourceContentFields;
   translations: Record<string, Partial<SourceContentFields>>;
   rowNumber: number;
@@ -130,6 +132,7 @@ export function parseArticleTranslationFile(
   const sourceLangIdx = idx("source_language");
   const typeIdx = idx("content_type");
   const statusIdx = idx("status");
+  const marketIdx = idx("market");
 
   const translationCols = headerRaw
     .map((name, index) => {
@@ -175,6 +178,7 @@ export function parseArticleTranslationFile(
           typeIdx >= 0 ? String(row[typeIdx] ?? "") : ""
         ) || DEFAULT_CONTENT_TYPE_CODE,
       status: String(row[statusIdx] ?? "DRAFT").trim() || "DRAFT",
+      market: marketIdx >= 0 ? String(row[marketIdx] ?? "").trim() : "",
       fields,
       translations,
       rowNumber: i + 1,

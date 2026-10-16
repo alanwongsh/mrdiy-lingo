@@ -32,6 +32,15 @@ import { ensureDefaultContentType } from "@/lib/actions/content-types";
 import { ensureCatalogFields } from "@/lib/actions/catalog";
 import { catalogTemplate } from "@/lib/catalog";
 import { getDb } from "@/lib/db/client";
+import {
+  assertCanChangeUnitHolder,
+  assignableUnits,
+  ensureAllCountriesUnit,
+  listBusinessUnits,
+  loadMemberUnitIds,
+  replaceMemberUnits,
+  type BusinessUnit,
+} from "@/lib/auth/business-units";
 import type {
   AppAccess,
   AccessRole,
@@ -147,6 +156,7 @@ export async function createApplication(input: {
   const application = data as Application;
   if (application.model_type === "CONTENT") {
     await ensureDefaultContentType(application.id);
+    await ensureAllCountriesUnit(application.id);
   }
   if (application.model_type === "CATALOG") {
     await ensureCatalogFields(application.id, input.template);
@@ -184,6 +194,7 @@ export async function updateApplication(
   const application = data as Application;
   if (application.model_type === "CONTENT") {
     await ensureDefaultContentType(application.id);
+    await ensureAllCountriesUnit(application.id);
   }
   if (application.model_type === "CATALOG") {
     await ensureCatalogFields(application.id);
@@ -236,12 +247,14 @@ export async function listApplicationPeople(applicationId: string): Promise<{
   members: ApplicationMemberView[];
   orgRoles: Awaited<ReturnType<typeof loadOrgRoleMap>>;
   accessRoles: AccessRole[] | null;
+  /** Null where units do not apply: non-article apps, or before migration 032. */
+  businessUnits: BusinessUnit[] | null;
 }> {
   await requireAppCapability(applicationId, "manage");
   const db = await getDb();
   const { data: app, error: appError } = await db
     .from("applications")
-    .select("owner_user_id")
+    .select("owner_user_id, model_type")
     .eq("id", applicationId)
     .maybeSingle();
   if (appError) throw new Error(appError.message);
@@ -269,6 +282,7 @@ export async function listApplicationPeople(applicationId: string): Promise<{
         canEdit: true,
         canApprove: true,
         canManage: true,
+        businessUnitIds: null,
       };
     }
   }
@@ -311,6 +325,10 @@ export async function listApplicationPeople(applicationId: string): Promise<{
   }
 
   const orgRoles = await loadOrgRoleMap();
+  const businessUnits = app.model_type === "CONTENT" ? await listBusinessUnits(applicationId) : null;
+  const memberUnits = businessUnits
+    ? await loadMemberUnitIds((rows ?? []).map((row) => row.id as string))
+    : null;
   const members = (rows ?? []).flatMap((row): ApplicationMemberView[] => {
     const user = (Array.isArray(row.user) ? row.user[0] : row.user) as HubUser | null;
     if (!user) return [];
@@ -321,6 +339,7 @@ export async function listApplicationPeople(applicationId: string): Promise<{
       detail: personDetail(user),
       ldapRole: user.ldap_role ?? null,
       ...accountState(user),
+      businessUnitIds: memberUnits ? (memberUnits.get(row.id as string) ?? []) : null,
     };
     const assigned = accessRoles?.find((role) => role.id === row.access_role_id);
     if (assigned) {
@@ -351,7 +370,7 @@ export async function listApplicationPeople(applicationId: string): Promise<{
     ];
   });
 
-  return { owner, members, orgRoles, accessRoles };
+  return { owner, members, orgRoles, accessRoles, businessUnits };
 }
 
 function mappedTitle(
@@ -442,6 +461,25 @@ function assertCanChangeHolder(
 }
 
 /** Columns that give one membership a role. The older role columns follow it. */
+/** Business units for a member change. Null where units do not apply: non-article apps, or before migration 032. */
+async function unitsForChange(applicationId: string): Promise<BusinessUnit[] | null> {
+  const db = await getDb();
+  const { data, error } = await db
+    .from("applications")
+    .select("model_type")
+    .eq("id", applicationId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (data?.model_type !== "CONTENT") return null;
+  return listBusinessUnits(applicationId);
+}
+
+async function currentUnitIds(membershipId: string): Promise<string[]> {
+  return (await loadMemberUnitIds([membershipId]))?.get(membershipId) ?? [];
+}
+
+const OWN_UNIT_MESSAGE = "Ask the owner or another manager to change your own business unit.";
+
 function membershipRoleColumns(role: AccessRole) {
   const approves = role.permissions.includes("content.approve");
   return {
@@ -522,6 +560,8 @@ export async function inviteApplicationMember(input: {
   identity: string;
   ldapRole: string;
   accessRoleId?: string;
+  /** Required for article apps once migration 032 is run. The UI sends one for now. */
+  businessUnitIds?: string[];
   displayName?: string;
   /** Optional. With one, they can also sign in on /sign-in without Joget. */
   password?: string;
@@ -559,9 +599,13 @@ export async function inviteApplicationMember(input: {
         return { error: OWN_ROLE_MESSAGE };
       }
       const role = assignableRole(accessRoles, input.accessRoleId ?? "", actorAccess);
+      const units = await unitsForChange(input.applicationId);
+      const chosenUnits = units
+        ? assignableUnits(units, input.businessUnitIds ?? [], actorAccess)
+        : [];
       const existing = await db
         .from("application_members")
-        .select("access_role_id")
+        .select("id, access_role_id")
         .eq("application_id", input.applicationId)
         .eq("user_id", user.id)
         .maybeSingle();
@@ -571,6 +615,9 @@ export async function inviteApplicationMember(input: {
         (existing.data?.access_role_id as string | null) ?? null,
         actorAccess
       );
+      if (units && existing.data?.id) {
+        assertCanChangeUnitHolder(units, await currentUnitIds(existing.data.id as string), actorAccess);
+      }
       // A blank job title keeps the one already on the account, such as one from Joget.
       const title = await resolveJobTitle(input.ldapRole);
       if (title) {
@@ -580,15 +627,22 @@ export async function inviteApplicationMember(input: {
           .eq("id", user.id);
         if (userError) return { error: accessErrorMessage(userError) };
       }
-      const { error } = await db.from("application_members").upsert(
-        {
-          application_id: input.applicationId,
-          user_id: user.id,
-          ...membershipRoleColumns(role),
-        },
-        { onConflict: "application_id,user_id" }
-      );
+      const { data: saved, error } = await db
+        .from("application_members")
+        .upsert(
+          {
+            application_id: input.applicationId,
+            user_id: user.id,
+            ...membershipRoleColumns(role),
+          },
+          { onConflict: "application_id,user_id" }
+        )
+        .select("id")
+        .single();
       if (error) return { error: accessErrorMessage(error) };
+      if (units) {
+        await replaceMemberUnits(String(saved.id), chosenUnits.map((unit) => unit.id));
+      }
       const signInError = await writeSignIn(user.id, { displayName, password });
       if (signInError) return { error: signInError };
       revalidateApplication(input.applicationId);
@@ -678,6 +732,8 @@ export async function updateApplicationMember(input: {
   membershipId: string;
   ldapRole: string;
   accessRoleId?: string;
+  /** Omitted keeps their current business units. */
+  businessUnitIds?: string[];
 }): Promise<void> {
   const { user: actor, access: actorAccess } = await requireAppCapability(input.applicationId, "manage");
   const db = await getDb();
@@ -710,6 +766,21 @@ export async function updateApplicationMember(input: {
     throw new UserFacingError(OWN_ROLE_MESSAGE);
   }
   assertCanChangeHolder(accessRoles, currentRoleId, actorAccess);
+  const units = await unitsForChange(input.applicationId);
+  let nextUnitIds: string[] | null = null;
+  if (units && input.businessUnitIds !== undefined) {
+    const before = await currentUnitIds(input.membershipId);
+    const chosen = assignableUnits(units, input.businessUnitIds, actorAccess).map((unit) => unit.id);
+    const unitsChanged =
+      before.length !== chosen.length || before.some((id) => !chosen.includes(id));
+    if (unitsChanged) {
+      if (member.user_id === actor.id && !actor.is_superadmin) {
+        throw new UserFacingError(OWN_UNIT_MESSAGE);
+      }
+      assertCanChangeUnitHolder(units, before, actorAccess);
+      nextUnitIds = chosen;
+    }
+  }
   const { error: userError } = await db
     .from("hub_users")
     .update({ ldap_role: title })
@@ -721,6 +792,7 @@ export async function updateApplicationMember(input: {
     .eq("id", input.membershipId)
     .eq("application_id", input.applicationId);
   if (error) throw new Error(accessErrorMessage(error));
+  if (nextUnitIds) await replaceMemberUnits(input.membershipId, nextUnitIds);
   revalidateApplication(input.applicationId);
 }
 
@@ -744,6 +816,10 @@ export async function removeApplicationMember(input: {
       (current.data?.access_role_id as string | null) ?? null,
       access
     );
+  }
+  const units = await unitsForChange(input.applicationId);
+  if (units) {
+    assertCanChangeUnitHolder(units, await currentUnitIds(input.membershipId), access);
   }
   const { error } = await db
     .from("application_members")

@@ -23,6 +23,9 @@ export function SettingsTabs({
     { href: `${base}/general`, label: "General" },
     ...(canManage ? [{ href: `${base}/people`, label: "People" }] : []),
     ...(canManageRoles ? [{ href: `${base}/roles`, label: "Roles" }] : []),
+    ...(canManageRoles
+      ? [{ href: `${base}/business-units`, label: "Business units" }]
+      : []),
     { href: `${base}/quality`, label: publishing ? "Quality & publishing" : "Quality" },
   ];
 

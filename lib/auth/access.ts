@@ -4,6 +4,8 @@ import type { HubActor } from "@/lib/auth/actor";
 import { getActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
 import { isMissingAccessRoles, loadAccessRoles } from "@/lib/auth/access-roles";
+import { canSeeMarket, loadMemberMarkets } from "@/lib/auth/business-units";
+import { MARKETS, marketName, normalizeMarket } from "@/lib/markets";
 import { bandForLdapRole, loadOrgRoleMap } from "@/lib/auth/org-roles";
 import {
   capabilitiesForRole,
@@ -263,10 +265,12 @@ export function hasPermission(
 export function accessFromPermissions(
   role: string | null,
   permissions: readonly PermissionKey[],
-  isOwner = false
+  isOwner = false,
+  markets: string[] | null = null
 ): AppAccess {
   return {
     is_owner: isOwner,
+    markets,
     role,
     permissions: [...permissions],
     can_edit: permissions.includes("content.edit"),
@@ -299,7 +303,10 @@ export async function resolveAppAccess(
     const assigned = (await loadAccessRoles(application.id))?.find(
       (role) => role.id === membership.access_role_id
     );
-    if (assigned) return accessFromPermissions(assigned.name, assigned.permissions);
+    if (assigned) {
+      const markets = membership.id ? await loadMemberMarkets(membership.id) : null;
+      return accessFromPermissions(assigned.name, assigned.permissions, false, markets);
+    }
   }
 
   // Before migration 026: the job title group decides.
@@ -319,6 +326,7 @@ async function loadMembership(
   applicationId: string,
   userId: string
 ): Promise<{
+  id: string | null;
   role: AppRole;
   can_edit: boolean;
   can_approve: boolean;
@@ -327,7 +335,7 @@ async function loadMembership(
   const db = await getDb();
   const withAccessRole = await db
     .from("application_members")
-    .select("role, can_edit, can_approve, access_role_id")
+    .select("id, role, can_edit, can_approve, access_role_id")
     .eq("application_id", applicationId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -338,6 +346,7 @@ async function loadMembership(
       roleFromApprovalFlag(!!withAccessRole.data.can_approve);
     const caps = capabilitiesForRole(role);
     return {
+      id: (withAccessRole.data.id as string | null) ?? null,
       role,
       can_edit: caps.can_edit,
       can_approve: caps.can_approve,
@@ -368,6 +377,7 @@ async function loadMembership(
     if (!legacy.data) return null;
     const canApprove = !!legacy.data.can_approve;
     return {
+      id: null,
       role: roleFromApprovalFlag(canApprove),
       can_edit: !!legacy.data.can_edit,
       can_approve: canApprove,
@@ -381,6 +391,7 @@ async function loadMembership(
     roleFromApprovalFlag(!!withRole.data.can_approve);
   const caps = capabilitiesForRole(role);
   return {
+    id: null,
     role,
     can_edit: caps.can_edit,
     can_approve: caps.can_approve,
@@ -421,6 +432,15 @@ export async function requireAppCapability(
   return { user, applicationId: application.id, access };
 }
 
+/** The signed-in person's access to an application, or null when they have none. */
+export async function currentAppAccess(applicationId: string): Promise<AppAccess | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const application = await loadApplication(applicationId);
+  if (!application) return null;
+  return resolveAppAccess(user, application);
+}
+
 export async function allowAppCapability(
   applicationId: string,
   capability: AppCapability
@@ -454,8 +474,42 @@ export async function requireContentAccess(
   contentId: string,
   capability: AppCapability
 ): Promise<AccessGrant> {
-  const applicationId = await applicationIdFrom("content", contentId, "Article not found.");
-  return requireAppCapability(applicationId, capability);
+  const db = await getDb();
+  const { data, error } = await db
+    .from("content")
+    .select("application_id, market")
+    .eq("id", contentId)
+    .maybeSingle();
+  if (error) throwDb(error);
+  if (!data?.application_id) throw new UserFacingError("Article not found.");
+  const grant = await requireAppCapability(data.application_id as string, capability);
+  requireMarketAccess(grant.access, data.market as string | null);
+  return grant;
+}
+
+/** A market picked for an article: required, from the market list, and in the person's units. */
+export function requireChosenMarket(access: AppAccess, market: string | null | undefined): string {
+  const code = normalizeMarket(market);
+  if (!code) throw new UserFacingError("Choose a market for this article.");
+  if (!MARKETS.some((item) => item.code === code)) {
+    throw new UserFacingError(`“${code}” is not a market this app knows.`);
+  }
+  if (!canSeeMarket(access, code)) {
+    throw new UserFacingError(
+      `${marketName(code)} is outside your business unit. Choose one of your markets.`
+    );
+  }
+  return code;
+}
+
+/** Throws unless the person's business units cover this market. */
+export function requireMarketAccess(access: AppAccess, market: string | null | undefined) {
+  if (canSeeMarket(access, market)) return;
+  throw new UserFacingError(
+    access.markets?.length
+      ? "This article belongs to a country outside your business unit."
+      : "You are not in a business unit yet, so you cannot see articles. Ask the application owner to add you to one."
+  );
 }
 
 export async function requireContentTranslationAccess(

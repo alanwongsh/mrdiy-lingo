@@ -117,6 +117,11 @@ export type AppAccess = {
   can_approve: boolean;
   /** people.manage */
   can_manage: boolean;
+  /**
+   * Article markets from the member's business units. Null means every market (owner,
+   * superadmin, or before migration 032). Empty means no articles. Articles only.
+   */
+  markets: string[] | null;
 };
 
 export type VisibleApplication = Application & {
@@ -138,6 +143,8 @@ export type ApplicationMemberView = {
   canEdit: boolean;
   canApprove: boolean;
   canManage: boolean;
+  /** Business units they are in. Null where units do not apply: the owner, non-article apps, before migration 032. */
+  businessUnitIds: string[] | null;
 };
 
 export type Namespace = {

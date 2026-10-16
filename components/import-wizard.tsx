@@ -4,7 +4,8 @@ import { errorMessage } from "@/lib/errors";
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { confirmArticleImport, confirmStringImport } from "@/lib/actions/import";
-import type { Application, Language } from "@/lib/types";
+import type { AppAccess, Application, Language } from "@/lib/types";
+import { MARKETS } from "@/lib/markets";
 import { Badge, Button, Card, Field, inputClass } from "@/components/ui";
 import { LanguageMultiSelect } from "@/components/language-multi-select";
 
@@ -109,6 +110,11 @@ function ImportFormatGuide({
             <span className="font-medium text-slate-800">status</span> is DRAFT,
             REVIEW, APPROVED, or PUBLISHED.
           </li>
+          <li>
+            <span className="font-medium text-slate-800">market</span> is a country
+            code such as MY or TH. A blank market uses the default market chosen
+            below. Rows for a country outside your business unit are skipped.
+          </li>
         </ul>
       ) : (
         <ul className="list-disc space-y-1 pl-5 text-xs leading-5 text-slate-600">
@@ -160,7 +166,7 @@ export function ImportWizard({
   fixedApplicationId,
   lockedType,
 }: {
-  applications: Application[];
+  applications: (Application & { access?: Pick<AppAccess, "markets"> })[];
   languages: Language[];
   fixedApplicationId?: string;
   lockedType?: "STRING" | "CONTENT";
@@ -189,6 +195,16 @@ export function ImportWizard({
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
   const [translateLanguages, setTranslateLanguages] = useState<string[]>([]);
+  const allowedMarkets = selectedApp?.access?.markets ?? null;
+  const marketOptions = MARKETS.filter(
+    (market) => allowedMarkets === null || allowedMarkets.includes(market.code)
+  );
+  const [defaultMarket, setDefaultMarket] = useState("");
+  const chosenMarket = marketOptions.some((market) => market.code === defaultMarket)
+    ? defaultMarket
+    : marketOptions.length === 1
+      ? marketOptions[0].code
+      : "";
   const doneHref = applicationId
     ? importType === "CONTENT"
       ? `/applications/${applicationId}/articles`
@@ -214,6 +230,7 @@ export function ImportWizard({
                 filename: file.name,
                 base64,
                 translateLanguages,
+                defaultMarket: chosenMarket || undefined,
               });
         setReceipt({
           filename: file.name,
@@ -292,6 +309,29 @@ export function ImportWizard({
             Accepts .csv, .xlsx, or .xls
           </p>
         </Field>
+
+        {importType === "CONTENT" ? (
+          <Field label="Default market">
+            <select
+              className={inputClass}
+              value={chosenMarket}
+              onChange={(e) => {
+                setDefaultMarket(e.target.value);
+                setReceipt(null);
+              }}
+            >
+              <option value="">Use the market column only</option>
+              {marketOptions.map((market) => (
+                <option key={market.code} value={market.code}>
+                  {market.name} ({market.code})
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-xs text-[var(--hub-muted)]">
+              For rows with a blank market. Every article needs a market.
+            </p>
+          </Field>
+        ) : null}
 
         {languages.length > 0 ? (
           <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4">

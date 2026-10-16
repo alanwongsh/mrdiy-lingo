@@ -1,5 +1,6 @@
 import { getDb } from "@/lib/db/client";
 import { resolveAppAccess } from "@/lib/auth/access";
+import { canSeeMarket } from "@/lib/auth/business-units";
 import { mailConfigured, sendMail } from "@/lib/mail";
 import {
   DEFAULT_REVIEW_TEMPLATE,
@@ -32,6 +33,7 @@ type ReviewArticle = {
   application_id: string;
   title: string;
   status: string;
+  market: string | null;
   submitted_by_name: string | null;
   application: {
     id: string;
@@ -51,8 +53,10 @@ function articleUrl(article: ReviewArticle): string | null {
 }
 
 /** Owner and members who can approve in this application, by the same rules as the app. */
+/** Approvers whose business units cover the article's market. */
 async function approverEmails(
-  application: NonNullable<ReviewArticle["application"]>
+  application: NonNullable<ReviewArticle["application"]>,
+  market: string | null
 ): Promise<string[]> {
   const db = await getDb();
   const { data: members, error } = await db
@@ -78,7 +82,7 @@ async function approverEmails(
   const emails = new Set<string>();
   for (const user of (users ?? []) as HubUser[]) {
     const access = await resolveAppAccess(user, application);
-    if (!access?.can_approve) continue;
+    if (!access?.can_approve || !canSeeMarket(access, market)) continue;
     const email = user.email?.trim().toLowerCase();
     if (email) emails.add(email);
     else console.warn(`[notifications] Approver ${user.id} has no email address; skipped.`);
@@ -125,7 +129,7 @@ async function deliverReviewNotice(
   const { data, error } = await db
     .from("content")
     .select(
-      "id, application_id, title, status, submitted_by_name, application:applications(id, name, owner_user_id, notify_review_email)"
+      "id, application_id, title, status, market, submitted_by_name, application:applications(id, name, owner_user_id, notify_review_email)"
     )
     .eq("id", row.content_id)
     .maybeSingle();
@@ -146,11 +150,11 @@ async function deliverReviewNotice(
   }
 
   const alreadySent = new Set(row.sent_to ?? []);
-  const recipients = (await approverEmails(article.application)).filter(
+  const recipients = (await approverEmails(article.application, article.market)).filter(
     (email) => !alreadySent.has(email)
   );
   if (recipients.length === 0 && alreadySent.size === 0) {
-    await settle(row.id, { status: "SKIPPED", last_error: "No approver has an email address." });
+    await settle(row.id, { status: "SKIPPED", last_error: "No approver with an email address covers this article's market." });
     result.skipped += 1;
     return;
   }

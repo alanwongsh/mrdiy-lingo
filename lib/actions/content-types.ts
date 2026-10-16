@@ -10,6 +10,7 @@ import {
 } from "@/lib/content-types";
 import type { ContentTypeRecord, EntityStatus } from "@/lib/types";
 import { requireAppCapability } from "@/lib/auth/access";
+import { marketScope } from "@/lib/auth/business-units";
 
 function throwContentTypeError(error: { message: string }) {
   if (
@@ -64,12 +65,15 @@ export async function listContentTypes(
 export async function listContentTypeCounts(
   applicationId: string
 ): Promise<Record<string, number>> {
-  await requireAppCapability(applicationId, "view");
+  const grant = await requireAppCapability(applicationId, "view");
+  const scope = marketScope(grant.access);
   const db = await getDb();
-  const { data, error } = await db
+  let query = db
     .from("content")
     .select("content_type")
     .eq("application_id", applicationId);
+  if (scope) query = query.in("market", scope);
+  const { data, error } = await query;
   if (error) throwContentTypeError(error);
   const counts: Record<string, number> = {};
   for (const row of data ?? []) {

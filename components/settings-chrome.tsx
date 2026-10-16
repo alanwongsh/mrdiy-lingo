@@ -25,8 +25,8 @@ export function SettingsChrome({
           withoutTabs
             ? "Who can open this application, and what each role can do."
             : publishing
-              ? "Article types, review emails, people, roles, translation checks and publish connections."
-              : "Article types, review emails, people, roles and translation checks."
+              ? "Article types, review emails, people, roles, business units, translation checks and publish connections."
+              : "Article types, review emails, people, roles, business units and translation checks."
         }
       />
       <AppSubnav application={application} />

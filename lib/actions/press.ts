@@ -16,8 +16,9 @@ import type {
 } from "@/lib/types";
 import { approvalStamp, getActor, versionAuthorFields } from "@/lib/auth/actor";
 import {
-  allowAppCapability,
   capabilityForReleaseStatus,
+  currentAppAccess,
+  requireChosenMarket,
   requireAppCapability,
   requireContentAccess,
   requireContentTranslationAccess,
@@ -31,6 +32,7 @@ import { DUE_SOON_MS, type PublishDueKind } from "@/lib/publish-due";
 import { requireContentTypeCode } from "@/lib/actions/content-types";
 import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
 import { normalizeMarket } from "@/lib/markets";
+import { canSeeMarket, marketScope } from "@/lib/auth/business-units";
 import { buildArticleWorkbook } from "@/lib/export/articles";
 import { replaceArticlePublishTargets } from "@/lib/publish/store";
 import { publishSchemaError } from "@/lib/publish/errors";
@@ -251,7 +253,8 @@ export async function listArticles(input: {
   market?: string;
   due?: PublishDueKind;
 }): Promise<Paginated<ArticleListItem>> {
-  await requireAppCapability(input.applicationId, "view");
+  const grant = await requireAppCapability(input.applicationId, "view");
+  const scope = marketScope(grant.access);
   const db = await getDb();
   const page = Math.max(1, input.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, input.pageSize ?? 50));
@@ -277,6 +280,7 @@ export async function listArticles(input: {
       .select(columns, head ? { count: "exact", head: true } : undefined)
       .eq("application_id", input.applicationId);
 
+    if (scope) query = query.in("market", scope);
     if (input.status) query = query.eq("status", input.status);
     if (input.contentType) query = query.eq("content_type", input.contentType);
     if (sourceLanguages.length === 1) {
@@ -390,25 +394,26 @@ export async function countArticlesNeedingReview(
   const ids = [...new Set(applicationIds.map((id) => id.trim()).filter(Boolean))];
   if (ids.length === 0) return {};
   await requireUser();
-  // Only count applications this user can see.
-  const allowed = await Promise.all(
-    ids.map((id) => allowAppCapability(id, "view"))
-  );
-  const visible = ids.filter((_, index) => allowed[index]);
-  if (visible.length === 0) return {};
+  // Only count applications this user can see, in their business units' markets.
+  const accesses = await Promise.all(ids.map((id) => currentAppAccess(id)));
   const db = await getDb();
-  const { data, error } = await db
-    .from("content")
-    .select("application_id")
-    .eq("status", "REVIEW")
-    .in("application_id", visible);
-  if (error) throw new Error(error.message);
   const counts: Record<string, number> = {};
-  for (const row of data ?? []) {
-    const id = String(row.application_id ?? "");
-    if (!id) continue;
-    counts[id] = (counts[id] ?? 0) + 1;
-  }
+  await Promise.all(
+    ids.map(async (id, index) => {
+      const access = accesses[index];
+      if (!access) return;
+      const scope = marketScope(access);
+      let query = db
+        .from("content")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "REVIEW")
+        .eq("application_id", id);
+      if (scope) query = query.in("market", scope);
+      const { count, error } = await query;
+      if (error) throw new Error(error.message);
+      if (count) counts[id] = count;
+    })
+  );
   return counts;
 }
 
@@ -426,11 +431,8 @@ export async function getArticle(id: string): Promise<
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
-  const allowed = await allowAppCapability(
-    (data as Content).application_id,
-    "view"
-  );
-  if (!allowed) return null;
+  const access = await currentAppAccess((data as Content).application_id);
+  if (!access || !canSeeMarket(access, (data as Content).market)) return null;
   return {
     ...mapContentRow(data as Content),
     translations: (data.translations ?? []) as ContentTranslation[],
@@ -453,6 +455,7 @@ export async function createArticle(input: {
   keepAsDraft?: boolean;
 }): Promise<Content> {
   const grant = await requireAppCapability(input.application_id, "edit");
+  const market = requireChosenMarket(grant.access, input.market);
   let status: ContentLifecycleStatus = input.status ?? "DRAFT";
   if (input.keepAsDraft) {
     status = "DRAFT";
@@ -488,7 +491,7 @@ export async function createArticle(input: {
       source_content,
       status,
       target_languages,
-      market: normalizeMarket(input.market),
+      market,
       submitted_by_name: actor?.name ?? null,
       submitted_by_username: actor?.username ?? null,
       scheduled_publish_at: isProduction() ? null : input.scheduled_publish_at || null,
@@ -761,8 +764,8 @@ export async function updateArticle(
   if (input.target_languages !== undefined) {
     patch.target_languages = nextTargets;
   }
-  if (input.market !== undefined) {
-    patch.market = normalizeMarket(input.market);
+  if (input.market !== undefined && normalizeMarket(input.market) !== normalizeMarket(current.market)) {
+    patch.market = requireChosenMarket(grant.access, input.market);
   }
   if (!current.submitted_by_name) {
     const actor = await getActor();
@@ -895,17 +898,19 @@ export async function deleteArticles(input: {
   contentIds: string[];
   applicationId: string;
 }): Promise<{ deleted: number }> {
-  await requireAppCapability(input.applicationId, "edit");
+  const grant = await requireAppCapability(input.applicationId, "edit");
   const ids = [...new Set(input.contentIds.filter(Boolean))];
   if (ids.length === 0) return { deleted: 0 };
 
   const db = await getDb();
-  const { data, error } = await db
+  const scope = marketScope(grant.access);
+  let remove = db
     .from("content")
     .delete()
     .eq("application_id", input.applicationId)
-    .in("id", ids)
-    .select("id, title, status");
+    .in("id", ids);
+  if (scope) remove = remove.in("market", scope);
+  const { data, error } = await remove.select("id, title, status");
   if (error) throw new Error(error.message);
   await recordArticleEvents(
     (data ?? []).map((row) => ({
@@ -1484,17 +1489,20 @@ export async function exportArticlesFile(input: {
   applicationId: string;
   contentIds: string[];
 }): Promise<{ filename: string; base64: string; notice: string }> {
-  await requireAppCapability(input.applicationId, "view");
+  const grant = await requireAppCapability(input.applicationId, "view");
+  const scope = marketScope(grant.access);
   const ids = [...new Set(input.contentIds.map((id) => id.trim()).filter(Boolean))];
   if (ids.length === 0) throw new UserFacingError("Select at least one article.");
   if (ids.length > 200) throw new UserFacingError("Export up to 200 articles at a time.");
 
   const db = await getDb();
-  const { data, error } = await db
+  let query = db
     .from("content")
     .select("*, translations:content_translations(*)")
     .eq("application_id", input.applicationId)
     .in("id", ids);
+  if (scope) query = query.in("market", scope);
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
 
   const byId = new Map(
@@ -1586,7 +1594,8 @@ export async function exportArticlesFile(input: {
 }
 
 export async function getPressStats(applicationId: string) {
-  await requireAppCapability(applicationId, "view");
+  const grant = await requireAppCapability(applicationId, "view");
+  const scope = marketScope(grant.access);
   const db = await getDb();
   const statuses: ContentLifecycleStatus[] = [
     "DRAFT",
@@ -1596,13 +1605,15 @@ export async function getPressStats(applicationId: string) {
     "PUBLISHED",
   ];
   const results = await Promise.all(
-    statuses.map((status) =>
-      db
+    statuses.map((status) => {
+      let query = db
         .from("content")
         .select("id", { count: "exact", head: true })
         .eq("application_id", applicationId)
-        .eq("status", status)
-    )
+        .eq("status", status);
+      if (scope) query = query.in("market", scope);
+      return query;
+    })
   );
   const counts: Record<string, number> = { total: 0 };
   results.forEach(({ count, error }, index) => {
