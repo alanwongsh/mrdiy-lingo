@@ -531,11 +531,6 @@ export function ApplicationAccessPanel({
             />
           </Field>
         </div>
-        <p className="text-xs text-[var(--hub-muted)]">
-          They open Lingo from Joget and are matched by this email; Joget fills in their name.
-          Add a password (at least 8 characters) if they should also sign in on the Lingo
-          sign-in page.
-        </p>
         <Button
           type="submit"
           disabled={
