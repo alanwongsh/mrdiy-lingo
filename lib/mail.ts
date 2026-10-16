@@ -44,7 +44,7 @@ export async function sendMail(input: {
     // Gmail only sends as the signed-in account or a verified alias, so by
     // default keep that address and show the template's name in front of it.
     from: process.env.MAIL_FROM?.trim() || {
-      name: input.fromName?.trim() || "MR DIY Lingo (No-Reply)",
+      name: input.fromName?.trim() || "NOREPLY (MR D.I.Y Lingo)",
       address: process.env.SMTP_USER!.trim(),
     },
     to: input.to,

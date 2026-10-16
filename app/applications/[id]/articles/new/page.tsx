@@ -34,6 +34,7 @@ import { TranslationQualityPanel } from "@/components/translation-quality-panel"
 import { applyQualityAction, qualityActionStillOpen } from "@/lib/translation-quality/apply-action";
 import type { QualityAction, QualityTargetField } from "@/lib/translation-quality/types";
 import { DateTimePicker } from "@/components/date-time-picker";
+import { FilterSelect } from "@/components/filter-select";
 import { useTimeZone } from "@/components/time-zone";
 import { fromZonedInput } from "@/lib/datetime";
 
@@ -360,44 +361,42 @@ export default function NewArticlePage() {
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Content type">
-              <select
-                className={inputClass}
+              <FilterSelect
+                fullWidth
+                hideEmptyOption
+                ariaLabel="Content type"
                 value={contentType}
-                onChange={(e) => setContentType(e.target.value)}
-              >
-                {contentTypes.map((type) => (
-                  <option key={type.id} value={type.code}>
-                    {type.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setContentType}
+                options={contentTypes.map((type) => ({
+                  value: type.code,
+                  label: type.name,
+                }))}
+                placeholder="Select content type"
+              />
             </Field>
             <Field label="Source language">
-              <select
-                className={inputClass}
+              <FilterSelect
+                fullWidth
+                hideEmptyOption
+                ariaLabel="Source language"
                 value={sourceLanguage}
-                onChange={(e) => setSourceLanguage(e.target.value)}
-              >
-                {languages.map((l) => (
-                  <option key={l.id} value={l.code}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setSourceLanguage}
+                options={languages.map((l) => ({ value: l.code, label: l.name }))}
+                placeholder="Select source language"
+              />
             </Field>
             <Field label="Market">
-              <select
-                className={inputClass}
+              <FilterSelect
+                fullWidth
+                ariaLabel="Market"
                 value={market}
-                onChange={(e) => setMarket(e.target.value)}
-              >
-                <option value="">No market</option>
-                {MARKETS.map((item) => (
-                  <option key={item.code} value={item.code}>
-                    {item.code} · {item.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setMarket}
+                options={MARKETS.map((item) => ({
+                  value: item.code,
+                  label: `${item.code} · ${item.name}`,
+                }))}
+                placeholder="No market"
+              />
             </Field>
             {publishing ? (
               <Field label="Publish time (optional)">

@@ -87,7 +87,7 @@ const DEFAULT_BODY = `<!doctype html>
 `;
 
 export const DEFAULT_REVIEW_TEMPLATE: ReviewTemplate = {
-  sender_name: "MR DIY Lingo (No-Reply)",
+  sender_name: "NOREPLY (MR D.I.Y Lingo)",
   subject: "Review needed: {{article_title}}",
   body: DEFAULT_BODY,
 };
