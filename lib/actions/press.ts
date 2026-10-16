@@ -1461,17 +1461,38 @@ function emptyTranslationFields(): SourceContentFields {
   };
 }
 
-function describeExportGaps(skipped: string[], blankCounts: Map<string, number>) {
+function listTitles(titles: string[], max = 5) {
+  const quoted = titles.slice(0, max).map((title) => `“${title || "Untitled"}”`);
+  const rest = titles.length - quoted.length;
+  return rest > 0 ? `${quoted.join(", ")} and ${rest} more` : quoted.join(", ");
+}
+
+function describeExportGaps(
+  skipped: string[],
+  blankCounts: Map<string, number>,
+  exportedCount: number
+) {
   const parts: string[] = [];
-  if (skipped.length > 0) {
-    const label = skipped.length === 1 ? "article" : "articles";
+  if (skipped.length > 0 && exportedCount === 0) {
     parts.push(
-      `${skipped.length} ${label} skipped, no approved language: ${skipped.join(", ")}.`
+      skipped.length === 1
+        ? `There's nothing to export yet. ${listTitles(skipped)} doesn't have an approved translation. Approve at least one translation, then try again.`
+        : "There's nothing to export yet. None of the selected articles have an approved translation. Approve at least one translation, then try again."
+    );
+  } else if (skipped.length > 0) {
+    parts.push(
+      skipped.length === 1
+        ? `${listTitles(skipped)} wasn't included because it doesn't have an approved translation yet.`
+        : `${skipped.length} articles weren't included because they don't have an approved translation yet: ${listTitles(skipped)}.`
     );
   }
-  for (const [code, count] of blankCounts) {
-    const label = count === 1 ? "article" : "articles";
-    parts.push(`${code} left blank on ${count} ${label}, not approved.`);
+  if (blankCounts.size > 0) {
+    const languages = [...blankCounts]
+      .map(([code, count]) => `${code} (${count} ${count === 1 ? "article" : "articles"})`)
+      .join(", ");
+    parts.push(
+      `Some translations are still waiting for approval, so these language columns were left empty: ${languages}.`
+    );
   }
   return parts.join(" ");
 }
@@ -1567,12 +1588,12 @@ export async function exportArticlesFile(input: {
       },
     ];
   });
-  const notice = describeExportGaps(skipped, blankCounts);
+  const notice = describeExportGaps(skipped, blankCounts, ordered.length);
   if (ordered.length === 0) {
     return {
       filename: "",
       base64: "",
-      notice: notice || "No matching articles to export.",
+      notice: notice || "We couldn't find the selected articles. They may have been deleted. Refresh the page and try again.",
     };
   }
 

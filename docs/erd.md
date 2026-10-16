@@ -11,7 +11,7 @@ To use a diagram in Lark, type `/Mermaid` on a blank line and paste the code ins
 | 3. Articles | Articles, translations, versions, comments, audit, emails, publishing |
 | 4. Quality review | Quality runs, scores, findings, terminology, boilerplate |
 | 5. Strings and catalog | Product UI strings, catalog items, translation memory |
-| 6. Index strategy | Unique rules and lookup indexes for every table, plus known gaps |
+| 6. Index strategy | Unique rules and lookup indexes for every table, and what migration 030 changed |
 
 Notation: `||--o{` one to many, `|o--o{` optional one to many, `|o--o|` optional one to one. Dotted lines are links by value with no foreign key.
 
@@ -552,7 +552,7 @@ Key: **U** unique, **P** partial (`where ...`), **G** GIN, **E** expression (`lo
 
 ### 6.5 Changes in migration 030
 
-Migration `030_index_cleanup.sql` acted on the earlier review:
+Migration `030_index_cleanup.sql` tidied the indexes from `001` to `029`. The tables in 6.1 to 6.4 already show the result.
 
 - **Dropped 5 duplicate indexes.** Each had the same columns as a unique constraint, which already has its own index: `idx_translation_keys_app_key`, `idx_translations_key_lang`, `idx_translation_versions_tid_ver`, `idx_content_translations_cid_lang` and `idx_content_translation_versions_ctid_ver`.
 - **Added 14 foreign key indexes**, listed in the tables above. Before, deleting a namespace, vendor, quality category or user scanned the child tables.

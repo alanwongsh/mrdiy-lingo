@@ -295,9 +295,7 @@ function RoleRow({
           <div className="font-medium text-slate-900">{role.name}</div>
           <div className="text-sm text-[var(--hub-muted)]">
             {role.description || "No description"} ·{" "}
-            {applicationId ? `${countLabel(count)} · ` : null}
-            {shown.filter((item) => role.permissions.includes(item.key)).length} of {shown.length}{" "}
-            permissions
+            {applicationId ? `${countLabel(count)}` : null}
           </div>
         </div>
         {editing ? null : (
