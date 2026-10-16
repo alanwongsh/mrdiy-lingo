@@ -309,7 +309,11 @@ export async function confirmArticleImport(input: {
         source_language: item.source_language,
         source_content: fields,
         content_type: type.code,
-        status: (item.status as ContentLifecycleStatus) || "DRAFT",
+        // TRANSLATING is retired; older files that still use it import as drafts.
+        status:
+          item.status === "TRANSLATING"
+            ? "DRAFT"
+            : (item.status as ContentLifecycleStatus) || "DRAFT",
         target_languages: targetLanguages,
       });
       const contentId = created.id;

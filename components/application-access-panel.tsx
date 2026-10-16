@@ -470,7 +470,7 @@ export function ApplicationAccessPanel({
     </Card>
 
       <div className="mt-3">
-      <CollapsibleSection id="add-person" title="Add person" summary="Invite by email and give them a role">
+      <CollapsibleSection id="add-person" title="Add person">
       <form onSubmit={invite} className="space-y-3">
         <div
           className={`grid gap-3 sm:items-end ${

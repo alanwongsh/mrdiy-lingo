@@ -57,6 +57,7 @@ export type ContentTypeRecord = {
 
 export type ContentLifecycleStatus =
   | "DRAFT"
+  /** Retired: nothing sets it now. Kept so old activity history still reads. */
   | "TRANSLATING"
   | "REVIEW"
   | "APPROVED"

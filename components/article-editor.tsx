@@ -151,7 +151,7 @@ function findTranslation(
   return translations.find((row) => languageKey(row.language_code) === key);
 }
 
-const DRAFT_STATUSES = ["DRAFT", "TRANSLATING", "REVIEW"] as const;
+const DRAFT_STATUSES = ["DRAFT", "REVIEW"] as const;
 
 function isLifecycleStatus(value: string): value is ContentLifecycleStatus {
   return (
@@ -1171,7 +1171,7 @@ export function ArticleEditor({
             savedAt={targetTranslation?.updated_at ?? ""}
             canReview
             unsaved={isDirty}
-            approved={["APPROVED", "PUBLISHING", "PUBLISHED"].includes(langStatus)}
+            approved={langStatus === "APPROVED"}
             acceptedActionIds={[...acceptedActionIds, ...localHandledIds]}
             ignoredActionIds={ignoredActionIds}
             onLatestRunId={setQualityRunId}

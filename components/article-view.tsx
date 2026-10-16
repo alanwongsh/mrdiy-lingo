@@ -1088,9 +1088,7 @@ export function ArticleView({
           canReview={canReview}
           canApply={canReview}
           unsaved={reviewDirty}
-          approved={["APPROVED", "PUBLISHING", "PUBLISHED"].includes(
-            reviewTranslation?.status ?? ""
-          )}
+          approved={reviewTranslation?.status === "APPROVED"}
           saving={saving}
           onSave={reviewDirty ? saveReview : undefined}
           acceptedActionIds={[...acceptedActionIds, ...localHandledIds]}

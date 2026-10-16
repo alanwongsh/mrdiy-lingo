@@ -11,7 +11,6 @@ import { Button, Card, inputClass } from "@/components/ui";
 
 const STATUS_OPTIONS = [
   { value: "DRAFT", label: "DRAFT" },
-  { value: "TRANSLATING", label: "TRANSLATING" },
   { value: "REVIEW", label: "REVIEW" },
   { value: "APPROVED", label: "APPROVED" },
   { value: "PUBLISHING", label: "PUBLISHING" },
@@ -31,12 +30,15 @@ export function ArticleListFilters({
   languages,
   contentTypes,
   canEdit,
+  publishEnabled,
   initial,
 }: {
   applicationId: string;
   languages: Language[];
   contentTypes: ContentTypeRecord[];
   canEdit: boolean;
+  /** Off in production. PUBLISHING is set only by the scheduler, so it is hidden too. */
+  publishEnabled: boolean;
   initial: {
     q: string;
     source: string[];
@@ -133,7 +135,11 @@ export function ArticleListFilters({
             value={status}
             onChange={setStatus}
             placeholder="All statuses"
-            options={STATUS_OPTIONS}
+            options={
+              publishEnabled
+                ? STATUS_OPTIONS
+                : STATUS_OPTIONS.filter((option) => option.value !== "PUBLISHING")
+            }
           />
           <FilterSelect
             label="Type"

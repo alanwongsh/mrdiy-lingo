@@ -9,6 +9,7 @@ import { ArticleListFilters } from "@/components/article-list-filters";
 import { ArticleListTable } from "@/components/article-list-table";
 import { LinkButton, PageHeader, Pagination } from "@/components/ui";
 import { PAGE_SIZE } from "@/lib/types";
+import { isProduction } from "@/lib/env";
 
 function parseSourceLocales(value: string | undefined): string[] {
   if (!value?.trim()) return [];
@@ -37,6 +38,7 @@ export default async function ArticlesPage({
   const page = Number(sp.page ?? "1") || 1;
   const q = sp.q ?? "";
   const status = sp.status ?? "";
+  const publishEnabled = !isProduction();
   const contentType = sp.type ?? "";
   const sourceLocales = parseSourceLocales(sp.source);
   const due = sp.due ?? "";
@@ -84,6 +86,7 @@ export default async function ArticlesPage({
         stats={stats}
         active={status}
         query={{ q, source: sourceParam || undefined, type: contentType, market, due }}
+        publishEnabled={publishEnabled}
       />
 
       <ArticleListFilters
@@ -91,6 +94,7 @@ export default async function ArticlesPage({
         languages={languages}
         contentTypes={contentTypes}
         canEdit={app.access.can_edit}
+        publishEnabled={publishEnabled}
         initial={{
           q,
           source: sourceLocales,

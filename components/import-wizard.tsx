@@ -107,7 +107,7 @@ function ImportFormatGuide({
             becomes General. A type this app does not have yet is created on
             import.{" "}
             <span className="font-medium text-slate-800">status</span> is DRAFT,
-            TRANSLATING, REVIEW, APPROVED, or PUBLISHED.
+            REVIEW, APPROVED, or PUBLISHED.
           </li>
         </ul>
       ) : (

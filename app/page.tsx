@@ -54,7 +54,6 @@ export default async function DashboardPage() {
     published: 0,
     inReview: 0,
     draft: 0,
-    translating: 0,
     approved: 0,
   };
 

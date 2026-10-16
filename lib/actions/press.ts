@@ -1218,10 +1218,6 @@ export async function autoTranslateArticle(input: {
     );
   }
 
-  if (!input.approveTranslation) {
-    await setArticleStatus(input.contentId, input.applicationId, "TRANSLATING");
-  }
-
   // Persist latest source / language so translation isn't based on stale DB content.
   const liveHasContent = Boolean(
     live &&
@@ -1237,7 +1233,7 @@ export async function autoTranslateArticle(input: {
       content_type: article.content_type,
       source_language: sourceLanguage,
       source_content: sourceFields,
-      status: input.approveTranslation ? article.status : "TRANSLATING",
+      status: article.status,
       scheduled_publish_at: article.scheduled_publish_at,
       target_languages: normalizeTargetLanguages(
         article.target_languages,
@@ -1248,22 +1244,11 @@ export async function autoTranslateArticle(input: {
   }
 
   const service = getTranslationService(grant.applicationId);
-  const previousStatus = article.status;
-  let fields;
-  try {
-    fields = await service.translateArticle({
-      fields: sourceFields,
-      sourceLanguage,
-      targetLanguage: input.targetLanguage,
-    });
-  } catch (error) {
-    if (!input.approveTranslation && previousStatus !== "TRANSLATING") {
-      await persistArticleStatus(input.contentId, input.applicationId, previousStatus).catch(
-        () => undefined
-      );
-    }
-    throw error;
-  }
+  const fields = await service.translateArticle({
+    fields: sourceFields,
+    sourceLanguage,
+    targetLanguage: input.targetLanguage,
+  });
 
   if (!fields.body?.trim() && sourceFields.body?.trim()) {
     fields.body = await service.translateText({
@@ -1281,9 +1266,7 @@ export async function autoTranslateArticle(input: {
     status: input.approveTranslation ? "APPROVED" : "SYSTEM_GENERATED",
   });
 
-  if (!input.approveTranslation) {
-    await setArticleStatus(input.contentId, input.applicationId, "REVIEW");
-  }
+  // AI translation never moves the article. The person edits it, then saves or submits.
   revalidatePath(
     `/applications/${input.applicationId}/articles/${input.contentId}`
   );
@@ -1607,7 +1590,6 @@ export async function getPressStats(applicationId: string) {
   const db = await getDb();
   const statuses: ContentLifecycleStatus[] = [
     "DRAFT",
-    "TRANSLATING",
     "REVIEW",
     "APPROVED",
     "PUBLISHING",
@@ -1633,7 +1615,6 @@ export async function getPressStats(applicationId: string) {
     published: counts.PUBLISHED ?? 0,
     inReview: counts.REVIEW ?? 0,
     draft: counts.DRAFT ?? 0,
-    translating: counts.TRANSLATING ?? 0,
     approved: counts.APPROVED ?? 0,
     publishing: counts.PUBLISHING ?? 0,
   };

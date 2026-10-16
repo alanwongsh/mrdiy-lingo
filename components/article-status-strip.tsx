@@ -6,7 +6,6 @@ type PressStats = {
   published: number;
   inReview: number;
   draft: number;
-  translating: number;
   approved: number;
   publishing: number;
 };
@@ -17,22 +16,25 @@ export function ArticleStatusStrip({
   stats,
   active,
   query,
+  publishEnabled,
 }: {
   applicationId: string;
   stats: PressStats;
   active: string;
+  /** Off in production. PUBLISHING is set only by the scheduler, so it is hidden too. */
+  publishEnabled: boolean;
   /** Current filters other than status and page. */
   query: Record<string, string | undefined>;
 }) {
-  const items: { status: ContentLifecycleStatus | ""; label: string; count: number }[] = [
+  const all: { status: ContentLifecycleStatus | ""; label: string; count: number }[] = [
     { status: "", label: "All", count: stats.articles },
     { status: "REVIEW", label: "In review", count: stats.inReview },
     { status: "DRAFT", label: "Draft", count: stats.draft },
-    { status: "TRANSLATING", label: "Translating", count: stats.translating },
     { status: "APPROVED", label: "Approved", count: stats.approved },
     { status: "PUBLISHING", label: "Publishing", count: stats.publishing },
     { status: "PUBLISHED", label: "Published", count: stats.published },
   ];
+  const items = all.filter((item) => publishEnabled || item.status !== "PUBLISHING");
 
   function href(status: string) {
     const params = new URLSearchParams();
