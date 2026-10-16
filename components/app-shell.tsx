@@ -55,8 +55,9 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   let reviewCounts: Record<string, number> = {};
+  // Only approvers get the count: they are the ones it asks to act.
   const contentAppIds = apps
-    .filter((app) => app.model_type === "CONTENT")
+    .filter((app) => app.model_type === "CONTENT" && app.access.can_approve)
     .map((app) => app.id);
   if (contentAppIds.length > 0) {
     try {
@@ -80,6 +81,8 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             : `${reviewCount} need review`
           : appKindLabel(app),
       badge: reviewCount > 0 ? reviewCount : undefined,
+      badgeHref: `/applications/${app.id}/articles?status=REVIEW`,
+      badgeLabel: `Show the ${reviewCount} ${reviewCount === 1 ? "article" : "articles"} in review`,
     };
   });
 
