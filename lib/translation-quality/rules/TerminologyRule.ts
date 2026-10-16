@@ -130,7 +130,7 @@ function entriesForPair(input: TranslationQualityInput): TerminologyEntry[] {
 export class TerminologyRule implements TranslationQualityRule {
   readonly id = "terminology";
   readonly code = "terminology";
-  readonly name = "Terminology";
+  readonly name = "Glossary";
 
   async evaluate(input: TranslationQualityInput): Promise<RuleEvaluationResult> {
     const entries = entriesForPair(input);
@@ -138,7 +138,7 @@ export class TerminologyRule implements TranslationQualityRule {
       return {
         categoryCode: this.code,
         score: 100,
-        summary: "No terminology is configured for this language pair.",
+        summary: "No glossary words are set up for this language pair.",
         findings: [],
       };
     }
@@ -198,10 +198,10 @@ export class TerminologyRule implements TranslationQualityRule {
           findings.push({
             severity: "warning",
             title: brand
-              ? "Incorrect brand terminology"
+              ? "Brand name not as in glossary"
               : inconsistent
-                ? "Inconsistent terminology"
-                : "Incorrect terminology",
+                ? "Glossary word used inconsistently"
+                : "Word not as in glossary",
             explanation: brand
               ? `The brand name should remain ${preferred || entry.term}.`
               : inconsistent
@@ -229,7 +229,7 @@ export class TerminologyRule implements TranslationQualityRule {
         for (const hit of replacements.slice(0, 8)) {
           findings.push({
             severity: "warning",
-            title: "Missing preferred terminology",
+            title: "Glossary word missing",
             explanation: `The source uses "${entry.term}". Replace "${hit.hit.matched}" with "${preferred}".`,
             sourceText: entry.term,
             translatedText: hit.hit.matched,
@@ -246,7 +246,7 @@ export class TerminologyRule implements TranslationQualityRule {
     const score = clampScore(100 - penalty);
     const summary =
       issueNames.length === 0
-        ? "Preferred terminology is used consistently."
+        ? "Glossary words are used consistently."
         : `${issueNames.length} ${issueNames.length === 1 ? "term needs" : "terms need"} attention: ${issueNames.join(", ")}. Each term with a forbidden spelling costs 11 points.`;
 
     return { categoryCode: this.code, score, summary, findings };

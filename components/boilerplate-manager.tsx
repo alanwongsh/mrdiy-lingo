@@ -54,7 +54,7 @@ export function BoilerplateManager({
         after?.();
         router.refresh();
       } catch (err) {
-        setError(errorMessage(err, "Could not save the boilerplate."));
+        setError(errorMessage(err, "Could not save the standard text."));
       }
     });
   }
@@ -86,7 +86,7 @@ export function BoilerplateManager({
         <p className="max-w-2xl text-sm text-[var(--hub-muted)]">
           Standard passages, such as the company introduction. When the source contains one, the
           translation must keep the approved wording unchanged.
-          {canEdit ? null : " Your role cannot change boilerplate."}
+          {canEdit ? null : " Your role cannot change standard text."}
         </p>
         {canEdit ? (
           <Button

@@ -323,7 +323,7 @@ export function QualitySettings({
 
       <CollapsibleSection
         id="terminology"
-        title="Terminology"
+        title="Glossary"
         summary={`${total} ${total === 1 ? "word" : "words"}`}
         defaultOpen={Boolean(filters.q || filters.source || filters.target || filters.status || page > 1)}
       >

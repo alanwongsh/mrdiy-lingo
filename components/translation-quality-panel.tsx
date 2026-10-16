@@ -687,7 +687,7 @@ export function TranslationQualityPanel({
               {pending ? "Checking…" : "Recheck wording"}
             </Button>
             <p className="mt-2 text-xs text-slate-500">
-              Updates terminology and boilerplate. It does not call the model again.
+              Checks against the latest glossary and standard text. Doesn't run the AI again.
             </p>
           </>
         ) : null}

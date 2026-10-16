@@ -122,7 +122,7 @@ export default async function SettingsQualityPage({
 
         <SettingsSection
           id="boilerplate"
-          title="Boilerplate"
+          title="Standard text"
           description={`${boilerplate.length} ${boilerplate.length === 1 ? "passage" : "passages"}`}
         >
           <BoilerplateManager

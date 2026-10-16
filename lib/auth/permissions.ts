@@ -57,14 +57,14 @@ export const PERMISSIONS = [
     key: "settings.terminology",
     models: ["CONTENT"],
     group: "Settings",
-    label: "Terminology",
-    hint: "Add, change, and remove terminology entries.",
+    label: "Glossary",
+    hint: "Add, change, and remove glossary words.",
   },
   {
     key: "settings.boilerplate",
     models: ["CONTENT"],
     group: "Settings",
-    label: "Boilerplate",
+    label: "Standard text",
     hint: "Standard passages, such as the company introduction, that translations must keep word for word.",
   },
   {

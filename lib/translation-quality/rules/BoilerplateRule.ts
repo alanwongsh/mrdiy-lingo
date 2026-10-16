@@ -56,7 +56,7 @@ function escapeHtml(value: string): string {
 export class BoilerplateRule implements TranslationQualityRule {
   readonly id = "boilerplate";
   readonly code = "boilerplate";
-  readonly name = "Boilerplate";
+  readonly name = "Standard text";
 
   async evaluate(input: TranslationQualityInput): Promise<RuleEvaluationResult> {
     const all = input.boilerplate ?? [];
@@ -65,7 +65,7 @@ export class BoilerplateRule implements TranslationQualityRule {
       return {
         categoryCode: this.code,
         score: 100,
-        summary: "No boilerplate is configured for this language.",
+        summary: "No standard text is set up for this language.",
         findings: [],
       };
     }
@@ -122,7 +122,7 @@ export class BoilerplateRule implements TranslationQualityRule {
 
       findings.push({
         severity: modified ? "warning" : "error",
-        title: modified ? "Modified boilerplate" : "Missing boilerplate",
+        title: modified ? "Standard text changed" : "Standard text missing",
         explanation: modified
           ? `"${phrase.name}" was changed. Restore the approved wording.`
           : `"${phrase.name}" is missing from the translation. Add the approved wording: ${phrase.phrase}`,
@@ -138,7 +138,7 @@ export class BoilerplateRule implements TranslationQualityRule {
       return {
         categoryCode: this.code,
         score: 100,
-        summary: "No boilerplate is required for this article.",
+        summary: "No standard text is needed for this article.",
         findings: [],
       };
     }
@@ -148,8 +148,8 @@ export class BoilerplateRule implements TranslationQualityRule {
       score: clampScore(100 - penalty),
       summary:
         findings.length === 0
-          ? "Required boilerplate is present."
-          : "Boilerplate is missing or modified.",
+          ? "Standard text is present and unchanged."
+          : "Standard text is missing or changed.",
       findings,
     };
   }
