@@ -596,6 +596,7 @@ export function TranslationQualityPanel({
   const blockerCount = visibleFindings.filter(
     (finding) => finding.severity === "error" || finding.severity === "critical"
   ).length;
+  const suggestionCount = visibleFindings.length - blockerCount;
   const categoriesWithFindings = new Set(
     (selected?.findings ?? []).map((finding) => finding.categoryCode)
   );
@@ -609,17 +610,17 @@ export function TranslationQualityPanel({
       <Card className="p-4 xl:sticky xl:top-4 xl:max-h-[calc(100dvh-2rem)] xl:overflow-y-auto">
         {languageChoices && languageChoices.length > 1 ? (
           <label className="mb-3 block text-xs font-semibold tracking-wide text-slate-500 uppercase">
-            Review
+            Language
             <FilterSelect
               fullWidth
-              label="Content type"
+              label="Language"
               value={languageCode}
               onChange={(value) => onLanguageChange?.(value)}
               options={languageChoices.map((type) => ({
                 value: type.code,
                 label: type.label,
               }))}
-              placeholder="Select content type"
+              placeholder="Select language"
               hideEmptyOption
             />
           </label>
@@ -634,14 +635,16 @@ export function TranslationQualityPanel({
         </div>
         <p className="mt-3 text-sm font-medium text-slate-800">
           {loading
-            ? "Loading the review…"
+            ? "Loading AI check…"
             : !selected
-              ? "Not reviewed yet"
-              : blockerCount === 0
-                ? "No issues found by AI check"
-                : blockerCount === 1
+              ? "Not checked yet"
+              : blockerCount > 0
+                ? blockerCount === 1
                   ? "1 issue needs attention"
-                  : `${blockerCount} issues need attention`}
+                  : `${blockerCount} issues need attention`
+                : suggestionCount > 0
+                  ? `No blockers. ${suggestionCount} suggestion${suggestionCount === 1 ? "" : "s"} to review`
+                  : "No issues found by AI check"}
         </p>
         {approvedRecord ? (
           <p className="mt-1 text-xs text-slate-500">
@@ -905,7 +908,7 @@ export function TranslationQualityPanel({
       {visibleError ? <p className="mt-1 text-sm text-red-700">{visibleError}</p> : null}
       {open ? (
       <Card className="mt-3 space-y-4 p-4">
-      {loading ? <p className="text-sm text-slate-500">Loading review…</p> : null}
+      {loading ? <p className="text-sm text-slate-500">Loading AI check…</p> : null}
 
       {!selected && !loading ? (
         <div className="grid gap-4 sm:grid-cols-2">
