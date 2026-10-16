@@ -452,6 +452,9 @@ export default function NewArticlePage() {
               />
             }
           />
+          <p className="text-xs text-slate-500">
+            AI translation covers text only. Images stay the same in every language.
+          </p>
           {isTranslating ? (
             <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
               <span
