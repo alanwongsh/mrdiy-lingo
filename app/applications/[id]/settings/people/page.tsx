@@ -39,6 +39,8 @@ export default async function SettingsPeoplePage({
         accessRoles={people.accessRoles}
         actorPermissions={app.access.permissions}
         isSuperadmin={!!user?.is_superadmin}
+        businessUnits={people.businessUnits}
+        actorMarkets={app.access.markets}
       />
     </SettingsChrome>
   );

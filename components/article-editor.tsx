@@ -196,6 +196,7 @@ export function ArticleEditor({
   publishReady,
   publishNotice,
   publishEnabled,
+  allowedMarkets = null,
 }: {
   applicationId: string;
   article: ArticleWithTranslations;
@@ -213,6 +214,8 @@ export function ArticleEditor({
   publishNotice?: string;
   /** False while publishing is switched off: no publish time or provider controls. */
   publishEnabled: boolean;
+  /** Countries from the person's business units. Null means every country. */
+  allowedMarkets?: string[] | null;
 }) {
   const router = useRouter();
   const timeZone = useTimeZone();
@@ -715,11 +718,18 @@ export function ArticleEditor({
             label="Market"
             value={market}
             onChange={(value) => setMarket(value)}
-            options={MARKETS.map((market) => ({
-              value: market.code,
-              label: market.code + " · " + market.name,
+            // Only the countries of your business units, plus the current one so it still shows.
+            options={MARKETS.filter(
+              (item) =>
+                allowedMarkets === null ||
+                allowedMarkets.includes(item.code) ||
+                item.code === article.market
+            ).map((item) => ({
+              value: item.code,
+              label: item.code + " · " + item.name,
             }))}
             placeholder="Select market"
+            hideEmptyOption
           />
           <div className="space-y-1.5">
             <FilterSelect

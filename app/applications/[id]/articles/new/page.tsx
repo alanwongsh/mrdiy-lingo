@@ -61,6 +61,8 @@ export default function NewArticlePage() {
   const [held, setHeld] = useState<Record<string, HeldTranslation>>({});
   const [bodyEpoch, setBodyEpoch] = useState(0);
   const [canApprove, setCanApprove] = useState(false);
+  /** Countries from the person's business units. Null means every country. */
+  const [allowedMarkets, setAllowedMarkets] = useState<string[] | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [createdId, setCreatedId] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
@@ -86,6 +88,10 @@ export default function NewArticlePage() {
   useEffect(() => {
     getApplication(applicationId).then((app) => {
       setCanApprove(!!app?.access.can_approve);
+      const markets = app?.access.markets ?? null;
+      setAllowedMarkets(markets);
+      // One country to choose from: pick it.
+      if (markets?.length === 1) setMarket((current) => current || markets[0]);
     });
     checkIsProduction().then((production) => setPublishing(!production));
   }, [applicationId]);
@@ -291,6 +297,10 @@ export default function NewArticlePage() {
       setError("Add a title first.");
       return;
     }
+    if (!market) {
+      setError("Choose a market first.");
+      return;
+    }
     const sourceFields = liveSource();
     if (sourceFields.body !== body) setBody(sourceFields.body);
     const scheduled = formRef.current
@@ -385,17 +395,19 @@ export default function NewArticlePage() {
                 placeholder="Select source language"
               />
             </Field>
-            <Field label="Market">
+            <Field label="Market" required>
               <FilterSelect
                 fullWidth
                 ariaLabel="Market"
                 value={market}
                 onChange={setMarket}
-                options={MARKETS.map((item) => ({
+                options={MARKETS.filter(
+                  (item) => allowedMarkets === null || allowedMarkets.includes(item.code)
+                ).map((item) => ({
                   value: item.code,
                   label: `${item.code} · ${item.name}`,
                 }))}
-                placeholder="No market"
+                placeholder="Choose a market"
               />
             </Field>
             {publishing ? (

@@ -59,3 +59,12 @@ export function TrashIcon() {
     </svg>
   );
 }
+
+export function KeyIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+      <circle cx="8" cy="15" r="4" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M11 12l8-8M16 7l2 2M14 9l2 2" />
+    </svg>
+  );
+}
