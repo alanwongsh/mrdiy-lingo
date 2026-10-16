@@ -1171,6 +1171,7 @@ export function ArticleEditor({
             savedAt={targetTranslation?.updated_at ?? ""}
             canReview
             unsaved={isDirty}
+            approved={["APPROVED", "PUBLISHING", "PUBLISHED"].includes(langStatus)}
             acceptedActionIds={[...acceptedActionIds, ...localHandledIds]}
             ignoredActionIds={ignoredActionIds}
             onLatestRunId={setQualityRunId}

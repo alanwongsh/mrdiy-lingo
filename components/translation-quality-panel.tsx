@@ -197,6 +197,7 @@ export function TranslationQualityPanel({
   onShow,
   showEditLink = false,
   sessionOnly = false,
+  approved = false,
 }: {
   applicationId: string;
   contentId: string;
@@ -231,6 +232,8 @@ export function TranslationQualityPanel({
   showEditLink?: boolean;
   /** Score the text in memory. Used on the new-draft page before an article exists. */
   sessionOnly?: boolean;
+  /** The translation is approved. The saved check reads as a record, not a to-do. */
+  approved?: boolean;
 }) {
   const timeZone = useTimeZone();
   const [pending, startTransition] = useTransition();
@@ -571,7 +574,8 @@ export function TranslationQualityPanel({
   const versionLabel = versionNumber ? `version ${versionNumber}` : "";
   const editHref = `/applications/${applicationId}/articles/${contentId}/edit?lang=${encodeURIComponent(languageCode)}`;
   const draftLocked = checkedDraftKey !== null && checkedDraftKey === draftKey;
-  const showAnalyze = unsaved ? !draftLocked : canAnalyze && !draftLocked;
+  const approvedRecord = approved && !unsaved && selected?.overallScore != null;
+  const showAnalyze = unsaved ? !draftLocked : canAnalyze && !draftLocked && !approvedRecord;
   const analyzeLabel = pending
     ? "Analyzing…"
     : unsaved || draftLocked
@@ -625,7 +629,7 @@ export function TranslationQualityPanel({
             {loading ? "…" : selected?.overallScore == null ? "—" : selected.overallScore}
           </p>
           <Badge tone={selected?.overallScore == null ? "neutral" : selected.overallScore >= 75 ? "good" : selected.overallScore >= 60 ? "warn" : "bad"}>
-            {selected?.persisted === false ? "Draft" : "Review"}
+            {selected?.persisted === false ? "Draft" : "AI check"}
           </Badge>
         </div>
         <p className="mt-3 text-sm font-medium text-slate-800">
@@ -634,9 +638,16 @@ export function TranslationQualityPanel({
             : !selected
               ? "Not reviewed yet"
               : blockerCount === 0
-                ? "No blockers in this review"
-                : `${blockerCount} blocker${blockerCount === 1 ? "" : "s"} flagged in this review`}
+                ? "No issues found by AI check"
+                : blockerCount === 1
+                  ? "1 issue needs attention"
+                  : `${blockerCount} issues need attention`}
         </p>
+        {approvedRecord ? (
+          <p className="mt-1 text-xs text-slate-500">
+            Approved. This is the AI check{versionLabel ? ` from ${versionLabel}` : ""}.
+          </p>
+        ) : null}
         {rankedScores
           .filter(
             (score) =>
@@ -661,7 +672,7 @@ export function TranslationQualityPanel({
             {analyzeLabel}
           </Button>
         ) : null}
-        {selected?.persisted && canReview && !unsaved ? (
+        {selected?.persisted && canReview && !unsaved && !approvedRecord ? (
           <>
             <Button
               type="button"
