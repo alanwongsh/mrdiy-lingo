@@ -20,6 +20,8 @@ export type FilterOption = {
   label: string;
   /** Options sharing a group are listed under that heading, in the order given. */
   group?: string;
+  /** Shown at the end of the row in the menu, such as a status badge. */
+  badge?: React.ReactNode;
 };
 
 function useMenuDismiss(open: boolean, setOpen: (v: boolean) => void) {
@@ -179,6 +181,7 @@ export function FilterSelect({
                     }}
                   >
                     <span className="truncate">{o.label}</span>
+                    {o.badge ? <span className="ml-auto pl-2">{o.badge}</span> : null}
                   </button>
                   {onEditOption ? (
                     <IconButton
@@ -296,6 +299,7 @@ export function FilterMultiSelect({
                     <span className="flex-1 font-medium text-slate-900">
                       {o.label}
                     </span>
+                    {o.badge}
                   </label>
                 </li>
               );

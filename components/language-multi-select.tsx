@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
 import type { Language, TranslationStatus } from "@/lib/types";
 import { languageKey } from "@/lib/target-languages";
-import { Badge, Button, inputClass, statusTone } from "@/components/ui";
+import { Badge, Button, statusTone } from "@/components/ui";
+import { FilterMultiSelect, FilterSelect } from "@/components/filter-select";
 
 function sameCode(a: string, b: string) {
   return languageKey(a) === languageKey(b);
@@ -39,26 +39,6 @@ export function LanguageMultiSelect({
   showEditingSwitcher?: boolean;
   label?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const listId = useId();
-  const editingId = useId();
-
-  useEffect(() => {
-    function onDoc(e: MouseEvent) {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, []);
-
   function optionFor(code: string) {
     return options.find((option) => sameCode(option.code, code));
   }
@@ -75,20 +55,21 @@ export function LanguageMultiSelect({
     }
   }
 
-  function selectAll() {
-    onSelectedChange(options.map((o) => o.code));
-  }
+  // The menu lists option codes; stored codes may differ in case (zh-hans vs zh-Hans).
+  const selectedOptionCodes = options
+    .filter((o) => selected.some((code) => sameCode(code, o.code)))
+    .map((o) => o.code);
 
-  function clearAll() {
-    onSelectedChange([]);
+  function setOptionCodes(codes: string[]) {
+    // Keep the existing order and any selected code the menu does not list.
+    const kept = selected.filter(
+      (code) =>
+        !options.some((o) => sameCode(o.code, code)) ||
+        codes.some((c) => sameCode(c, code))
+    );
+    const added = codes.filter((c) => !kept.some((code) => sameCode(code, c)));
+    onSelectedChange([...kept, ...added]);
   }
-
-  const summary =
-    selected.length === 0
-      ? "Select languages…"
-      : selected.length === 1
-        ? optionFor(selected[0])?.name ?? selected[0]
-        : `${selected.length} languages selected`;
 
   const editingChoices = selected.map((code) => {
     const match = optionFor(code);
@@ -119,66 +100,21 @@ export function LanguageMultiSelect({
                 <span className="text-slate-400">→</span>
               </>
             ) : null}
-            <div className="relative w-full max-w-full sm:w-auto" ref={rootRef}>
-              <button
-                type="button"
-                aria-expanded={open}
-                aria-controls={listId}
-                className="inline-flex h-9 w-full max-w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm hover:border-slate-400 sm:min-w-[14rem]"
-                onClick={() => setOpen((v) => !v)}
-              >
-                <span className="truncate">{summary}</span>
-                <span className="text-slate-400" aria-hidden>
-                  ▾
-                </span>
-              </button>
-              {open ? (
-                <div
-                  id={listId}
-                  className="absolute left-0 z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 shadow-lg sm:w-[min(20rem,90vw)]"
-                >
-                  <div className="mb-1 flex items-center justify-between gap-2 px-1 pb-1">
-                    <button
-                      type="button"
-                      className="hub-text-button text-xs"
-                      onClick={selectAll}
-                    >
-                      Select all
-                    </button>
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-slate-500 hover:underline"
-                      onClick={clearAll}
-                    >
-                      Clear
-                    </button>
-                  </div>
-                  <ul className="max-h-60 space-y-0.5 overflow-auto">
-                    {options.map((l) => {
-                      const checked = selected.some((code) => sameCode(code, l.code));
-                      const status = statusFor(l.code);
-                      return (
-                        <li key={l.id}>
-                          <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-slate-50">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggle(l.code)}
-                            />
-                            <span className="flex-1 font-medium text-slate-900">
-                              {l.name}
-                            </span>
-                            {status ? (
-                              <Badge tone={statusTone(status)}>{status}</Badge>
-                            ) : null}
-                          </label>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
+            <FilterMultiSelect
+              value={selectedOptionCodes}
+              onChange={setOptionCodes}
+              options={options.map((l) => {
+                const status = statusFor(l.code);
+                return {
+                  value: l.code,
+                  label: l.name,
+                  badge: status ? (
+                    <Badge tone={statusTone(status)}>{status}</Badge>
+                  ) : undefined,
+                };
+              })}
+              placeholder="Select languages…"
+            />
           </div>
         </div>
         {translateAction}
@@ -218,25 +154,21 @@ export function LanguageMultiSelect({
 
       {showEditingSwitcher && activeChoice && onActiveChange ? (
         <div className="space-y-1.5 border-t border-slate-100 pt-3">
-          <label
-            htmlFor={editingId}
-            className="text-xs font-semibold tracking-wide text-slate-500 uppercase"
-          >
+          <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
             Editing language
-          </label>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              id={editingId}
-              className={`${inputClass} w-full min-w-0 sm:w-auto sm:min-w-48`}
+            <FilterSelect
+              ariaLabel="Editing language"
               value={activeChoice.code}
-              onChange={(e) => onActiveChange(e.target.value)}
-            >
-              {editingChoices.map((choice) => (
-                <option key={choice.id} value={choice.code}>
-                  {choice.name}
-                </option>
-              ))}
-            </select>
+              onChange={onActiveChange}
+              options={editingChoices.map((choice) => ({
+                value: choice.code,
+                label: choice.name,
+              }))}
+              placeholder="Select language"
+              hideEmptyOption
+            />
             {activeStatus ? (
               <Badge tone={statusTone(activeStatus)}>{activeStatus}</Badge>
             ) : null}

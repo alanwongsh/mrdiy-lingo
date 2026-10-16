@@ -27,9 +27,18 @@ function getTransport(): Transporter {
   return transport;
 }
 
+/**
+ * MAIL_FROM when it holds a full sender with an address. A bare name such as
+ * "MR DIY Lingo" is ignored: Gmail would replace it with the bare account address.
+ */
+function mailFrom(): string {
+  const value = process.env.MAIL_FROM?.trim() ?? "";
+  return value.includes("@") ? value : "";
+}
+
 /** True when MAIL_FROM fixes the whole sender, so a template's sender name is ignored. */
 export function mailFromOverridden(): boolean {
-  return Boolean(process.env.MAIL_FROM?.trim());
+  return Boolean(mailFrom());
 }
 
 export async function sendMail(input: {
@@ -43,7 +52,7 @@ export async function sendMail(input: {
   await getTransport().sendMail({
     // Gmail only sends as the signed-in account or a verified alias, so by
     // default keep that address and show the template's name in front of it.
-    from: process.env.MAIL_FROM?.trim() || {
+    from: mailFrom() || {
       name: input.fromName?.trim() || "NOREPLY (MR D.I.Y Lingo)",
       address: process.env.SMTP_USER!.trim(),
     },

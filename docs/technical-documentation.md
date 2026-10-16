@@ -765,6 +765,7 @@ Migrations, in order:
 27. `027_application_roles.sql` — roles per application. Copies the default roles into every application, moves members onto their application's copy, and adds `roles.manage` wherever `people.manage` was
 28. `028_boilerplate_per_application.sql` — each application keeps its own boilerplate. Copies the shared phrases into every CONTENT application and adds `settings.boilerplate` wherever `settings.terminology` was
 29. `029_email_templates.sql` — `email_templates` table holding the superadmin sender name, subject and HTML body of system emails, one row per kind (`ARTICLE_REVIEW`)
+30. `030_index_cleanup.sql` — drops five indexes that repeated a unique constraint and indexes foreign keys that had none. Indexes only, no data changes
 
 `npm run db:migrate` applies every pending file and records it in `_migrations`.
 
