@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 import { deleteBusinessUnit, saveBusinessUnit } from "@/lib/actions/business-units";
 import {
   coversUnit,
+  unitMarketsFull,
   unitMarketsLabel,
   type BusinessUnit,
 } from "@/lib/business-unit-rules";
@@ -184,7 +185,9 @@ function UnitRow({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-slate-900">{unit.name}</span>
-            <Badge tone={unit.all_markets ? "info" : "neutral"}>{unitMarketsLabel(unit)}</Badge>
+            <span title={unitMarketsFull(unit)}>
+              <Badge tone={unit.all_markets ? "info" : "neutral"}>{unitMarketsLabel(unit)}</Badge>
+            </span>
           </div>
           <div className="text-sm text-[var(--hub-muted)]">
             {unit.description || "No description"} · {countLabel(count)}

@@ -12,7 +12,12 @@ import {
 } from "@/lib/actions/applications";
 import type { OrgRoleBand } from "@/lib/auth/roles";
 import { canGrantRole, type PermissionKey } from "@/lib/auth/permissions";
-import { coversUnit, unitMarketsLabel, type BusinessUnit } from "@/lib/business-unit-rules";
+import {
+  coversUnit,
+  unitMarketsFull,
+  unitMarketsLabel,
+  type BusinessUnit,
+} from "@/lib/business-unit-rules";
 import type { AccessRole, ApplicationMemberView, OrgRoleMapping } from "@/lib/types";
 import { FilterSelect, type FilterOption } from "@/components/filter-select";
 import { CollapsibleSection } from "@/components/collapsible-section";
@@ -134,7 +139,9 @@ function BusinessUnitSelect({
       placeholder="Choose a business unit"
       options={units.map((unit) => ({
         value: unit.id,
-        label: `${unit.name} (${unitMarketsLabel(unit)})`,
+        label: unit.name,
+        hint: unitMarketsLabel(unit),
+        title: unitMarketsFull(unit),
       }))}
       onChange={onChange}
     />

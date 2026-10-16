@@ -95,6 +95,7 @@ export default async function ArticlesPage({
         contentTypes={contentTypes}
         canEdit={app.access.can_edit}
         publishEnabled={publishEnabled}
+        allowedMarkets={app.access.markets}
         initial={{
           q,
           source: sourceLocales,

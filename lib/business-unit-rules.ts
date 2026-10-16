@@ -1,4 +1,4 @@
-import { normalizeMarket } from "@/lib/markets";
+import { marketName, normalizeMarket } from "@/lib/markets";
 import type { AppAccess } from "@/lib/types";
 
 /**
@@ -62,8 +62,21 @@ export function coversUnit(
   return unit.markets.every((code) => access.markets!.includes(code));
 }
 
-/** Short label for a unit's markets, such as "All countries" or "MY, SG". */
-export function unitMarketsLabel(unit: Pick<BusinessUnit, "all_markets" | "markets">) {
+/** Short label for a unit's markets: "All countries", "MY, SG", or "MY, SG, TH +4 more". */
+export function unitMarketsLabel(
+  unit: Pick<BusinessUnit, "all_markets" | "markets">,
+  max = 3
+) {
   if (unit.all_markets) return "All countries";
-  return unit.markets.length ? unit.markets.join(", ") : "No countries";
+  if (unit.markets.length === 0) return "No countries";
+  const shown = unit.markets.slice(0, max).join(", ");
+  const rest = unit.markets.length - max;
+  return rest > 0 ? `${shown} +${rest} more` : shown;
+}
+
+/** Every country of a unit by name, for a tooltip: "Malaysia, Singapore, Thailand". */
+export function unitMarketsFull(unit: Pick<BusinessUnit, "all_markets" | "markets">) {
+  if (unit.all_markets) return "All countries, including ones added later";
+  if (unit.markets.length === 0) return "No countries";
+  return unit.markets.map((code) => marketName(code)).join(", ");
 }

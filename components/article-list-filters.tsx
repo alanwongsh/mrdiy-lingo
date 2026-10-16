@@ -31,6 +31,7 @@ export function ArticleListFilters({
   contentTypes,
   canEdit,
   publishEnabled,
+  allowedMarkets = null,
   initial,
 }: {
   applicationId: string;
@@ -39,6 +40,8 @@ export function ArticleListFilters({
   canEdit: boolean;
   /** Off in production. PUBLISHING is set only by the scheduler, so it is hidden too. */
   publishEnabled: boolean;
+  /** Countries from the person's business units. Null means every country. */
+  allowedMarkets?: string[] | null;
   initial: {
     q: string;
     source: string[];
@@ -183,8 +186,10 @@ export function ArticleListFilters({
             label="Market"
             value={market}
             onChange={setMarket}
-            placeholder="All markets"
-            options={MARKETS.map((item) => ({
+            placeholder={allowedMarkets === null ? "All markets" : "All my markets"}
+            options={MARKETS.filter(
+              (item) => allowedMarkets === null || allowedMarkets.includes(item.code)
+            ).map((item) => ({
               value: item.code,
               label: `${item.code} · ${item.name}`,
             }))}

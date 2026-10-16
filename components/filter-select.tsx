@@ -22,6 +22,10 @@ export type FilterOption = {
   group?: string;
   /** Shown at the end of the row in the menu, such as a status badge. */
   badge?: React.ReactNode;
+  /** Smaller second line under the label in the menu. */
+  hint?: string;
+  /** Hover text for the option, and for the button while it is selected. */
+  title?: string;
 };
 
 function useMenuDismiss(open: boolean, setOpen: (v: boolean) => void) {
@@ -111,6 +115,7 @@ export function FilterSelect({
             ? "inline-flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm hover:border-slate-400"
             : triggerClass
         } disabled:cursor-not-allowed disabled:opacity-60`}
+        title={selected?.title}
         onClick={() => setOpen((v) => !v)}
       >
         <span className={`truncate ${value ? "" : "text-slate-500"}`}>
@@ -170,6 +175,7 @@ export function FilterSelect({
                     type="button"
                     role="option"
                     aria-selected={active}
+                    title={o.title}
                     className={`flex min-w-0 flex-1 rounded-md px-2 py-1.5 text-left text-sm ${
                       active
                         ? "bg-[var(--hub-accent-fill)] font-semibold text-[var(--hub-on-accent)]"
@@ -180,7 +186,20 @@ export function FilterSelect({
                       setOpen(false);
                     }}
                   >
-                    <span className="truncate">{o.label}</span>
+                    {o.hint ? (
+                      <span className="min-w-0">
+                        <span className="block truncate">{o.label}</span>
+                        <span
+                          className={`block truncate text-xs font-normal ${
+                            active ? "opacity-80" : "text-[var(--hub-muted)]"
+                          }`}
+                        >
+                          {o.hint}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="truncate">{o.label}</span>
+                    )}
                     {o.badge ? <span className="ml-auto pl-2">{o.badge}</span> : null}
                   </button>
                   {onEditOption ? (
