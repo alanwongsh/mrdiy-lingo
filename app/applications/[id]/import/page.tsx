@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { getApplication } from "@/lib/actions/applications";
 import { listLanguages } from "@/lib/actions/languages";
-import { AppSubnav } from "@/components/app-subnav";
 import { ImportWizard } from "@/components/import-wizard";
 import { EmptyState, PageHeader } from "@/components/ui";
 import { can } from "@/lib/auth/permissions";
@@ -20,7 +19,6 @@ export default async function ApplicationImportPage({
     return (
       <div>
         <PageHeader title={`${app.name} · Import`} />
-        <AppSubnav application={app} />
         <EmptyState
           title="Not available for your role"
           description="Your role cannot import files. Ask the application owner if you need to."
@@ -35,7 +33,6 @@ export default async function ApplicationImportPage({
       <PageHeader
         title={`${app.name} · Import`}
       />
-      <AppSubnav application={app} />
       <ImportWizard
         applications={[app]}
         languages={languages}

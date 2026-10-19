@@ -7,7 +7,6 @@ import { listArticleComments } from "@/lib/actions/comments";
 import { listLanguages } from "@/lib/actions/languages";
 import { getArticlePublish } from "@/lib/actions/publish";
 import { getArticle } from "@/lib/actions/press";
-import { AppSubnav } from "@/components/app-subnav";
 import { ArticleActivity } from "@/components/article-activity";
 import { ArticleComments } from "@/components/article-comments";
 import { ArticleView } from "@/components/article-view";
@@ -75,7 +74,6 @@ export default async function ArticleDetailPage({
           ) : null
         }
       />
-      <AppSubnav application={app} />
       {publish.notice ? (
         <p className="mb-4 text-sm text-red-700">{publish.notice}</p>
       ) : null}

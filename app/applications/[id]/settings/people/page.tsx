@@ -30,7 +30,11 @@ export default async function SettingsPeoplePage({
   }
 
   return (
-    <SettingsChrome application={app}>
+    <SettingsChrome
+      application={app}
+      title="People"
+      description="Who can open this application, their role and business unit."
+    >
       <ApplicationAccessPanel
         applicationId={app.id}
         owner={people.owner}

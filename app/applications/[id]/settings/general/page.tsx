@@ -25,7 +25,11 @@ export default async function SettingsGeneralPage({
   const reviewEmail = app.notify_review_email !== false;
 
   return (
-    <SettingsChrome application={app}>
+    <SettingsChrome
+      application={app}
+      title="General"
+      description="Article types and review emails."
+    >
       <div className="space-y-3">
         <SettingsSection
           id="types"

@@ -520,25 +520,13 @@ export function ApplicationAccessPanel({
   return (
     <>
       <Card className="overflow-hidden">
-        <div className="px-5 pt-5 pb-3">
-          <h2 className="text-base font-semibold">People</h2>
-          {orgRoles === null ? (
-            <p className="mt-1 text-sm text-amber-800">
-              Run migration 012 from Setup before assigning roles.
-            </p>
-          ) : accessRoles === null ? (
-            <p className="mt-1 text-sm text-amber-800">
-              Run migrations 025 and 026 from Setup to give people roles such as Translator or
-              Reviewer.
-            </p>
-          ) : (
-            <p className="mt-1 text-sm text-[var(--hub-muted)]">
-              {businessUnits
-                ? "The role sets what someone can do. The business unit sets which countries they work on."
-                : "The role sets what someone can do in this application."}
-            </p>
-          )}
-        </div>
+        {orgRoles === null || accessRoles === null ? (
+          <p className="px-5 pt-4 pb-3 text-sm text-amber-800">
+            {orgRoles === null
+              ? "Run migration 012 from Setup before assigning roles."
+              : "Run migrations 025 and 026 from Setup to give people roles such as Translator or Reviewer."}
+          </p>
+        ) : null}
         <div className="overflow-x-auto">
           <table className="hub-table">
             <thead>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { isSectionActive } from "@/lib/app-sections";
 
 export function SidebarNav({
   items,
@@ -12,6 +13,10 @@ export function SidebarNav({
     label: string;
     hint?: string;
     match?: string;
+    /** Active only on this exact path. */
+    exact?: boolean;
+    /** Not active under this path. */
+    exclude?: string;
     badge?: number;
     /** Where the badge goes, such as the list filtered to what it counts. */
     badgeHref?: string;
@@ -33,7 +38,7 @@ export function SidebarNav({
               ? pathname === "/applications" ||
                 pathname === "/applications/new" ||
                 /^\/applications\/[^/]+\/edit$/.test(pathname)
-              : pathname === target || pathname.startsWith(`${target}/`);
+              : isSectionActive({ href: target, exact: item.exact, exclude: item.exclude }, pathname);
         const badgeClass =
           "mt-0.5 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[var(--hub-accent-fill)] px-1.5 text-[11px] font-bold text-[var(--hub-on-accent)]";
 
@@ -43,7 +48,7 @@ export function SidebarNav({
             key={item.href}
             className={`flex items-start justify-between rounded-lg border text-sm transition ${
               active
-                ? "border-[var(--hub-sidebar-active-border)] bg-[var(--hub-sidebar-active)] font-semibold text-[var(--hub-sidebar-fg)]"
+                ? "border-[var(--hub-sidebar-active-border)] bg-[var(--hub-sidebar-active)] font-semibold text-[var(--hub-sidebar-fg)] shadow-[inset_3px_0_0_var(--hub-accent)]"
                 : "border-transparent text-[var(--hub-sidebar-fg)] hover:bg-[var(--hub-sidebar-hover)]"
             }`}
           >

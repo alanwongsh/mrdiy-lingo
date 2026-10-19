@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { AppSubnav } from "@/components/app-subnav";
 import { DbErrorPanel, formatDbError } from "@/lib/db/errors";
 import {
   Badge,
@@ -65,7 +64,6 @@ export default async function ApplicationOverviewPage({
           </>
         }
       />
-      <AppSubnav application={app} />
 
       {isString && productStats ? (
         <div className="grid gap-4 sm:grid-cols-3">

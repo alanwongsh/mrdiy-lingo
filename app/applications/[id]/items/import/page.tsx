@@ -5,7 +5,6 @@ import { listItemFields } from "@/lib/actions/catalog";
 import { listLanguages } from "@/lib/actions/languages";
 import { itemLabel, itemLabelPlural } from "@/lib/catalog";
 import { DbErrorPanel, formatDbError } from "@/lib/db/errors";
-import { AppSubnav } from "@/components/app-subnav";
 import { CatalogImport } from "@/components/catalog-import";
 import { PageHeader } from "@/components/ui";
 
@@ -32,7 +31,6 @@ export default async function CatalogImportPage({
         title={`Import ${itemLabelPlural(app)}`}
         description="One row per record. Rows are matched on code, so the same file can be imported again to update."
       />
-      <AppSubnav application={app} />
       {can(app.access, "content.import") ? (
         <CatalogImport applicationId={app.id} itemLabel={itemLabel(app)} fields={fields} languages={languages} />
       ) : (

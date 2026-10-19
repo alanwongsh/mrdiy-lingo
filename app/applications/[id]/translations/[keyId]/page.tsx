@@ -3,7 +3,6 @@ import { getActor } from "@/lib/auth/actor";
 import { getApplication } from "@/lib/actions/applications";
 import { listLanguages } from "@/lib/actions/languages";
 import { getTranslationKey } from "@/lib/actions/product";
-import { AppSubnav } from "@/components/app-subnav";
 import { StringKeyEditor } from "@/components/string-key-editor";
 import { PageHeader } from "@/components/ui";
 
@@ -30,7 +29,6 @@ export default async function TranslationKeyDetailPage({
           label: "Back to translations",
         }}
       />
-      <AppSubnav application={app} />
       <StringKeyEditor
         applicationId={app.id}
         translationKey={key}

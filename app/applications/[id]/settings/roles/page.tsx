@@ -26,7 +26,11 @@ export default async function SettingsRolesPage({
   }
 
   return (
-    <SettingsChrome application={app}>
+    <SettingsChrome
+      application={app}
+      title="Roles"
+      description="What each role can do in this application."
+    >
       {access ? (
         <AccessRolesManager
           applicationId={app.id}

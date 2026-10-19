@@ -25,7 +25,11 @@ export default async function SettingsBusinessUnitsPage({
   }
 
   return (
-    <SettingsChrome application={app}>
+    <SettingsChrome
+      application={app}
+      title="Business units"
+      description="Groups of countries. People only see and work on articles for their unit’s countries."
+    >
       {data ? (
         <BusinessUnitsManager
           applicationId={app.id}

@@ -2,7 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { SidebarNav } from "@/components/sidebar-nav";
+import { AppSwitcher } from "@/components/app-switcher";
+import { appIdFromPath, appSections, type SidebarApp } from "@/lib/app-sections";
 
 type NavItem = {
   href: string;
@@ -11,6 +14,14 @@ type NavItem = {
   match?: string;
   badge?: number;
 };
+
+function GroupLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mb-2 px-3 text-[10px] font-semibold tracking-[0.16em] text-[var(--hub-sidebar-muted)] uppercase">
+      {children}
+    </div>
+  );
+}
 
 function MenuIcon() {
   return (
@@ -30,22 +41,28 @@ function CloseIcon() {
 
 function SidebarBody({
   nav,
-  appLinks,
+  apps,
+  publishing,
   actor,
   isSuperadmin,
   embedded,
   onNavigate,
 }: {
   nav: NavItem[];
-  appLinks: NavItem[];
+  apps: SidebarApp[];
+  publishing: boolean;
   actor: { name: string; username: string };
   isSuperadmin: boolean;
   embedded?: boolean;
   onNavigate?: () => void;
 }) {
+  const pathname = usePathname();
+  const currentId = appIdFromPath(pathname);
+  const current = apps.find((app) => app.id === currentId) ?? null;
+  const groups = current ? appSections(current, { publishing }) : [];
   return (
     <>
-      <div className="relative border-b border-[var(--hub-border)] px-4 py-5">
+      <div className="relative border-b border-[var(--hub-border)] bg-[var(--hub-sidebar-card)] px-4 py-5">
         <div className="absolute inset-x-0 top-0 h-1 bg-[var(--hub-accent-fill)]" />
         <Link href="/" className="block text-center" onClick={onNavigate}>
           {/*
@@ -69,25 +86,41 @@ function SidebarBody({
           </div>
         </Link>
       </div>
-      <nav className="flex flex-1 flex-col gap-7 overflow-y-auto px-3 py-4">
+      {apps.length > 0 ? (
+        <div className="border-b border-[var(--hub-border)] px-3 py-3">
+          <AppSwitcher
+            apps={apps}
+            current={current}
+            isSuperadmin={isSuperadmin}
+            onNavigate={onNavigate}
+          />
+        </div>
+      ) : null}
+      <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-4">
+        {groups.map((group, index) => (
+          // Groups are told apart by their label and a thin line, not boxes.
+          <div
+            key={group.label}
+            className={index > 0 ? "border-t border-[var(--hub-border)] pt-4" : undefined}
+          >
+            <GroupLabel>{group.label}</GroupLabel>
+            <SidebarNav items={group.links} onNavigate={onNavigate} />
+          </div>
+        ))}
+        {!current && apps.length > 0 ? (
+          <p className="px-3 text-xs text-[var(--hub-sidebar-muted)]">
+            Choose an application above to see its pages.
+          </p>
+        ) : null}
         {isSuperadmin ? (
-          <div>
-            <div className="mb-2 px-3 text-[10px] font-semibold tracking-[0.16em] text-[var(--hub-sidebar-muted)] uppercase">
-              Navigate
-            </div>
+          // Platform pages are about every application: a darker band at the bottom.
+          <div className="-mx-3 mt-auto -mb-3 border-t border-[var(--hub-border-strong)] bg-[var(--hub-sidebar-platform)] px-3 pt-3 pb-3">
+            <GroupLabel>Platform</GroupLabel>
             <SidebarNav items={nav} onNavigate={onNavigate} />
           </div>
         ) : null}
-        {appLinks.length > 0 ? (
-          <div>
-            <div className="mb-2 px-3 text-[10px] font-semibold tracking-[0.16em] text-[var(--hub-sidebar-muted)] uppercase">
-              Apps
-            </div>
-            <SidebarNav items={appLinks} onNavigate={onNavigate} />
-          </div>
-        ) : null}
       </nav>
-      <div className="border-t border-[var(--hub-border)] px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-[11px] text-[var(--hub-sidebar-muted)]">
+      <div className="border-t border-[var(--hub-border)] bg-[var(--hub-sidebar-card)] px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-[11px] text-[var(--hub-sidebar-muted)]">
         {embedded ? null : (
           <div className="mb-2">
             <div className="text-sm font-semibold text-[var(--hub-sidebar-fg)]">{actor.name}</div>
@@ -119,14 +152,16 @@ function closeMobileNav() {
 
 export function AppFrame({
   nav,
-  appLinks,
+  apps,
+  publishing,
   actor,
   isSuperadmin,
   embedded,
   children,
 }: {
   nav: NavItem[];
-  appLinks: NavItem[];
+  apps: SidebarApp[];
+  publishing: boolean;
   actor: { name: string; username: string };
   isSuperadmin: boolean;
   embedded?: boolean;
@@ -137,7 +172,8 @@ export function AppFrame({
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-[var(--hub-border)] bg-[var(--hub-sidebar)] text-[var(--hub-sidebar-fg)] lg:flex">
         <SidebarBody
           nav={nav}
-          appLinks={appLinks}
+          apps={apps}
+          publishing={publishing}
           actor={actor}
           isSuperadmin={isSuperadmin}
           embedded={embedded}
@@ -167,7 +203,8 @@ export function AppFrame({
                 <aside className="relative flex h-full w-[min(18rem,88vw)] flex-col overflow-hidden border-r border-[var(--hub-border)] bg-[var(--hub-sidebar)] text-[var(--hub-sidebar-fg)]">
                   <SidebarBody
                     nav={nav}
-                              appLinks={appLinks}
+                    apps={apps}
+                    publishing={publishing}
                     actor={actor}
                     isSuperadmin={isSuperadmin}
                     embedded={embedded}

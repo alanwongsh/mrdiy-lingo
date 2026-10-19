@@ -1,5 +1,4 @@
 import { NamespacesManager } from "@/components/namespaces-manager";
-import { AppSubnav } from "@/components/app-subnav";
 import { PageHeader } from "@/components/ui";
 import { getApplication } from "@/lib/actions/applications";
 import { listNamespaces } from "@/lib/actions/product";
@@ -21,7 +20,6 @@ export default async function NamespacesPage({
         title={`${app.name} · Namespaces`}
         description="Organize translation keys for navigation. Namespaces do not affect key uniqueness."
       />
-      <AppSubnav application={app} />
       <NamespacesManager
         applicationId={app.id}
         initialNamespaces={namespaces}

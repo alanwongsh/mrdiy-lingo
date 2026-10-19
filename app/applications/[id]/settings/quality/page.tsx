@@ -101,7 +101,11 @@ export default async function SettingsQualityPage({
   }
 
   return (
-    <SettingsChrome application={app}>
+    <SettingsChrome
+      application={app}
+      title={isProduction() ? "Quality" : "Quality & publishing"}
+      description="Translation checks, glossary and standard text."
+    >
       <div className="space-y-3">
         {terms ? (
           <QualitySettings

@@ -3,7 +3,6 @@ import { getApplication } from "@/lib/actions/applications";
 import { listContentTypes } from "@/lib/actions/content-types";
 import { listLanguages } from "@/lib/actions/languages";
 import { getPressStats, listArticles } from "@/lib/actions/press";
-import { AppSubnav } from "@/components/app-subnav";
 import { ArticleStatusStrip } from "@/components/article-status-strip";
 import { ArticleListFilters } from "@/components/article-list-filters";
 import { ArticleListTable } from "@/components/article-list-table";
@@ -79,7 +78,6 @@ export default async function ArticlesPage({
           ) : null
         }
       />
-      <AppSubnav application={app} />
 
       <ArticleStatusStrip
         applicationId={app.id}

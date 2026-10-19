@@ -3,7 +3,6 @@ import { getApplication } from "@/lib/actions/applications";
 import { countItemsByStatus, listItems } from "@/lib/actions/catalog";
 import { ITEM_STATUS_LABEL, itemLabel, itemLabelPlural } from "@/lib/catalog";
 import { DbErrorPanel, formatDbError } from "@/lib/db/errors";
-import { AppSubnav } from "@/components/app-subnav";
 import { CatalogItemFilters } from "@/components/catalog-item-filters";
 import { CatalogItemList } from "@/components/catalog-item-list";
 import { LinkButton, PageHeader, Pagination, StatCard } from "@/components/ui";
@@ -54,7 +53,6 @@ export default async function CatalogItemsPage({
           ) : null
         }
       />
-      <AppSubnav application={app} />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-4">
         <StatCard label="Draft" value={counts.DRAFT} />

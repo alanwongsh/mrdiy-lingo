@@ -266,18 +266,13 @@ export function BusinessUnitsManager({
 
   return (
     <>
-      <Card className="p-5">
-        <h2 className="text-base font-semibold">Business units</h2>
-        <p className="mt-1 max-w-2xl text-sm text-[var(--hub-muted)]">
-          A business unit is a group of countries. People only see and work on articles for the
-          countries of their business unit. Owners see every country.
-        </p>
+      <Card className="px-5 py-2">
         {units.length === 0 ? (
-          <p className="mt-4 text-sm text-[var(--hub-muted)]">
-            No business units yet. Add one below, then put people in it on the People tab.
+          <p className="py-3 text-sm text-[var(--hub-muted)]">
+            No business units yet. Add one below, then put people in it on the People page.
           </p>
         ) : (
-          <ul className="mt-2 divide-y divide-[var(--hub-border)]">
+          <ul className="divide-y divide-[var(--hub-border)]">
             {units.map((unit) => (
               <UnitRow
                 key={unit.id}

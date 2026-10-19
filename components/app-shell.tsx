@@ -5,7 +5,8 @@ import { countArticlesNeedingReview } from "@/lib/actions/press";
 import { canOpenSetup, getCurrentUser } from "@/lib/auth/access";
 import { getActor } from "@/lib/auth/actor";
 import { AppFrame } from "@/components/app-frame";
-import { appHomePath, appKindLabel } from "@/lib/catalog";
+import { isProduction } from "@/lib/env";
+import type { SidebarApp } from "@/lib/app-sections";
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
   const actor = await getActor();
@@ -67,24 +68,20 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const appLinks = apps.map((app) => {
-    const reviewCount =
-      app.model_type === "CONTENT" ? reviewCounts[app.id] ?? 0 : 0;
-    return {
-      href: appHomePath(app),
-      match: `/applications/${app.id}`,
-      label: app.name,
-      hint:
-        reviewCount > 0
-          ? reviewCount === 1
-            ? "1 needs review"
-            : `${reviewCount} need review`
-          : appKindLabel(app),
-      badge: reviewCount > 0 ? reviewCount : undefined,
-      badgeHref: `/applications/${app.id}/articles?status=REVIEW`,
-      badgeLabel: `Show the ${reviewCount} ${reviewCount === 1 ? "article" : "articles"} in review`,
-    };
-  });
+  // Only what the sidebar needs; the switcher and the app menu are built from this.
+  const sidebarApps: SidebarApp[] = apps.map((app) => ({
+    id: app.id,
+    name: app.name,
+    model_type: app.model_type,
+    item_label: app.item_label,
+    status: app.status,
+    access: {
+      permissions: app.access.permissions,
+      can_manage: app.access.can_manage,
+      can_approve: app.access.can_approve,
+    },
+    reviewCount: app.model_type === "CONTENT" ? reviewCounts[app.id] ?? 0 : 0,
+  }));
 
   if (!actor) {
     redirect("/sign-in");
@@ -93,7 +90,8 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <AppFrame
       nav={nav}
-      appLinks={appLinks}
+      apps={sidebarApps}
+      publishing={!isProduction()}
       actor={{ name: actor.name, username: actor.username }}
       isSuperadmin={!!user?.is_superadmin}
       embedded={embedded}

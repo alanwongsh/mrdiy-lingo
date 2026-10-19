@@ -4,7 +4,6 @@ import { getApplication } from "@/lib/actions/applications";
 import { listItemFields, listItemFieldUsage } from "@/lib/actions/catalog";
 import { itemLabel } from "@/lib/catalog";
 import { DbErrorPanel, formatDbError } from "@/lib/db/errors";
-import { AppSubnav } from "@/components/app-subnav";
 import { CatalogFieldsManager } from "@/components/catalog-fields-manager";
 import { PageHeader } from "@/components/ui";
 
@@ -34,7 +33,6 @@ export default async function CatalogFieldsPage({
         title="Fields"
         description={`Field names offered when adding fields to a ${itemLabel(app)}. Anyone who edits can add a new one from the ${itemLabel(app)} itself. Fields in use can be switched off but not deleted. Roles with the Catalog fields permission can change them.`}
       />
-      <AppSubnav application={app} />
       <CatalogFieldsManager
         applicationId={app.id}
         fields={fields}

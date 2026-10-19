@@ -5,7 +5,6 @@ import {
   listNamespaces,
   listTranslationKeys,
 } from "@/lib/actions/product";
-import { AppSubnav } from "@/components/app-subnav";
 import { TranslationKeyList } from "@/components/translation-key-list";
 import { TranslationListFilters } from "@/components/translation-list-filters";
 import { LinkButton, PageHeader, Pagination } from "@/components/ui";
@@ -56,7 +55,6 @@ export default async function TranslationsPage({
           ) : null
         }
       />
-      <AppSubnav application={app} />
 
       <TranslationListFilters
         applicationId={app.id}

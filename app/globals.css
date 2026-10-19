@@ -40,6 +40,9 @@
   --hub-sidebar-hover: #fff8e4;
   --hub-sidebar-active: var(--diy-yellow-soft);
   --hub-sidebar-active-border: #f0d36a;
+  /* Sidebar zones: the app's page groups sit on white cards; platform pages on a darker band. */
+  --hub-sidebar-card: #ffffff;
+  --hub-sidebar-platform: #eceef2;
   --hub-shadow: 0 1px 2px rgba(17, 24, 39, 0.05),
     0 8px 24px rgba(17, 24, 39, 0.04);
   --hub-shadow-hover: 0 2px 4px rgba(17, 24, 39, 0.06),

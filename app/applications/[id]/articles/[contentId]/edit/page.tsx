@@ -6,7 +6,6 @@ import { listArticleComments } from "@/lib/actions/comments";
 import { listLanguages } from "@/lib/actions/languages";
 import { getArticlePublish } from "@/lib/actions/publish";
 import { getArticle } from "@/lib/actions/press";
-import { AppSubnav } from "@/components/app-subnav";
 import { ArticleEditor } from "@/components/article-editor";
 import { PageHeader } from "@/components/ui";
 import type { ArticleComment } from "@/lib/types";
@@ -50,7 +49,6 @@ export default async function ArticleEditPage({
           label: "Back to article",
         }}
       />
-      <AppSubnav application={app} />
       <ArticleEditor
         applicationId={app.id}
         article={article}
