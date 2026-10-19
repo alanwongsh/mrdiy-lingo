@@ -58,6 +58,7 @@ export function ArticleListTable({
   languages,
   typeNames,
   canEdit,
+  canApprove = false,
 }: {
   applicationId: string;
   articles: ArticleListItem[];
@@ -65,6 +66,8 @@ export function ArticleListTable({
   typeNames: Record<string, string>;
   /** content.edit: shows edit and delete. Export stays for everyone. */
   canEdit: boolean;
+  /** content.approve: articles in review are highlighted, since they wait on this person. */
+  canApprove?: boolean;
 }) {
   const timeZone = useTimeZone();
   const router = useRouter();
@@ -285,7 +288,10 @@ export function ArticleListTable({
               );
               const href = `/applications/${applicationId}/articles/${article.id}`;
               return (
-                <tr key={article.id}>
+                <tr
+                  key={article.id}
+                  className={canApprove && article.status === "REVIEW" ? "hub-row-attention" : undefined}
+                >
                   <td>
                     <input
                       type="checkbox"

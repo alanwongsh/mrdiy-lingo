@@ -108,6 +108,7 @@ export default async function ArticlesPage({
 
       <ArticleListTable
         canEdit={app.access.can_edit}
+        canApprove={app.access.can_approve}
         applicationId={app.id}
         articles={result.items}
         languages={languages}

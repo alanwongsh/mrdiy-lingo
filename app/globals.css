@@ -156,6 +156,15 @@ textarea {
   border-bottom: 0;
 }
 
+/* A row waiting on the viewer, such as an article in review for an approver. */
+.hub-table tbody tr.hub-row-attention {
+  background: var(--hub-accent-soft);
+}
+
+.hub-table tbody tr.hub-row-attention td:first-child {
+  box-shadow: inset 3px 0 0 var(--hub-accent);
+}
+
 .hub-table-wide {
   min-width: 64rem;
 }
