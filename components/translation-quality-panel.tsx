@@ -687,7 +687,7 @@ export function TranslationQualityPanel({
               {pending ? "Checking…" : "Recheck wording"}
             </Button>
             <p className="mt-2 text-xs text-slate-500">
-              Checks against the latest glossary and standard text. Doesn't run the AI again.
+              Checks against the latest glossary and standard text. Doesn’t run the AI again.
             </p>
           </>
         ) : null}
@@ -761,10 +761,37 @@ export function TranslationQualityPanel({
                     !accepted.has(action?.id ?? finding.id) &&
                     !ignored.has(action?.id ?? finding.id);
                   const canAct = Boolean(place && !place.hidden) && pending && Boolean(action);
+                  // Clicking the finding jumps to its wording in the article, in place of a Show button.
+                  const showTarget =
+                    onShow && place && !place.hidden && finding.translatedText
+                      ? { field: place.field, text: finding.translatedText }
+                      : null;
+                  const show = () => {
+                    if (!showTarget || !onShow) return;
+                    pinnedPreview.current = true;
+                    onShow(showTarget);
+                  };
                   return (
                     <li
                       key={finding.id}
-                      className="border-t border-[var(--hub-border)] py-3"
+                      className={`-mx-2 border-t border-[var(--hub-border)] px-2 py-3 ${
+                        showTarget
+                          ? "cursor-pointer rounded-md transition hover:bg-[var(--diy-yellow-soft)] focus-visible:outline-2 focus-visible:outline-[var(--hub-accent)]"
+                          : ""
+                      }`}
+                      tabIndex={showTarget ? 0 : undefined}
+                      title={showTarget ? "Show in the article" : undefined}
+                      onClick={(event) => {
+                        // Accept, Ignore and the edit link do their own thing.
+                        if ((event.target as HTMLElement).closest("button, a")) return;
+                        show();
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return;
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        event.preventDefault();
+                        show();
+                      }}
                       onMouseEnter={() => {
                         if (!onPreview || !place || place.hidden || !finding.translatedText) return;
                         pinnedPreview.current = false;
@@ -781,7 +808,8 @@ export function TranslationQualityPanel({
                           {mark.label}
                         </span>
                         <span className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
-                          {finding.categoryCode}
+                          {rankedScores.find((score) => score.categoryCode === finding.categoryCode)
+                            ?.categoryName ?? finding.categoryCode}
                         </span>
                       </div>
                       <p className="mt-1.5 text-sm font-semibold text-slate-950">{finding.title}</p>
@@ -815,18 +843,6 @@ export function TranslationQualityPanel({
                       ) : null}
                       {canAct && action && place ? (
                         <div className="mt-2 flex flex-wrap gap-2">
-                          {onShow && finding.translatedText ? (
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              onClick={() => {
-                                pinnedPreview.current = true;
-                                onShow({ field: place.field, text: finding.translatedText! });
-                              }}
-                            >
-                              Show
-                            </Button>
-                          ) : null}
                           <Button
                             type="button"
                             onClick={() => onAccept({ ...action, targetField: place.field }, Boolean(storedAction))}
