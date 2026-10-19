@@ -178,7 +178,7 @@ export function AppSwitcher({
         aria-haspopup="dialog"
         onClick={() => toggle(!open)}
         // The colour sits on the switcher itself: the app you are in.
-        className="flex w-full items-center gap-2 rounded-lg border border-[var(--hub-sidebar-active-border)] bg-[var(--hub-accent-soft)] px-3 py-2 text-left shadow-sm transition hover:border-[var(--hub-accent)]"
+        className="flex w-full items-center gap-2 rounded-lg border border-[var(--hub-sidebar-active-border)] bg-[var(--hub-accent-soft)] px-3 py-2 text-left shadow-sm transition outline-none hover:border-[var(--hub-accent)] focus-visible:border-[var(--hub-accent)] focus-visible:ring-2 focus-visible:ring-[var(--hub-accent-ring)]"
       >
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold text-slate-900">
@@ -223,7 +223,7 @@ export function AppSwitcher({
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Find an application"
             aria-label="Find an application"
-            className="mb-1 h-8 w-full rounded-md border border-slate-300 px-2 text-sm"
+            className="mb-1 h-8 w-full rounded-md border border-[var(--hub-border-strong)] bg-white px-2 text-sm text-[var(--hub-fg)] outline-none placeholder:text-slate-400 hover:border-slate-400 focus:border-[var(--hub-accent)] focus:ring-2 focus:ring-[var(--hub-accent-ring)]"
           />
           <ul className="max-h-[min(24rem,60dvh)] space-y-0.5 overflow-auto">
             {recentApps.length > 0 ? (

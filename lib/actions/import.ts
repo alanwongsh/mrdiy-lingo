@@ -225,12 +225,13 @@ export async function confirmStringImport(input: {
   return { imported, updated, unchanged, errors, translated };
 }
 
+/** A row that was not imported, with the reason in plain words. */
+export type SkippedImportRow = { row: number; title: string; reason: string };
+
 export async function previewArticleImport(input: {
   applicationId: string;
   filename: string;
   base64: string;
-  /** Used for rows without a market column value. */
-  defaultMarket?: string;
 }): Promise<{
   items: ArticleImportPreviewItem[];
   summary: ReturnType<typeof summarizePreview>;
@@ -245,15 +246,21 @@ export async function previewArticleImport(input: {
     input.filename
   );
 
+  // Someone who covers one country needs no market column: there is nothing to guess.
+  const onlyMarket = grant.access.markets?.length === 1 ? grant.access.markets[0] : null;
   const items: ArticleImportPreviewItem[] = rows.map((row) => {
     if (!row.title) {
-      return { ...row, action: "ERROR", error: "Missing title" };
+      return { ...row, action: "ERROR", error: "The title is blank." };
+    }
+    const given = row.market || onlyMarket;
+    if (!given) {
+      return { ...row, action: "ERROR", error: "The market is blank. Add a country code such as MY." };
     }
     try {
-      const market = requireChosenMarket(grant.access, row.market || input.defaultMarket);
+      const market = requireChosenMarket(grant.access, given);
       return { ...row, market, action: "NEW" };
     } catch (error) {
-      return { ...row, action: "ERROR", error: errorMessage(error, "Invalid market") };
+      return { ...row, action: "ERROR", error: errorMessage(error, "The market is not valid.") };
     }
   });
 
@@ -265,13 +272,13 @@ export async function confirmArticleImport(input: {
   filename: string;
   base64: string;
   translateLanguages?: string[];
-  /** Used for rows without a market column value. */
-  defaultMarket?: string;
 }): Promise<{
   imported: number;
   updated: number;
   unchanged: number;
   errors: number;
+  /** Rows that were skipped or failed, and why. */
+  skipped: SkippedImportRow[];
   translated: number;
   typesCreated: number;
 }> {
@@ -285,12 +292,14 @@ export async function confirmArticleImport(input: {
   let updated = 0;
   let unchanged = 0;
   let errors = 0;
+  const skipped: SkippedImportRow[] = [];
   let translated = 0;
   let typesCreated = 0;
 
   for (const item of preview.items) {
     if (item.action === "ERROR") {
       errors += 1;
+      skipped.push({ row: item.rowNumber, title: item.title, reason: item.error ?? "Could not import this row." });
       continue;
     }
     if (item.action === "UNCHANGED") {
@@ -359,12 +368,17 @@ export async function confirmArticleImport(input: {
         });
         translated += results.length;
       }
-    } catch {
+    } catch (error) {
       errors += 1;
+      skipped.push({
+        row: item.rowNumber,
+        title: item.title,
+        reason: errorMessage(error, "Could not import this row."),
+      });
     }
   }
 
   revalidatePath(`/applications/${input.applicationId}`);
   revalidatePath("/import");
-  return { imported, updated, unchanged, errors, translated, typesCreated };
+  return { imported, updated, unchanged, errors, skipped, translated, typesCreated };
 }
