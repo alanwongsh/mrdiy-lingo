@@ -46,9 +46,8 @@ export function AppSubnav({
           ];
 
   return (
-    <nav aria-label="Application sections" className="mb-6">
-      <div className="overflow-x-auto sm:overflow-visible">
-        <div className="grid w-max min-w-full grid-flow-col auto-cols-[minmax(7.25rem,1fr)] gap-1 rounded-xl border border-[var(--hub-border)] bg-white p-1 shadow-[var(--hub-shadow)] sm:inline-grid sm:w-auto sm:min-w-0 sm:auto-cols-auto">
+    <nav aria-label="Application sections" className="mb-6 border-b border-[var(--hub-border)]">
+      <div className="-mb-px flex gap-6 overflow-x-auto">
           {links.map((link) => {
             const excluded =
               "exclude" in link && link.exclude ? pathname.startsWith(link.exclude) : false;
@@ -62,17 +61,17 @@ export function AppSubnav({
                 key={link.href}
                 href={link.href}
                 aria-current={active ? "page" : undefined}
-                className={`rounded-lg px-3 py-2 text-center text-sm font-medium whitespace-nowrap transition sm:px-3.5 sm:text-left ${
+                // Underline tabs: the active section is dark text on an orange line.
+                className={`border-b-2 px-0.5 pt-1 pb-2.5 text-sm font-semibold whitespace-nowrap transition ${
                   active
-                    ? "bg-[var(--hub-accent-fill)] text-[var(--hub-on-accent)] shadow-sm"
-                    : "text-slate-600 hover:bg-[var(--diy-yellow-soft)] hover:text-slate-900"
+                    ? "border-[var(--hub-accent)] text-slate-900"
+                    : "border-transparent text-slate-500 hover:border-[var(--hub-border-strong)] hover:text-slate-900"
                 }`}
               >
                 {link.label}
               </Link>
             );
           })}
-        </div>
       </div>
     </nav>
   );

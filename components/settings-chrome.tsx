@@ -30,15 +30,20 @@ export function SettingsChrome({
         }
       />
       <AppSubnav application={application} />
-      {withoutTabs ? null : (
-        <SettingsTabs
-          applicationId={application.id}
-          canManage={application.access.can_manage}
-          canManageRoles={application.access.permissions.includes("roles.manage")}
-          publishing={publishing}
-        />
+      {withoutTabs ? (
+        children
+      ) : (
+        // minmax(0, …) columns keep a wide child (the pill row, a table) from widening the page.
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-8">
+          <SettingsTabs
+            applicationId={application.id}
+            canManage={application.access.can_manage}
+            canManageRoles={application.access.permissions.includes("roles.manage")}
+            publishing={publishing}
+          />
+          <div className="min-w-0">{children}</div>
+        </div>
       )}
-      {children}
     </div>
   );
 }
