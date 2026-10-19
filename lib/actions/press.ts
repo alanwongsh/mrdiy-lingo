@@ -453,13 +453,15 @@ export async function createArticle(input: {
   market?: string | null;
   /** Keep DRAFT for an approver. Omitted saves from approvers are stored as approved. */
   keepAsDraft?: boolean;
+  /** Store the given status as is, such as a status column in an import file. */
+  keepStatus?: boolean;
 }): Promise<Content> {
   const grant = await requireAppCapability(input.application_id, "edit");
   const market = requireChosenMarket(grant.access, input.market);
   let status: ContentLifecycleStatus = input.status ?? "DRAFT";
   if (input.keepAsDraft) {
     status = "DRAFT";
-  } else if (grant.access.can_approve && !isPublishable(status)) {
+  } else if (!input.keepStatus && grant.access.can_approve && !isPublishable(status)) {
     status = "APPROVED";
   }
   if (isPublishable(status) && !grant.access.can_approve) {
@@ -1558,6 +1560,7 @@ export async function exportArticlesFile(input: {
       {
         title: article.title,
         source_language: article.source_language,
+        market: article.market ?? "",
         content_type: article.content_type,
         status: article.status,
         source_content: article.source_content,

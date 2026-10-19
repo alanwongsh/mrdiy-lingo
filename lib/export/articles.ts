@@ -1,9 +1,11 @@
 import * as XLSX from "xlsx";
 import type { SourceContentFields } from "@/lib/types";
 
+// Same order as the import sample, so an exported file can be imported again.
 const SOURCE_COLUMNS = [
   "title",
   "source_language",
+  "market",
   "content_type",
   "status",
   "summary",
@@ -23,6 +25,7 @@ const TRANSLATION_FIELDS = [
 export type ArticleExportRow = {
   title: string;
   source_language: string;
+  market: string;
   content_type: string;
   status: string;
   source_content: SourceContentFields;
@@ -66,6 +69,7 @@ export function buildArticleWorkbook(articles: ArticleExportRow[]): {
     const record: Record<string, string> = {
       title: article.title,
       source_language: article.source_language,
+      market: article.market,
       content_type: article.content_type,
       status: article.status,
       summary: source.summary ?? "",

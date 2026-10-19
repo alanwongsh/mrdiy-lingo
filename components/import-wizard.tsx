@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   confirmArticleImport,
   confirmStringImport,
+  type CreatedImportArticle,
   type SkippedImportRow,
 } from "@/lib/actions/import";
 import type { AppAccess, Application, Language } from "@/lib/types";
@@ -269,6 +270,7 @@ export function ImportWizard({
     unchanged: number;
     errors: number;
     skipped: SkippedImportRow[];
+    created: CreatedImportArticle[];
     translated: number;
     typesCreated: number;
   } | null>(null);
@@ -317,6 +319,7 @@ export function ImportWizard({
               ? Number(res.typesCreated)
               : 0,
           skipped: "skipped" in res && Array.isArray(res.skipped) ? res.skipped : [],
+          created: "created" in res && Array.isArray(res.created) ? res.created : [],
         });
       } catch (err) {
         setError(errorMessage(err, "Import failed"));
@@ -437,6 +440,29 @@ export function ImportWizard({
                 : ""}
               .
             </p>
+            {receipt.created.length > 0 ? (
+              <div className="mt-2">
+                <p className="text-xs font-semibold text-emerald-900">
+                  New {receipt.created.length === 1 ? "article" : "articles"}:
+                </p>
+                <ul className="mt-1 max-h-48 space-y-0.5 overflow-auto text-xs">
+                  {receipt.created.map((article) => (
+                    <li key={article.id}>
+                      <Link
+                        href={`/applications/${applicationId}/articles/${article.id}`}
+                        className="font-semibold text-emerald-950 underline-offset-2 hover:underline"
+                      >
+                        {article.title}
+                      </Link>
+                      <span className="text-emerald-800">
+                        {" "}
+                        · {article.market} · {article.status.charAt(0) + article.status.slice(1).toLowerCase()}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             {receipt.skipped.length > 0 ? (
               <div className="mt-2 rounded-md border border-amber-200 bg-white px-3 py-2">
                 <p className="text-xs font-semibold text-amber-900">

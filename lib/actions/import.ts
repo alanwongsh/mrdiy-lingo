@@ -228,6 +228,9 @@ export async function confirmStringImport(input: {
 /** A row that was not imported, with the reason in plain words. */
 export type SkippedImportRow = { row: number; title: string; reason: string };
 
+/** An article the import created, so the summary can link to it. */
+export type CreatedImportArticle = { id: string; title: string; market: string; status: string };
+
 export async function previewArticleImport(input: {
   applicationId: string;
   filename: string;
@@ -279,6 +282,8 @@ export async function confirmArticleImport(input: {
   errors: number;
   /** Rows that were skipped or failed, and why. */
   skipped: SkippedImportRow[];
+  /** Articles created, newest last. */
+  created: CreatedImportArticle[];
   translated: number;
   typesCreated: number;
 }> {
@@ -293,6 +298,7 @@ export async function confirmArticleImport(input: {
   let unchanged = 0;
   let errors = 0;
   const skipped: SkippedImportRow[] = [];
+  const createdArticles: CreatedImportArticle[] = [];
   let translated = 0;
   let typesCreated = 0;
 
@@ -335,9 +341,17 @@ export async function confirmArticleImport(input: {
             ? "DRAFT"
             : (item.status as ContentLifecycleStatus) || "DRAFT",
         target_languages: targetLanguages,
+        // The file's status column decides, also for approvers.
+        keepStatus: true,
       });
       const contentId = created.id;
       imported += 1;
+      createdArticles.push({
+        id: contentId,
+        title: created.title,
+        market: created.market ?? "",
+        status: created.status,
+      });
 
       for (const [lang, partial] of Object.entries(item.translations)) {
         await upsertContentTranslation({
@@ -380,5 +394,14 @@ export async function confirmArticleImport(input: {
 
   revalidatePath(`/applications/${input.applicationId}`);
   revalidatePath("/import");
-  return { imported, updated, unchanged, errors, skipped, translated, typesCreated };
+  return {
+    imported,
+    updated,
+    unchanged,
+    errors,
+    skipped,
+    created: createdArticles,
+    translated,
+    typesCreated,
+  };
 }
