@@ -35,9 +35,10 @@ export function CollapsibleSection({
       ref={ref}
       id={id}
       open={defaultOpen}
-      className="group scroll-mt-6 overflow-hidden rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel)] shadow-[var(--hub-shadow)]"
+      // No overflow-hidden: it would clip dropdown menus inside. The header rounds its own corners.
+      className="group scroll-mt-6 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-panel)] shadow-[var(--hub-shadow)]"
     >
-      <summary className="flex cursor-pointer list-none items-center gap-2 bg-slate-50 px-4 py-3 select-none group-open:border-b group-open:border-[var(--hub-border)] [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-[11px] bg-slate-50 px-4 py-3 select-none group-open:rounded-b-none group-open:border-b group-open:border-[var(--hub-border)] [&::-webkit-details-marker]:hidden">
         <span className="text-[var(--hub-accent)]" aria-hidden>
           <span className="group-open:hidden">▸</span>
           <span className="hidden group-open:inline">▾</span>
