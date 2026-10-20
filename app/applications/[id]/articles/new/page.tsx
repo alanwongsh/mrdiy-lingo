@@ -187,14 +187,17 @@ export default function NewArticlePage() {
     });
   }
 
+  // Languages approved here are kept as they are, so only the rest are sent, counted and named.
+  const toTranslate = targetLanguages.filter((code) => !approvedCodes.includes(languageKey(code)));
+
   function runTranslate() {
-    if (targetLanguages.length === 0) return;
+    if (toTranslate.length === 0) return;
     const sourceFields = liveSource();
     if (sourceFields.body !== body) setBody(sourceFields.body);
     setError("");
     setIsTranslating(true);
     setTranslatingLabel(
-      targetLanguages
+      toTranslate
         .map(
           (code) =>
             languages.find((language) => languageKey(language.code) === languageKey(code))
@@ -207,7 +210,7 @@ export default function NewArticlePage() {
         const results = await previewTranslateArticle({
           applicationId,
           sourceLanguage,
-          targetLanguages,
+          targetLanguages: toTranslate,
           sourceFields,
         });
         setHeld((current) => {
@@ -480,7 +483,7 @@ export default function NewArticlePage() {
             onActiveChange={setEditingCode}
             translateAction={
               <BatchTranslateButton
-                count={targetLanguages.length}
+                count={toTranslate.length}
                 disabled={pending}
                 loading={isTranslating}
                 onClick={runTranslate}
@@ -496,7 +499,7 @@ export default function NewArticlePage() {
                 className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-sky-300 border-t-sky-700"
                 aria-hidden
               />
-              Translating selected languages: {translatingLabel}…
+              Translating {translatingLabel}…
             </div>
           ) : null}
         </Card>

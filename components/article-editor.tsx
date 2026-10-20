@@ -445,12 +445,24 @@ export function ArticleEditor({
     });
   }
 
+  // Approved languages are kept as they are, so only the rest are sent, counted and named.
+  const toTranslate = targetLanguages.filter(
+    (code) =>
+      languageKey(code) !== languageKey(sourceLanguage) &&
+      findTranslation(article.translations, code)?.status !== "APPROVED"
+  );
+  const keptApproved = targetLanguages.filter(
+    (code) =>
+      languageKey(code) !== languageKey(sourceLanguage) &&
+      findTranslation(article.translations, code)?.status === "APPROVED"
+  );
+
   function runBatchTranslate() {
-    if (targetLanguages.length === 0) return;
+    if (toTranslate.length === 0) return;
     setError("");
     setIsTranslating(true);
     setTranslatingLabel(
-      targetLanguages
+      toTranslate
         .map((code) => findLanguage(languages, code)?.name ?? code)
         .join(", ")
     );
@@ -480,9 +492,7 @@ export function ArticleEditor({
       try {
         const results = await autoTranslateArticleLanguages({
           contentId: article.id,
-          targetLanguages: targetLanguages.filter(
-            (code) => languageKey(code) !== languageKey(sourceLanguage)
-          ),
+          targetLanguages: toTranslate,
           applicationId,
           sourceLanguage,
           sourceFields,
@@ -836,7 +846,7 @@ export function ArticleEditor({
           showEditingSwitcher={false}
           translateAction={
             <BatchTranslateButton
-              count={targetLanguages.length}
+              count={toTranslate.length}
               disabled={pending}
               loading={isTranslating}
               onClick={runBatchTranslate}
@@ -845,6 +855,11 @@ export function ArticleEditor({
         />
         <p className="text-xs text-slate-500">
           AI translation covers text only. Images stay the same in every language.
+          {keptApproved.length > 0
+            ? toTranslate.length > 0
+              ? ` ${keptApproved.map((code) => findLanguage(languages, code)?.name ?? code).join(", ")} ${keptApproved.length === 1 ? "is" : "are"} approved and kept as is.`
+              : " All selected languages are approved, so there is nothing to translate."
+            : ""}
         </p>
         {isTranslating ? (
           <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
@@ -852,7 +867,7 @@ export function ArticleEditor({
               className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-sky-300 border-t-sky-700"
               aria-hidden
             />
-            Translating selected languages: {translatingLabel}…
+            Translating {translatingLabel}…
           </div>
         ) : null}
       </Card>
