@@ -260,9 +260,14 @@ export class TerminologyRule implements TranslationQualityRule {
     }
 
     const source = sourceText(input);
-    const findings: RuleEvaluationResult["findings"] = [];
-    let penalty = 0;
-    const issueNames: string[] = [];
+    // Collected per entry first: two entries (say MR.DIY and MR DIY Group) can point at the
+    // same words, and that is one mistake, shown once and charged once.
+    const candidates: Array<{
+      finding: RuleEvaluationResult["findings"][number];
+      term: string;
+      cost: number;
+    }> = [];
+
 
     for (const entry of entries) {
       const preferred = entry.preferredTranslation.trim();
@@ -323,33 +328,35 @@ export class TerminologyRule implements TranslationQualityRule {
             return sourceHasTerm(sourceSentence, entry.term);
           });
       if (applicableForbiddenHits.length > 0) {
-        penalty += 11;
-        issueNames.push(entry.term);
         const inconsistent = preferredHits.length > 0;
         for (const hit of applicableForbiddenHits.slice(0, 8)) {
-          findings.push({
-            severity: "warning",
-            title: hit.hit.doubledDot
-              ? "Double full stop"
-              : brand
-                ? "Brand name not as in glossary"
-                : inconsistent
-                  ? "Glossary word used inconsistently"
-                  : "Word not as in glossary",
-            explanation: hit.hit.doubledDot
-              ? `"${replacement}" already ends with a full stop, so the sentence needs no second one.`
-              : brand
-                ? `The brand name should remain ${replacement}.`
-                : inconsistent
-                  ? `Use "${preferred}" for ${entry.term}. "${hit.hit.matched}" is not the preferred translation.`
-                  : `"${hit.hit.matched}" is not the preferred translation for ${entry.term}. Use "${replacement}".`,
-            sourceText: entry.term,
-            translatedText: hit.hit.matched,
-            suggestedText: hit.hit.suggested,
-            targetField: hit.field,
-            startOffset: hit.hit.index,
-            endOffset: hit.hit.index + hit.hit.matched.length,
-            actionType: "replace",
+          candidates.push({
+            term: entry.term,
+            cost: 11,
+            finding: {
+              severity: "warning",
+              title: hit.hit.doubledDot
+                ? "Double full stop"
+                : brand
+                  ? "Brand name not as in glossary"
+                  : inconsistent
+                    ? "Glossary word used inconsistently"
+                    : "Word not as in glossary",
+              explanation: hit.hit.doubledDot
+                ? `"${replacement}" already ends with a full stop, so the sentence needs no second one.`
+                : brand
+                  ? `The brand name should remain ${replacement}.`
+                  : inconsistent
+                    ? `Use "${preferred}" for ${entry.term}. "${hit.hit.matched}" is not the preferred translation.`
+                    : `"${hit.hit.matched}" is not the preferred translation for ${entry.term}. Use "${replacement}".`,
+              sourceText: entry.term,
+              translatedText: hit.hit.matched,
+              suggestedText: hit.hit.suggested,
+              targetField: hit.field,
+              startOffset: hit.hit.index,
+              endOffset: hit.hit.index + hit.hit.matched.length,
+                actionType: "replace",
+            },
           });
         }
       } else if (inSource && preferred && preferredHits.length === 0) {
@@ -361,25 +368,45 @@ export class TerminologyRule implements TranslationQualityRule {
           }));
         });
         if (replacements.length === 0) continue;
-        penalty += 8;
-        issueNames.push(entry.term);
         for (const hit of replacements.slice(0, 8)) {
-          findings.push({
-            severity: "warning",
-            title: "Glossary word missing",
-            explanation: `The source uses "${entry.term}". Replace "${hit.hit.matched}" with "${preferred}".`,
-            sourceText: entry.term,
-            translatedText: hit.hit.matched,
-            suggestedText: hit.hit.suggested,
-            targetField: hit.field,
-            startOffset: hit.hit.index,
-            endOffset: hit.hit.index + hit.hit.matched.length,
-            actionType: "replace",
+          candidates.push({
+            term: entry.term,
+            cost: 8,
+            finding: {
+              severity: "warning",
+              title: "Glossary word missing",
+              explanation: `The source uses "${entry.term}". Replace "${hit.hit.matched}" with "${preferred}".`,
+              sourceText: entry.term,
+              translatedText: hit.hit.matched,
+              suggestedText: hit.hit.suggested,
+              targetField: hit.field,
+              startOffset: hit.hit.index,
+              endOffset: hit.hit.index + hit.hit.matched.length,
+                actionType: "replace",
+            },
           });
         }
       }
     }
 
+    const kept: typeof candidates = [];
+    for (const candidate of candidates) {
+      const { targetField, startOffset = 0, endOffset = 0 } = candidate.finding;
+      const overlaps = kept.some(
+        (other) =>
+          other.finding.targetField === targetField &&
+          (other.finding.startOffset ?? 0) < endOffset &&
+          startOffset < (other.finding.endOffset ?? 0)
+      );
+      if (!overlaps) kept.push(candidate);
+    }
+    const findings = kept.map((candidate) => candidate.finding);
+    const costs = new Map<string, number>();
+    for (const candidate of kept) {
+      costs.set(candidate.term, Math.max(costs.get(candidate.term) ?? 0, candidate.cost));
+    }
+    const issueNames = [...costs.keys()];
+    const penalty = [...costs.values()].reduce((sum, cost) => sum + cost, 0);
     const score = clampScore(100 - penalty);
     const summary =
       issueNames.length === 0

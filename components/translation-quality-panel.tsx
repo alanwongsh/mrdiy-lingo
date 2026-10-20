@@ -48,6 +48,40 @@ function barClass(score: number | null) {
   return "bg-red-500";
 }
 
+const FIELD_NAME: Record<QualityAction["targetField"], string> = {
+  title: "Title",
+  summary: "Description",
+  content: "Body",
+};
+
+/**
+ * Findings that say the same thing with the same fix, such as one brand misspelt in the
+ * title and twice in the body, become one card. Findings without a fix stay on their own.
+ */
+function groupFindings(findings: QualityFinding[]): QualityFinding[][] {
+  const groups = new Map<string, QualityFinding[]>();
+  for (const finding of findings) {
+    const key = finding.suggestedText
+      ? `${finding.categoryCode}|${finding.title}|${finding.suggestedText}`
+      : `id|${finding.id}`;
+    groups.set(key, [...(groups.get(key) ?? []), finding]);
+  }
+  return [...groups.values()];
+}
+
+/** "Title, Body ×2" for the places a grouped finding appears. */
+function placesLabel(fields: QualityAction["targetField"][]): string {
+  const counts = new Map<QualityAction["targetField"], number>();
+  for (const field of fields) counts.set(field, (counts.get(field) ?? 0) + 1);
+  return (["title", "summary", "content"] as const)
+    .filter((field) => counts.has(field))
+    .map((field) => {
+      const count = counts.get(field) ?? 0;
+      return count > 1 ? `${FIELD_NAME[field]} ×${count}` : FIELD_NAME[field];
+    })
+    .join(", ");
+}
+
 function fallbackAction(finding: QualityFinding): QualityAction | null {
   if (!finding.targetField || !finding.translatedText || !finding.suggestedText) return null;
   if (finding.translatedText === finding.suggestedText) return null;
@@ -749,18 +783,49 @@ export function TranslationQualityPanel({
               <p className="mt-2 text-sm text-slate-500">No open findings.</p>
             ) : (
               <ul className="mt-1">
-                {visibleFindings.map((finding) => {
-                  const storedAction = selected.actions.find((item) => item.findingId === finding.id);
-                  const action = storedAction ?? fallbackAction(finding);
-                  const place = locateFinding(draft, finding, action);
+                {groupFindings(visibleFindings).map((group) => {
+                  // Every place this finding appears; the card reads from the first.
+                  const items = group.map((one) => {
+                    const stored = selected.actions.find((item) => item.findingId === one.id);
+                    const act = stored ?? fallbackAction(one);
+                    const at = locateFinding(draft, one, act);
+                    const open =
+                      canApply &&
+                      canReview &&
+                      (!act || act.status === "pending") &&
+                      !accepted.has(act?.id ?? one.id) &&
+                      !ignored.has(act?.id ?? one.id);
+                    return { finding: one, storedAction: stored, action: act, place: at, open };
+                  });
+                  const finding = group[0];
+                  const { place } = items[0];
                   const mark = findingMark(finding.severity);
-                  const pending =
-                    canApply &&
-                    canReview &&
-                    (!action || action.status === "pending") &&
-                    !accepted.has(action?.id ?? finding.id) &&
-                    !ignored.has(action?.id ?? finding.id);
-                  const canAct = Boolean(place && !place.hidden) && pending && Boolean(action);
+                  const pending = items.some((item) => item.open);
+                  const actionable = items.filter(
+                    (item) => item.open && item.action && item.place && !item.place.hidden
+                  );
+                  const canAct = actionable.length > 0;
+                  const grouped = group.length > 1;
+                  const located = items.flatMap((item) => (item.place ? [item.place.field] : []));
+                  const sameTexts = [...new Set(group.map((one) => one.translatedText).filter(Boolean))];
+                  const acceptGroup = () => {
+                    // Longest first, as Accept all does, so one fix never cuts into another.
+                    const ordered = [...actionable].sort(
+                      (left, right) =>
+                        (right.action?.originalText?.length ?? 0) - (left.action?.originalText?.length ?? 0)
+                    );
+                    for (const item of ordered) {
+                      if (!item.action || !item.place) continue;
+                      onAccept(
+                        { ...item.action, targetField: item.place.field },
+                        Boolean(item.storedAction),
+                        grouped
+                      );
+                    }
+                  };
+                  const ignoreGroup = () => {
+                    for (const item of items) if (item.open) ignoreFinding(item.finding.id);
+                  };
                   // Clicking the finding jumps to its wording in the article, in place of a Show button.
                   const showTarget =
                     onShow && place && !place.hidden && finding.translatedText
@@ -773,7 +838,7 @@ export function TranslationQualityPanel({
                   };
                   return (
                     <li
-                      key={finding.id}
+                      key={group.map((one) => one.id).join(":")}
                       className={`-mx-2 border-t border-[var(--hub-border)] px-2 py-3 ${
                         showTarget
                           ? "cursor-pointer rounded-md transition hover:bg-[var(--diy-yellow-soft)] focus-visible:outline-2 focus-visible:outline-[var(--hub-accent)]"
@@ -816,10 +881,16 @@ export function TranslationQualityPanel({
                       {finding.explanation ? (
                         <p className="mt-1 text-sm leading-relaxed text-slate-600">{finding.explanation}</p>
                       ) : null}
-                      {finding.translatedText ? (
+                      {grouped && located.length > 0 ? (
                         <p className="mt-2 text-xs leading-relaxed text-slate-700">
+                          <span className="font-semibold text-slate-500">Found in {group.length} places: </span>
+                          {placesLabel(located)}
+                        </p>
+                      ) : null}
+                      {finding.translatedText ? (
+                        <p className={`${grouped && located.length > 0 ? "mt-1" : "mt-2"} text-xs leading-relaxed text-slate-700`}>
                           <span className="font-semibold text-slate-500">In this text: </span>
-                          {finding.translatedText}
+                          {sameTexts.join(" · ")}
                         </p>
                       ) : null}
                       {finding.translatedText && finding.suggestedText && !place?.hidden ? (
@@ -841,24 +912,19 @@ export function TranslationQualityPanel({
                           This wording is no longer in the translation, so it can’t be highlighted or accepted.
                         </p>
                       ) : null}
-                      {canAct && action && place ? (
+                      {canAct ? (
                         <div className="mt-2 flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            onClick={() => onAccept({ ...action, targetField: place.field }, Boolean(storedAction))}
-                          >
-                            Accept
+                          <Button type="button" onClick={acceptGroup}>
+                            {actionable.length > 1 ? `Accept all ${actionable.length}` : "Accept"}
                           </Button>
-                          <Button type="button" variant="secondary" onClick={() => ignoreFinding(finding.id)}>Ignore</Button>
+                          <Button type="button" variant="secondary" onClick={ignoreGroup}>
+                            Ignore
+                          </Button>
                           {showEditLink && canReview ? <EditTranslationLink href={editHref} /> : null}
                         </div>
                       ) : pending && canReview ? (
                         <div className="mt-2 flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => ignoreFinding(finding.id)}
-                          >
+                          <Button type="button" variant="secondary" onClick={ignoreGroup}>
                             Ignore
                           </Button>
                           {showEditLink ? <EditTranslationLink href={editHref} /> : null}
