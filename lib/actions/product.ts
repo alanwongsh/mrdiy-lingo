@@ -408,6 +408,16 @@ export async function setStringTranslationStatus(input: {
     input.status === "APPROVED" ? "approve" : "edit"
   );
   const db = await getDb();
+  const { data: before, error: beforeError } = await db
+    .from("translations")
+    .select("status")
+    .eq("id", input.translationId)
+    .single();
+  if (beforeError) throw new Error(beforeError.message);
+  // Revoking an approval is an approver's call, same as granting one.
+  if (before.status === "APPROVED" && input.status !== "APPROVED") {
+    await requireTranslationAccess(input.translationId, "approve");
+  }
   const approval = await approvalStamp(input.status, grant.user.id);
   const { error } = await db
     .from("translations")

@@ -1151,6 +1151,10 @@ export async function setContentTranslationStatus(input: {
     .eq("id", input.contentTranslationId)
     .single();
   if (beforeError) throw new Error(beforeError.message);
+  // Revoking an approval is an approver's call, same as granting one.
+  if (before.status === "APPROVED" && input.status !== "APPROVED") {
+    await requireContentTranslationAccess(input.contentTranslationId, "approve");
+  }
   const approval = await approvalStamp(input.status, grant.user.id);
   const { error } = await db
     .from("content_translations")

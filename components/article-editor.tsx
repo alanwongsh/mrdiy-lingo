@@ -1087,14 +1087,44 @@ export function ArticleEditor({
                   Saved
                 </span>
               ) : null}
-              {canApprove ? (
+              {canApprove && langStatus === "APPROVED" && targetTranslation ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={pending || isTranslating}
+                  onClick={() => {
+                    if (
+                      !confirm(
+                        "Revoke approval for this language? It will go back to review."
+                      )
+                    ) {
+                      return;
+                    }
+                    startTransition(async () => {
+                      setError("");
+                      try {
+                        await setContentTranslationStatus({
+                          contentTranslationId: targetTranslation.id,
+                          status: "MANUALLY_MODIFIED",
+                          applicationId,
+                          contentId: article.id,
+                        });
+                        router.refresh();
+                      } catch (err) {
+                        setError(errorMessage(err, "Revoke failed"));
+                      }
+                    });
+                  }}
+                >
+                  Revoke approval
+                </Button>
+              ) : canApprove ? (
                 <Button
                   type="button"
                   variant="secondary"
                   disabled={
                     pending ||
                     isTranslating ||
-                    langStatus === "APPROVED" ||
                     !draft.title.trim() ||
                     !actor
                   }
@@ -1130,7 +1160,7 @@ export function ArticleEditor({
                     })
                   }
                 >
-                  {langStatus === "APPROVED" ? "Approved" : "Approve"}
+                  Approve
                 </Button>
               ) : (
                 <span className="text-xs text-slate-500">
