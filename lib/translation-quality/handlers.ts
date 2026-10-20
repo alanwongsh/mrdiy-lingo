@@ -149,6 +149,9 @@ export async function analyzeTranslationQuality(input: {
 /** Analyze a translation that has not been saved as an article yet. */
 export async function previewTranslationQuality(input: {
   applicationId: string;
+  /** The form's article type and tone, so the tone is scored against the chosen tone. */
+  contentType?: string;
+  tone?: string | null;
   sourceLanguage: string;
   targetLanguage: string;
   sourceTitle: string;
@@ -181,6 +184,8 @@ export async function previewTranslationQuality(input: {
     translatedTitle,
     translatedSummary,
     translatedContent,
+    contentType: typeof input.contentType === "string" ? input.contentType.slice(0, 40) : undefined,
+    tone: typeof input.tone === "string" ? input.tone.slice(0, 40) : null,
   });
 }
 

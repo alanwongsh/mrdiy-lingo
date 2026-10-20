@@ -5,6 +5,7 @@ import { listActiveBoilerplate, listActiveTerminology } from "@/lib/translation-
 import { htmlToText } from "@/lib/translation-quality/text";
 import type { BoilerplatePhrase, TerminologyEntry } from "@/lib/translation-quality/types";
 import { glossaryPrompt } from "@/lib/translation/glossary";
+import { toneTranslationLines } from "@/lib/tones";
 import { cleanSourceHtml } from "@/lib/translation/cleanup";
 import { markSegments, unmarkSegment, type MarkedSegment } from "@/lib/translation/segments";
 import { keepWordGaps, textNodes, type TextNode } from "@/lib/translation/spacing";
@@ -118,6 +119,7 @@ function articlePrompt(input: TranslateArticleInput, glossary: Glossary, sourceT
     "Translate only the visible words. If a field is empty, return an empty string for that key.",
     "In body, keep every HTML tag, attribute, and URL unchanged. Do not add or remove tags.",
     "Keep brand marks such as MR.DIY, numbers, and web addresses unchanged.",
+    ...toneTranslationLines(input.tone, input.targetLanguage),
     ...glossaryFor(glossary, input, sourceText),
     "",
     `title:\n${fields.title}`,
@@ -193,6 +195,7 @@ function promptFor(input: TranslateTextInput, glossary: Glossary) {
     "Translate this text. Return only the translation.",
     `From ${input.sourceLanguage} to ${input.targetLanguage}.`,
     "Keep brand marks such as MR.DIY, numbers, and web addresses unchanged.",
+    ...toneTranslationLines(input.tone, input.targetLanguage),
     ...glossaryFor(glossary, input, input.text),
     "",
     input.text,
@@ -351,6 +354,7 @@ export class GeminiTranslationProvider implements TranslationProvider {
           "Do not add HTML tags or new markers.",
           "Keep brand marks such as MR.DIY, numbers, and web addresses unchanged.",
           "A name made of several words, such as MR.DIY Club or Bersama Satu Bazaar, is one name. Keep its words together and in order, and place the whole name where the target grammar needs it, for example ahli MR.DIY Club.",
+          ...toneTranslationLines(input.tone, input.targetLanguage),
           ...glossaryFor(glossary, input, segments.map((segment) => segment.plain).join("\n")),
           "",
           "Parts:",
@@ -394,6 +398,7 @@ export class GeminiTranslationProvider implements TranslationProvider {
         text: cores[0],
         sourceLanguage: input.sourceLanguage,
         targetLanguage: input.targetLanguage,
+        tone: input.tone,
       });
       return [text.trim() ? text : cores[0]];
     }
@@ -408,6 +413,7 @@ export class GeminiTranslationProvider implements TranslationProvider {
         "The parts are consecutive pieces of one passage, split where bold, italic, or a link starts or ends.",
         "A part can start or end in the middle of a sentence. Translate each part so the parts read correctly when joined in order.",
         "Do not merge parts or leave a part empty.",
+        ...toneTranslationLines(input.tone, input.targetLanguage),
         ...glossaryFor(glossary, input, context),
         "",
         "The whole passage, for context:",

@@ -23,6 +23,7 @@ import type {
   PublishLanguageTarget,
   PublishVendorChoice,
   SourceContentFields,
+  ToneProfile,
   TranslationStatus,
 } from "@/lib/types";
 import { emptySourceContent } from "@/lib/types";
@@ -49,6 +50,8 @@ import { PublishLanguagePicker } from "@/components/article-publish-panel";
 import { fromLocalInput, isPublishable, toLocalInput } from "@/lib/publish/schedule";
 import { publishArticleNow } from "@/lib/actions/publish";
 import { FilterSelect } from "./filter-select";
+import { ToneSelect } from "@/components/tone-select";
+import { effectiveToneCode } from "@/lib/tones";
 import { TranslationQualityPanel } from "@/components/translation-quality-panel";
 import { saveReviewedContentTranslation } from "@/lib/actions/quality";
 import { applyQualityAction, qualityActionStillOpen } from "@/lib/translation-quality/apply-action";
@@ -187,6 +190,7 @@ export function ArticleEditor({
   article,
   languages,
   contentTypes,
+  tones,
   actor,
   canApprove,
   comments,
@@ -204,6 +208,8 @@ export function ArticleEditor({
   article: ArticleWithTranslations;
   languages: Language[];
   contentTypes: ContentTypeRecord[];
+  /** Every tone in the app. Empty before migration 034, which hides the tone controls. */
+  tones: ToneProfile[];
   actor: { username: string; name: string } | null;
   canApprove: boolean;
   comments: ArticleComment[];
@@ -230,6 +236,12 @@ export function ArticleEditor({
   const [editingOpen, setEditingOpen] = useState(true);
   const [status, setStatus] = useState(article.status);
   const [contentType, setContentType] = useState(article.content_type);
+  const [tone, setTone] = useState(article.tone ?? "");
+  // Sent only once tones exist, so saving works before migration 034.
+  const toneChange = tones.length > 0 ? { tone: tone || null } : {};
+  const typeRecord = contentTypes.find((type) => type.code === contentType);
+  const toneName = (code: string | null | undefined) =>
+    tones.find((item) => item.code === code)?.name ?? code ?? "";
   // UTC; converted to the viewer's zone only at the picker.
   const [scheduledPublishAt, setScheduledPublishAt] = useState<string | null>(
     article.scheduled_publish_at ?? null
@@ -366,6 +378,7 @@ export function ArticleEditor({
   useEffect(() => {
     setStatus(article.status);
     setContentType(article.content_type);
+    setTone(article.tone ?? "");
     setScheduledPublishAt(article.scheduled_publish_at ?? null);
     setLanguageSchedule(article.language_publish_at);
     setLanguageVendors(publishTargets);
@@ -497,6 +510,7 @@ export function ArticleEditor({
           applicationId,
           sourceLanguage,
           sourceFields,
+          ...toneChange,
         });
         const forCurrent = results.find(
           (result) => languageKey(result.language_code) === languageKey(targetLang)
@@ -559,6 +573,7 @@ export function ArticleEditor({
           title: article.title,
           slug: article.slug,
           content_type: contentType,
+          ...toneChange,
           source_language: sourceLanguage,
           source_content: article.source_content,
           status,
@@ -681,6 +696,7 @@ export function ArticleEditor({
           title: source.title || article.title,
           slug: article.slug,
           content_type: contentType,
+          ...toneChange,
           source_language: sourceLanguage,
           source_content: {
             ...article.source_content,
@@ -716,6 +732,14 @@ export function ArticleEditor({
             }))}
             placeholder="Select content type"
           />
+          {tones.length > 0 ? (
+            <ToneSelect
+              tones={tones}
+              value={tone}
+              onChange={setTone}
+              contentType={typeRecord}
+            />
+          ) : null}
           <FilterSelect
             fullWidth
             label="Source language"
@@ -990,6 +1014,11 @@ export function ArticleEditor({
                 {editingCode ? (
                   <Badge tone={statusTone(langStatus)}>{langStatus}</Badge>
                 ) : null}
+                {editingCode && targetTranslation?.adapted ? (
+                  <span title="Machine translation was allowed to reword this language for its tone, so it will not match the source line by line. Check that prices, dates, and offers still match.">
+                    <Badge tone="info">Adapted · {toneName(targetTranslation.tone)}</Badge>
+                  </span>
+                ) : null}
                 <Button
                   type="button"
                   variant="secondary"
@@ -1008,6 +1037,18 @@ export function ArticleEditor({
             </div>
           </div>
           <div className="space-y-3 p-4" hidden={!editingOpen}>
+            {editingCode &&
+            targetTranslation?.tone &&
+            tones.length > 0 &&
+            targetTranslation.tone !== effectiveToneCode(tone, typeRecord) ? (
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                {`Machine-translated in the ${toneName(targetTranslation.tone)} tone. This article now uses ${
+                  effectiveToneCode(tone, typeRecord)
+                    ? `the ${toneName(effectiveToneCode(tone, typeRecord))} tone`
+                    : "no tone"
+                }. Translate it again to apply the new tone.`}
+              </p>
+            ) : null}
             {!editingCode ? (
               <p className="text-sm text-[var(--hub-muted)]">
                 Choose a language above to edit or auto-translate it.

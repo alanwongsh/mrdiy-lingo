@@ -7,17 +7,20 @@ import {
   updateContentType,
 } from "@/lib/actions/content-types";
 import { normalizeContentTypeCode } from "@/lib/content-types";
-import type { ContentTypeRecord, EntityStatus } from "@/lib/types";
+import type { ContentTypeRecord, EntityStatus, ToneProfile } from "@/lib/types";
 import { Button, Card, Field, inputClass, textareaClass } from "@/components/ui";
 
 export function ContentTypeDialog({
   applicationId,
   contentType,
+  tones,
   onClose,
   onSaved,
 }: {
   applicationId: string;
   contentType: ContentTypeRecord | null;
+  /** Every tone, so a type keeps showing an inactive default. Empty before migration 034. */
+  tones: ToneProfile[];
   onClose: () => void;
   onSaved?: (saved: ContentTypeRecord) => void;
 }) {
@@ -29,7 +32,11 @@ export function ContentTypeDialog({
   const [status, setStatus] = useState<EntityStatus>(
     contentType?.status ?? "ACTIVE"
   );
+  const [defaultTone, setDefaultTone] = useState(contentType?.default_tone ?? "");
   const [error, setError] = useState("");
+  const toneChoices = tones.filter(
+    (tone) => tone.status === "ACTIVE" || tone.code === contentType?.default_tone
+  );
   const previewCode = contentType
     ? contentType.code
     : codeTouched
@@ -66,12 +73,14 @@ export function ContentTypeDialog({
                       name,
                       description,
                       status,
+                      ...(tones.length > 0 ? { default_tone: defaultTone || null } : {}),
                     })
                   : await createContentType({
                       application_id: applicationId,
                       name,
                       code: previewCode || undefined,
                       description,
+                      default_tone: defaultTone || null,
                     });
                 onSaved?.(saved);
                 onClose();
@@ -122,6 +131,26 @@ export function ContentTypeDialog({
               onChange={(e) => setDescription(e.target.value)}
             />
           </Field>
+          {tones.length > 0 ? (
+            <Field label="Default tone">
+              <select
+                className={inputClass}
+                value={defaultTone}
+                onChange={(e) => setDefaultTone(e.target.value)}
+              >
+                <option value="">No tone</option>
+                {toneChoices.map((tone) => (
+                  <option key={tone.code} value={tone.code}>
+                    {tone.status === "ACTIVE" ? tone.name : `${tone.name} (inactive)`}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-[var(--hub-muted)]">
+                Machine translation uses this tone for articles of this type unless an article
+                picks its own.
+              </p>
+            </Field>
+          ) : null}
           {contentType ? (
             <Field label="Status">
               <select

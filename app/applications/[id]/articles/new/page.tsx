@@ -6,6 +6,8 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { getApplication } from "@/lib/actions/applications";
 import { listContentTypes } from "@/lib/actions/content-types";
 import { listLanguages } from "@/lib/actions/languages";
+import { listTones } from "@/lib/actions/tones";
+import { ToneSelect } from "@/components/tone-select";
 import { previewTranslateArticle, saveNewArticle } from "@/lib/actions/press";
 import { generateArticleDraft } from "@/lib/actions/drafting";
 import { checkIsProduction } from "@/lib/actions/env";
@@ -14,6 +16,7 @@ import type {
   ContentTypeRecord,
   Language,
   SourceContentFields,
+  ToneProfile,
 } from "@/lib/types";
 import { emptySourceContent } from "@/lib/types";
 import {
@@ -53,6 +56,9 @@ export default function NewArticlePage() {
   const [languages, setLanguages] = useState<Language[]>([]);
   const [contentTypes, setContentTypes] = useState<ContentTypeRecord[]>([]);
   const [contentType, setContentType] = useState(DEFAULT_CONTENT_TYPE_CODE);
+  const [tones, setTones] = useState<ToneProfile[]>([]);
+  /** Empty follows the type's default tone. */
+  const [tone, setTone] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [body, setBody] = useState("");
@@ -125,6 +131,7 @@ export default function NewArticlePage() {
       );
       setContentType(general?.code ?? types[0]?.code ?? DEFAULT_CONTENT_TYPE_CODE);
     });
+    listTones(applicationId).then(setTones).catch(() => setTones([]));
   }, [applicationId]);
 
   const targetOptions = useMemo(
@@ -222,6 +229,8 @@ export default function NewArticlePage() {
           sourceLanguage,
           targetLanguages: toTranslate,
           sourceFields,
+          contentType,
+          tone: tone || null,
         });
         setHeld((current) => {
           const next = { ...current };
@@ -373,6 +382,7 @@ export default function NewArticlePage() {
           contentId: createdId,
           title: sourceFields.title,
           contentType,
+          ...(tones.length > 0 ? { tone: tone || null } : {}),
           sourceLanguage,
           sourceFields,
           market: market || null,
@@ -478,6 +488,14 @@ export default function NewArticlePage() {
                 placeholder="Select content type"
               />
             </Field>
+            {tones.length > 0 ? (
+              <ToneSelect
+                tones={tones}
+                value={tone}
+                onChange={setTone}
+                contentType={contentTypes.find((type) => type.code === contentType)}
+              />
+            ) : null}
             <Field label="Source language">
               <FilterSelect
                 fullWidth
@@ -670,6 +688,7 @@ export default function NewArticlePage() {
               key={editingCode}
               variant="rail"
               sessionOnly
+              previewTone={{ contentType, tone: tone || null }}
               applicationId={applicationId}
               contentId=""
               languageCode={editingCode}

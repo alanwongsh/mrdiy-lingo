@@ -5,9 +5,12 @@ import {
   listContentTypeCounts,
   listContentTypes,
 } from "@/lib/actions/content-types";
+import { listLanguages } from "@/lib/actions/languages";
+import { listTones } from "@/lib/actions/tones";
 import { mailConfigured } from "@/lib/mail";
 import { ContentTypesManager } from "@/components/content-types-manager";
 import { NotificationSettings } from "@/components/notification-settings";
+import { TonesManager } from "@/components/tones-manager";
 import { SettingsChrome, SettingsSection } from "@/components/settings-chrome";
 
 export default async function SettingsGeneralPage({
@@ -18,17 +21,20 @@ export default async function SettingsGeneralPage({
   const { id } = await params;
   const app = await getApplication(id);
   if (!app || app.model_type !== "CONTENT") notFound();
-  const [contentTypes, counts] = await Promise.all([
+  const [contentTypes, counts, tones, languages] = await Promise.all([
     listContentTypes(app.id, { includeInactive: true }),
     listContentTypeCounts(app.id),
+    listTones(app.id, { includeInactive: true }),
+    listLanguages(),
   ]);
+  const canEditTypes = can(app.access, "settings.content_types");
   const reviewEmail = app.notify_review_email !== false;
 
   return (
     <SettingsChrome
       application={app}
       title="General"
-      description="Article types and review emails."
+      description="Article types, writing tones, and review emails."
     >
       <div className="space-y-3">
         <SettingsSection
@@ -44,7 +50,26 @@ export default async function SettingsGeneralPage({
             applicationId={app.id}
             contentTypes={contentTypes}
             counts={counts}
-            canEdit={can(app.access, "settings.content_types")}
+            tones={tones}
+            canEdit={canEditTypes}
+          />
+        </SettingsSection>
+
+        <SettingsSection
+          id="tones"
+          title="Writing tones"
+          description={`${tones.length} ${tones.length === 1 ? "tone" : "tones"}`}
+        >
+          <p className="mb-3 text-sm text-[var(--hub-muted)]">
+            How machine translation should read, such as Formal, Press, or Social media. Give an
+            article type a default tone, or pick one on an article. Tones that allow rewording
+            are marked Adapted for reviewers.
+          </p>
+          <TonesManager
+            applicationId={app.id}
+            tones={tones}
+            languages={languages}
+            canEdit={canEditTypes}
           />
         </SettingsSection>
 

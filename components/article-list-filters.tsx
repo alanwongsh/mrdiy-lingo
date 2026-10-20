@@ -211,6 +211,8 @@ export function ArticleListFilters({
       <ContentTypeDialog
         applicationId={applicationId}
         contentType={typeDialog === "new" ? null : typeDialog}
+        // Default tones are set under Settings → General.
+        tones={[]}
         onClose={() => setTypeDialog(null)}
         onSaved={() => router.refresh()}
       />

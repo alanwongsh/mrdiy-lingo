@@ -11,6 +11,7 @@ import {
 import type { ContentTypeRecord, EntityStatus } from "@/lib/types";
 import { requireAppCapability } from "@/lib/auth/access";
 import { marketScope } from "@/lib/auth/business-units";
+import { normalizeToneCode } from "@/lib/tones";
 
 function throwContentTypeError(error: { message: string }) {
   if (
@@ -102,6 +103,7 @@ async function insertContentType(input: {
   code: string;
   name: string;
   description?: string;
+  defaultTone?: string | null;
 }) {
   const db = await getDb();
   const sort_order = await nextSortOrder(input.applicationId);
@@ -114,6 +116,8 @@ async function insertContentType(input: {
       description: input.description?.trim() ?? "",
       status: "ACTIVE",
       sort_order,
+      // Left out when unset, so types can still be added before migration 034.
+      ...(input.defaultTone ? { default_tone: input.defaultTone } : {}),
     })
     .select("*")
     .single();
@@ -173,6 +177,7 @@ export async function createContentType(input: {
   name: string;
   code?: string;
   description?: string;
+  default_tone?: string | null;
 }): Promise<ContentTypeRecord> {
   await requireAppCapability(input.application_id, "settings.content_types");
   const name = input.name.trim();
@@ -186,6 +191,7 @@ export async function createContentType(input: {
     code,
     name,
     description: input.description,
+    defaultTone: normalizeToneCode(input.default_tone ?? "") || null,
   });
   if (!inserted.created) throw new UserFacingError(`Type ${code} already exists.`);
   revalidateContentTypes(input.application_id);
@@ -195,7 +201,13 @@ export async function createContentType(input: {
 export async function updateContentType(
   id: string,
   applicationId: string,
-  input: { name: string; description: string; status: EntityStatus }
+  input: {
+    name: string;
+    description: string;
+    status: EntityStatus;
+    /** Undefined leaves the default tone unchanged. */
+    default_tone?: string | null;
+  }
 ): Promise<ContentTypeRecord> {
   await requireAppCapability(applicationId, "settings.content_types");
   const name = input.name.trim();
@@ -208,6 +220,9 @@ export async function updateContentType(
       name,
       description: input.description.trim(),
       status,
+      ...(input.default_tone !== undefined
+        ? { default_tone: normalizeToneCode(input.default_tone ?? "") || null }
+        : {}),
     })
     .eq("id", id)
     .eq("application_id", applicationId)

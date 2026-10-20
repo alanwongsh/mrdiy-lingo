@@ -31,6 +31,9 @@ import { applyGlossaryToTranslation } from "@/lib/translation-quality/glossary-f
 import { normalizeSlug } from "@/lib/slug";
 import { DUE_SOON_MS, type PublishDueKind } from "@/lib/publish-due";
 import { requireContentTypeCode } from "@/lib/actions/content-types";
+import { DEFAULT_CONTENT_TYPE_CODE } from "@/lib/content-types";
+import { resolveArticleTone, toneColumns } from "@/lib/tone-store";
+import { normalizeToneCode } from "@/lib/tones";
 import { addArticleComment } from "@/lib/actions/comments";
 import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
 import { normalizeMarket } from "@/lib/markets";
@@ -445,6 +448,8 @@ export async function getArticle(id: string): Promise<
 export async function createArticle(input: {
   application_id: string;
   content_type?: ContentType;
+  /** Tone code for this article. Empty uses the article type's default. */
+  tone?: string | null;
   title: string;
   /** `null` stores no slug. Omitted values are generated from the title. */
   slug?: string | null;
@@ -483,6 +488,7 @@ export async function createArticle(input: {
     input.source_language
   );
   const actor = await getActor();
+  const articleTone = normalizeToneCode(input.tone ?? "");
   const { data, error } = await db
     .from("content")
     .insert({
@@ -503,6 +509,8 @@ export async function createArticle(input: {
       submitted_by_username: actor?.username ?? null,
       scheduled_publish_at: isProduction() ? null : input.scheduled_publish_at || null,
       ...publishTimestampPatch(status, null),
+      // Left out when unset, so articles can still be created before migration 034.
+      ...(articleTone ? { tone: articleTone } : {}),
     })
     .select("*")
     .single();
@@ -537,6 +545,8 @@ export async function saveNewArticle(input: {
   contentId?: string | null;
   title: string;
   contentType: string;
+  /** Tone code. Empty uses the type's default. Undefined leaves a saved article's tone alone. */
+  tone?: string | null;
   sourceLanguage: string;
   sourceFields: SourceContentFields;
   market?: string | null;
@@ -579,6 +589,7 @@ export async function saveNewArticle(input: {
       slug: null,
       source_language: input.sourceLanguage,
       content_type: input.contentType,
+      tone: input.tone ?? null,
       status,
       market: input.market ?? null,
       target_languages: input.targetLanguages,
@@ -593,6 +604,7 @@ export async function saveNewArticle(input: {
       title: input.title.trim() || sourceFields.title,
       slug: null,
       content_type: input.contentType,
+      tone: input.tone,
       source_language: input.sourceLanguage,
       source_content: sourceFields,
       status,
@@ -659,6 +671,16 @@ export async function saveNewArticle(input: {
     });
   }
 
+  // Machine translations in the form were made with the tone the article saves with.
+  const systemTone = (input.translations ?? []).some((row) => row.origin === "system")
+    ? toneColumns(
+        await resolveArticleTone({
+          applicationId: input.applicationId,
+          contentType: input.contentType,
+          contentId: articleId,
+        })
+      )
+    : undefined;
   for (const row of input.translations ?? []) {
     if (languageKey(row.languageCode) === languageKey(input.sourceLanguage)) continue;
     if (
@@ -677,6 +699,7 @@ export async function saveNewArticle(input: {
         seo_description: row.fields.seo_description || row.fields.summary,
       },
       source_type: row.origin === "system" ? "SYSTEM" : "MANUAL",
+      tone: row.origin === "system" ? systemTone : undefined,
       // Saving as approved checks the approve permission and records who approved it.
       status: approve || row.approved
         ? "APPROVED"
@@ -698,6 +721,8 @@ export async function updateArticle(
     title: string;
     slug?: string | null;
     content_type: ContentType;
+    /** Tone code. Null uses the type's default. Undefined leaves it unchanged. */
+    tone?: string | null;
     source_language: string;
     source_content: SourceContentFields;
     status: ContentLifecycleStatus;
@@ -716,12 +741,13 @@ export async function updateArticle(
   const db = await getDb();
   const { data: current, error: currentError } = await db
     .from("content")
-    .select(
-      "published_at, status, title, content_type, market, scheduled_publish_at, source_language, source_content, target_languages, submitted_by_name"
-    )
+    // Every column, so tone is read when migration 034 has added it and saves still work before.
+    .select("*")
     .eq("id", id)
     .single();
   if (currentError) throw new Error(currentError.message);
+  const nextTone =
+    input.tone !== undefined ? normalizeToneCode(input.tone ?? "") || null : undefined;
 
   const releasing = isPublishable(input.status);
   if (releasing && input.status !== current.status && !grant.access.can_approve) {
@@ -768,6 +794,7 @@ export async function updateArticle(
     source_content: input.source_content,
     status: nextStatus,
     ...publishTimestampPatch(nextStatus, current.published_at),
+    ...(nextTone !== undefined ? { tone: nextTone } : {}),
   };
   // With publishing off, publish times and providers are left as they are.
   const canSetPublishing = !isProduction();
@@ -804,6 +831,9 @@ export async function updateArticle(
   if (textChanged) changed.push("source text");
   if (data.source_language !== current.source_language) changed.push("source language");
   if (data.content_type !== current.content_type) changed.push("content type");
+  if (nextTone !== undefined && nextTone !== ((current as { tone?: string | null }).tone ?? null)) {
+    changed.push("tone");
+  }
   if (targetsChanged) changed.push("target languages");
   if ((data.market ?? null) !== (current.market ?? null)) changed.push("market");
   if ((data.scheduled_publish_at ?? null) !== (current.scheduled_publish_at ?? null)) {
@@ -995,6 +1025,8 @@ export async function upsertContentTranslation(input: {
   fields: SourceContentFields;
   source_type: SourceType;
   status?: TranslationStatus;
+  /** Tone a machine translation was made with. Undefined leaves the stored tone alone. */
+  tone?: { tone: string | null; adapted: boolean };
 }): Promise<ContentTranslation> {
   const status: TranslationStatus =
     input.status ??
@@ -1034,6 +1066,7 @@ export async function upsertContentTranslation(input: {
     seo_description: input.fields.seo_description,
     status,
     ...approval,
+    ...(input.tone ?? {}),
   };
 
   const textChanged =
@@ -1046,7 +1079,12 @@ export async function upsertContentTranslation(input: {
 
   let translation: ContentTranslation;
   if (existing) {
-    const unchanged = !textChanged && existing.status === payload.status;
+    const unchanged =
+      !textChanged &&
+      existing.status === payload.status &&
+      (!input.tone ||
+        ((existing.tone ?? null) === input.tone.tone &&
+          Boolean(existing.adapted) === input.tone.adapted));
     if (unchanged) return existing as ContentTranslation;
 
     const { data, error } = await db
@@ -1094,7 +1132,11 @@ export async function upsertContentTranslation(input: {
       languageCode: input.language_code,
       fromStatus: previousStatus,
       toStatus: status,
-      detail: { version: versionNumber, source_type: input.source_type },
+      detail: {
+        version: versionNumber,
+        source_type: input.source_type,
+        ...(input.tone?.tone ? { tone: input.tone.tone, adapted: input.tone.adapted } : {}),
+      },
     });
   }
   const approvalEvent = approvalChange(previousStatus, status);
@@ -1312,11 +1354,17 @@ export async function autoTranslateArticle(input: {
     });
   }
 
+  const tone = await resolveArticleTone({
+    applicationId: grant.applicationId,
+    contentType: article.content_type,
+    tone: article.tone ?? null,
+  });
   const service = getTranslationService(grant.applicationId);
   const translated = await service.translateArticle({
     fields: sourceFields,
     sourceLanguage,
     targetLanguage: input.targetLanguage,
+    tone,
   });
 
   if (!translated.body?.trim() && sourceFields.body?.trim()) {
@@ -1324,6 +1372,7 @@ export async function autoTranslateArticle(input: {
       text: sourceFields.body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
       sourceLanguage,
       targetLanguage: input.targetLanguage,
+      tone,
     });
   }
   // Glossary spellings are fixed before saving, so nobody has to accept them one by one.
@@ -1341,6 +1390,7 @@ export async function autoTranslateArticle(input: {
     fields,
     source_type: "SYSTEM",
     status: input.approveTranslation ? "APPROVED" : "SYSTEM_GENERATED",
+    tone: toneColumns(tone),
   });
 
   // AI translation never moves the article. The person edits it, then saves or submits.
@@ -1356,6 +1406,8 @@ export async function autoTranslateArticleLanguages(input: {
   applicationId: string;
   sourceFields?: SourceContentFields;
   sourceLanguage?: string;
+  /** The tone chosen in the editor, saved before translating. Undefined leaves it unchanged. */
+  tone?: string | null;
   /**
    * Approver import: approve each generated translation and keep the article approved.
    * Off unless asked for: machine translations are saved as AI translated, for everyone,
@@ -1392,6 +1444,7 @@ export async function autoTranslateArticleLanguages(input: {
     title: input.sourceFields?.title?.trim() || article.title,
     slug: null,
     content_type: article.content_type,
+    tone: input.tone,
     source_language: sourceLanguage,
     source_content: input.sourceFields
       ? { ...article.source_content, ...input.sourceFields }
@@ -1426,6 +1479,9 @@ export async function previewTranslateArticle(input: {
   sourceLanguage: string;
   targetLanguages: string[];
   sourceFields: SourceContentFields;
+  /** The type and tone chosen in the form, so the preview reads like the saved article. */
+  contentType?: string;
+  tone?: string | null;
 }): Promise<{ language_code: string; fields: SourceContentFields }[]> {
   await requireAppCapability(input.applicationId, "edit");
   const sourceLanguage = input.sourceLanguage.trim();
@@ -1447,6 +1503,11 @@ export async function previewTranslateArticle(input: {
   if (requested.length === 0) {
     throw new UserFacingError("Choose a language other than the source.");
   }
+  const tone = await resolveArticleTone({
+    applicationId: input.applicationId,
+    contentType: input.contentType?.trim() || DEFAULT_CONTENT_TYPE_CODE,
+    tone: input.tone ?? null,
+  });
   const service = getTranslationService(input.applicationId);
   const results: { language_code: string; fields: SourceContentFields }[] = [];
   for (const targetLanguage of requested) {
@@ -1454,6 +1515,7 @@ export async function previewTranslateArticle(input: {
       fields: sourceFields,
       sourceLanguage,
       targetLanguage,
+      tone,
     });
     if (!fields.body?.trim() && sourceFields.body.trim()) {
       fields = {
@@ -1462,6 +1524,7 @@ export async function previewTranslateArticle(input: {
           text: sourceFields.body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
           sourceLanguage,
           targetLanguage,
+          tone,
         }),
       };
     }

@@ -65,6 +65,8 @@ export async function analyzeTranslationQuality(input: {
 
 export async function previewTranslationQuality(input: {
   applicationId: string;
+  contentType?: string;
+  tone?: string | null;
   sourceLanguage: string;
   targetLanguage: string;
   sourceTitle: string;

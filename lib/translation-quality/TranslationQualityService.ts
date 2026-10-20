@@ -23,6 +23,10 @@ import {
   replaceRuleCheck,
 } from "@/lib/translation-quality/repository";
 import { overallScore } from "@/lib/translation-quality/scoring/ScoreCalculator";
+import { resolveArticleTone } from "@/lib/tone-store";
+import type { TonePrompt } from "@/lib/tones";
+import { DEFAULT_CONTENT_TYPE_CODE } from "@/lib/content-types";
+import { getDb } from "@/lib/db/client";
 import { BoilerplateRule } from "@/lib/translation-quality/rules/BoilerplateRule";
 import { RuleEngine } from "@/lib/translation-quality/rules/RuleEngine";
 import { alignWithBoilerplate } from "@/lib/translation-quality/align-boilerplate";
@@ -51,6 +55,21 @@ export interface AnalyzeArticleInput {
   translatedContent: string;
   /** Accepted in the editor since the last save. */
   acceptedActionIds?: string[];
+}
+
+/** An unsaved article's type and tone, so a preview is scored against the chosen tone. */
+export interface PreviewToneInput {
+  contentType?: string;
+  tone?: string | null;
+}
+
+/** The tone does not stop an analysis. Without it, tone is compared against the source. */
+async function toneOrNone(load: () => Promise<TonePrompt | null | undefined>) {
+  try {
+    return (await load()) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function failedAiScores(
@@ -88,11 +107,25 @@ export class TranslationQualityService {
     if (categories.length === 0) {
       throw new Error("No quality categories are enabled.");
     }
-    const [terminology, boilerplate, savedDecisions, unsavedDecisions] = await Promise.all([
+    const [terminology, boilerplate, savedDecisions, unsavedDecisions, tone] = await Promise.all([
       listActiveTerminology(request.applicationId),
       listActiveBoilerplate(request.applicationId),
       listReviewDecisions(request.contentId, request.targetLanguage).catch(() => []),
       listAcceptedDecisions(request.contentId, request.acceptedActionIds ?? []).catch(() => []),
+      toneOrNone(async () => {
+        const db = await getDb();
+        const { data } = await db
+          .from("content")
+          .select("content_type")
+          .eq("id", request.contentId)
+          .maybeSingle();
+        if (!data) return null;
+        return resolveArticleTone({
+          applicationId: request.applicationId,
+          contentType: String(data.content_type),
+          contentId: request.contentId,
+        });
+      }),
     ]);
     const reviewHistory = [...unsavedDecisions, ...savedDecisions];
     const input: TranslationQualityInput = {
@@ -108,6 +141,7 @@ export class TranslationQualityService {
       boilerplate,
       enabledCategories: categories,
       reviewHistory,
+      tone,
     };
     const config = qualityConfig();
     const aiCategories = categories.filter((category) => category.categoryType === "ai");
@@ -334,16 +368,23 @@ export class TranslationQualityService {
 
   /** Score an unsaved translation. Nothing is written to the article. */
   async preview(
-    request: Omit<AnalyzeArticleInput, "contentId">
+    request: Omit<AnalyzeArticleInput, "contentId"> & PreviewToneInput
   ): Promise<TranslationQualityResult> {
     const started = Date.now();
     const categories = await listQualityCategories(request.applicationId, true);
     if (categories.length === 0) {
       throw new Error("No quality categories are enabled.");
     }
-    const [terminology, boilerplate] = await Promise.all([
+    const [terminology, boilerplate, tone] = await Promise.all([
       listActiveTerminology(request.applicationId),
       listActiveBoilerplate(request.applicationId),
+      toneOrNone(() =>
+        resolveArticleTone({
+          applicationId: request.applicationId,
+          contentType: request.contentType?.trim() || DEFAULT_CONTENT_TYPE_CODE,
+          tone: request.tone ?? null,
+        })
+      ),
     ]);
     const input: TranslationQualityInput = {
       sourceLanguage: request.sourceLanguage,
@@ -357,6 +398,7 @@ export class TranslationQualityService {
       terminology,
       boilerplate,
       enabledCategories: categories,
+      tone,
     };
     const config = qualityConfig();
     const aiCategories = categories.filter((category) => category.categoryType === "ai");

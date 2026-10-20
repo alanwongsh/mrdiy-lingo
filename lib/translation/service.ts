@@ -1,4 +1,5 @@
 import type { SourceContentFields } from "@/lib/types";
+import type { TonePrompt } from "@/lib/tones";
 import { GeminiTranslationProvider } from "@/lib/translation/gemini";
 import { cleanSourceHtml } from "@/lib/translation/cleanup";
 import { keepWordGaps, textNodes } from "@/lib/translation/spacing";
@@ -7,12 +8,15 @@ export type TranslateTextInput = {
   text: string;
   sourceLanguage: string;
   targetLanguage: string;
+  /** How the translation should read. Providers without prompts ignore it. */
+  tone?: TonePrompt | null;
 };
 
 export type TranslateArticleInput = {
   fields: SourceContentFields;
   sourceLanguage: string;
   targetLanguage: string;
+  tone?: TonePrompt | null;
 };
 
 export interface TranslationProvider {

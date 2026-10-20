@@ -185,9 +185,10 @@ Schema is applied in order from `supabase/migrations/001` through `023`. Setup (
 | `translation_keys` | A STRING key: key name, source language, and source text. The key is unique per application. |
 | `translations` | The current string for one key and one language, plus status and the approval stamp. |
 | `translation_versions` | Append-only history of a string translation. |
-| `content_types` | Types owned by one CONTENT application. Each row has a stable `code`, a display `name`, a description, `ACTIVE` or `INACTIVE`, and a sort order. The code is unique per application. New articles default to `GENERAL`. An inactive type stays on articles that already use it and is hidden from new choices. Import creates a type when the file uses a code this app does not have yet. |
-| `content` | An article in a CONTENT application. `content_type` is that app’s type code. Also stores title, slug, source language, source JSON, market, who submitted it, lifecycle status, target languages, and schedule and publish timestamps. `scheduled_publish_at` is the default publish time. `language_publish_at` (JSON, lower-case language code → ISO time) overrides it for one language. |
-| `content_translations` | One translation of an article into one language: title, summary, body, SEO title, SEO description, status, and the approval stamp. |
+| `content_types` | Types owned by one CONTENT application. Each row has a stable `code`, a display `name`, a description, `ACTIVE` or `INACTIVE`, and a sort order. The code is unique per application. New articles default to `GENERAL`. An inactive type stays on articles that already use it and is hidden from new choices. Import creates a type when the file uses a code this app does not have yet. `default_tone` names the tone its articles use unless they pick one. |
+| `tone_profiles` | Writing tones owned by one CONTENT application, such as Formal, Press, or Social media. Each row has a stable `code`, a `name`, `instructions` sent to machine translation and the quality check, `language_notes` (JSON, language code → extra guidance), `allow_adaptation`, `ACTIVE` or `INACTIVE`, and a sort order. |
+| `content` | An article in a CONTENT application. `content_type` is that app’s type code. Also stores title, slug, source language, source JSON, market, who submitted it, lifecycle status, target languages, and schedule and publish timestamps. `scheduled_publish_at` is the default publish time. `language_publish_at` (JSON, lower-case language code → ISO time) overrides it for one language. `tone` is the article's tone code; null uses the type's default. |
+| `content_translations` | One translation of an article into one language: title, summary, body, SEO title, SEO description, status, and the approval stamp. `tone` and `adapted` record the tone a machine translation was made with and whether that tone allowed rewording. |
 | `content_translation_versions` | Append-only history of an article translation, stored as JSON of those five fields. |
 | `article_comments` | A comment on an article, scoped to one language. |
 | `quality_categories` | The checks used to score a translation. `category_type` is `ai` or `rule`. `enabled` turns a check on or off. `configuration.weight` is that check’s share of the score. Seeded checks: message 20, tone 15, structure 15, cross-language 25, terminology 15, boilerplate 10. The code is unique. `enabled` and the weight here are defaults; an application's own setting in `application_quality_settings` overrides them. |
@@ -250,6 +251,8 @@ An editor save stores `MANUALLY_MODIFIED` and clears the approval stamp. An HOD 
 
 **Article type:** each CONTENT application defines its own codes in `content_types`. `GENERAL` is the default. Existing articles may still use `ARTICLE`, `NEWS`, or `ANNOUNCEMENT`.
 
+**Writing tone:** an article translates with its own tone, else its type's `default_tone`, else none. The tone's instructions and the target language's note go into the translation prompt. A tone without `allow_adaptation` changes register and word choice only. A tone with it lets the model reword, shorten, and restructure (transcreation) while keeping prices, numbers, dates, names, brand marks, web addresses, and glossary terms; those translations are stored with `adapted = true` and marked Adapted in the editor. The quality check scores tone against the requested tone, and for adapted tones does not lower cross_language or structure for intended rewording, while still reporting changed facts (prompt `translation-quality-v1.2`).
+
 **Record status** for applications, languages, namespaces, and content types: `ACTIVE` or `INACTIVE`.
 
 ### 4.4 Quality score
@@ -304,7 +307,7 @@ Every check runs on the server (`lib/auth/access.ts`). Viewing needs membership.
 | `content.import` | Import articles, strings, or catalog items from a file |
 | `content.approve` | Approve content and translations, request changes, move articles to Approved or Published |
 | `settings.notifications` | Review-email switch |
-| `settings.content_types` | Article types |
+| `settings.content_types` | Article types and writing tones |
 | `settings.fields` | Rename, switch off, and delete catalog field names. Anyone with `content.edit` can add a new name while adding fields to an item |
 | `settings.quality` | Quality scoring, checks, and publish vendors |
 | `settings.terminology` | Terminology entries |

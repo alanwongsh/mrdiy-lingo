@@ -43,8 +43,8 @@ export const PERMISSIONS = [
     key: "settings.content_types",
     models: ["CONTENT"],
     group: "Settings",
-    label: "Article types",
-    hint: "Add, rename, and remove article types.",
+    label: "Article types and tones",
+    hint: "Add, rename, and remove article types and writing tones, and set each type's default tone.",
   },
   {
     key: "settings.fields",

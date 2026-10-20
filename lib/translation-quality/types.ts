@@ -1,3 +1,5 @@
+import type { TonePrompt } from "@/lib/tones";
+
 export type QualityCategoryType = "ai" | "rule";
 
 export type ScoreSeverity = "excellent" | "good" | "warning" | "critical";
@@ -66,6 +68,8 @@ export interface TranslationQualityInput {
   passageFocus?: Array<{ source: string; translated: string }>;
   /** Suggestions a reviewer already accepted or ignored in earlier analyses of this article. */
   reviewHistory?: QualityReviewDecision[];
+  /** The tone the translation was asked for. Without one, tone is compared against the source. */
+  tone?: TonePrompt | null;
 }
 
 export interface QualityReviewDecision {

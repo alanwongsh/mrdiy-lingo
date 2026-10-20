@@ -49,6 +49,25 @@ export type ContentTypeRecord = {
   code: string;
   name: string;
   description: string;
+  /** Tone code articles of this type use unless they choose their own. Missing before migration 034. */
+  default_tone?: string | null;
+  status: EntityStatus;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** How a translation should read, such as Formal, Press, or Social. */
+export type ToneProfile = {
+  id: string;
+  application_id: string;
+  code: string;
+  name: string;
+  instructions: string;
+  /** Language code -> extra guidance for that language. */
+  language_notes: Record<string, string>;
+  /** Machine translation may reword and restructure instead of following the source closely. */
+  allow_adaptation: boolean;
   status: EntityStatus;
   sort_order: number;
   created_at: string;
@@ -211,6 +230,8 @@ export type Content = {
   id: string;
   application_id: string;
   content_type: ContentType;
+  /** Tone code chosen for this article. Null uses the article type's default. */
+  tone?: string | null;
   title: string;
   slug: string | null;
   source_language: string;
@@ -279,6 +300,10 @@ export type ContentTranslation = {
   seo_title: string;
   seo_description: string;
   status: TranslationStatus;
+  /** Tone the machine translation was made with. */
+  tone?: string | null;
+  /** Machine translation was allowed to reword, so it will not match the source line by line. */
+  adapted?: boolean;
   approved_by_username: string | null;
   approved_by_name: string | null;
   approved_by_user_id: string | null;

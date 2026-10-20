@@ -4,6 +4,7 @@ import { getApplication } from "@/lib/actions/applications";
 import { listContentTypes } from "@/lib/actions/content-types";
 import { listArticleComments } from "@/lib/actions/comments";
 import { listLanguages } from "@/lib/actions/languages";
+import { listTones } from "@/lib/actions/tones";
 import { getArticlePublish } from "@/lib/actions/publish";
 import { getArticle } from "@/lib/actions/press";
 import { ArticleEditor } from "@/components/article-editor";
@@ -25,9 +26,10 @@ export default async function ArticleEditPage({
   if (!article || article.application_id !== app.id) notFound();
   // Without content.edit the editor is read-only at best; send them to the article instead.
   if (!app.access.can_edit) redirect(`/applications/${id}/articles/${contentId}`);
-  const [languages, contentTypes, publish] = await Promise.all([
+  const [languages, contentTypes, tones, publish] = await Promise.all([
     listLanguages(),
     listContentTypes(app.id, { includeInactive: true }),
+    listTones(app.id, { includeInactive: true }),
     getArticlePublish(contentId),
   ]);
   const actor = await getActor();
@@ -54,6 +56,7 @@ export default async function ArticleEditPage({
         article={article}
         languages={languages}
         contentTypes={contentTypes}
+        tones={tones}
         actor={actor}
         canApprove={app.access.can_approve}
         comments={comments}

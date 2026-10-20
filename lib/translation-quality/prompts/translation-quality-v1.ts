@@ -1,8 +1,9 @@
 import type { TranslationQualityInput } from "@/lib/translation-quality/types";
 import { htmlToText } from "@/lib/translation-quality/text";
 import { glossaryLines } from "@/lib/translation/glossary";
+import { toneReviewLines } from "@/lib/tones";
 
-export const PROMPT_VERSION = "translation-quality-v1.1";
+export const PROMPT_VERSION = "translation-quality-v1.2";
 
 function articleText(value: string | undefined): string {
   return htmlToText(value ?? "") || "(empty)";
@@ -38,7 +39,7 @@ For each category:
 Do not invent errors.
 Do not penalize valid stylistic differences.
 For cross_language, prioritize semantic accuracy.
-For tone, compare the translated tone against the source.
+${toneReviewLines(input.tone, input.targetLanguage).join("\n")}
 For structure, evaluate preservation of article organization.
 Do not score terminology or boilerplate. Other checks cover those, and your scores must not move because of them.
 The glossary below is already decided. Using its preferred word for that source word is correct. Do not lower message, tone, structure, or cross_language for it, and do not suggest a different word.

@@ -116,7 +116,7 @@ export function appSections(app: SidebarApp, opts: { publishing: boolean }): Sec
     {
       label: "Settings",
       links: [
-        { href: `${base}/settings/general`, label: "General", hint: "Article types, review emails" },
+        { href: `${base}/settings/general`, label: "General", hint: "Article types, tones, review emails" },
         ...(app.access.can_manage ? [people] : []),
         ...(canManageRoles
           ? [

@@ -282,6 +282,7 @@ export function TranslationQualityPanel({
   onShow,
   showEditLink = false,
   sessionOnly = false,
+  previewTone,
   approved = false,
 }: {
   applicationId: string;
@@ -317,6 +318,8 @@ export function TranslationQualityPanel({
   showEditLink?: boolean;
   /** Score the text in memory. Used on the new-draft page before an article exists. */
   sessionOnly?: boolean;
+  /** With sessionOnly: the form's article type and tone. */
+  previewTone?: { contentType: string; tone: string | null };
   /** The translation is approved. The saved check reads as a record, not a to-do. */
   approved?: boolean;
 }) {
@@ -481,6 +484,7 @@ export function TranslationQualityPanel({
         const loaded = sessionOnly
           ? await previewTranslationQuality({
               applicationId,
+              ...previewTone,
               sourceLanguage,
               targetLanguage: languageCode,
               sourceTitle: source.title,

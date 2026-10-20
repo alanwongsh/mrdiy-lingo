@@ -4,7 +4,7 @@ import { errorMessage } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { deleteContentType } from "@/lib/actions/content-types";
-import type { ContentTypeRecord } from "@/lib/types";
+import type { ContentTypeRecord, ToneProfile } from "@/lib/types";
 import { ContentTypeDialog } from "@/components/content-type-dialog";
 import { IconButton, PencilIcon, TrashIcon } from "@/components/icon-button";
 import { Badge, Button, Card, statusTone } from "@/components/ui";
@@ -13,10 +13,12 @@ export function ContentTypesManager({
   applicationId,
   contentTypes,
   counts,
+  tones,
   canEdit,
 }: {
   applicationId: string;
   contentTypes: ContentTypeRecord[];
+  tones: ToneProfile[];
   counts: Record<string, number>;
   canEdit: boolean;
 }) {
@@ -41,6 +43,7 @@ export function ContentTypesManager({
               <th>Name</th>
               <th>Code</th>
               <th>Description</th>
+              {tones.length > 0 ? <th>Default tone</th> : null}
               <th>Articles</th>
               <th>Status</th>
               <th />
@@ -49,7 +52,7 @@ export function ContentTypesManager({
           <tbody>
             {contentTypes.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-sm text-[var(--hub-muted)]">
+                <td colSpan={tones.length > 0 ? 7 : 6} className="px-4 py-6 text-sm text-[var(--hub-muted)]">
                   No types yet.
                 </td>
               </tr>
@@ -63,6 +66,14 @@ export function ContentTypesManager({
                     <td className="px-4 py-3 text-[var(--hub-muted)]">
                       {type.description || "—"}
                     </td>
+                    {tones.length > 0 ? (
+                      <td className="px-4 py-3 text-[var(--hub-muted)]">
+                        {type.default_tone
+                          ? (tones.find((tone) => tone.code === type.default_tone)?.name ??
+                            type.default_tone)
+                          : "—"}
+                      </td>
+                    ) : null}
                     <td className="px-4 py-3">{used}</td>
                     <td className="px-4 py-3">
                       <Badge tone={statusTone(type.status)}>{type.status}</Badge>
@@ -114,6 +125,7 @@ export function ContentTypesManager({
         <ContentTypeDialog
           applicationId={applicationId}
           contentType={dialog === "new" ? null : dialog}
+          tones={tones}
           onClose={() => setDialog(null)}
           onSaved={() => router.refresh()}
         />
