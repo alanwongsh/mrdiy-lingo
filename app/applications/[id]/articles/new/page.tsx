@@ -16,6 +16,7 @@ import type {
 } from "@/lib/types";
 import { emptySourceContent } from "@/lib/types";
 import {
+  Badge,
   Button,
   Card,
   Field,
@@ -62,6 +63,8 @@ export default function NewArticlePage() {
   const [held, setHeld] = useState<Record<string, HeldTranslation>>({});
   const [bodyEpoch, setBodyEpoch] = useState(0);
   const [canApprove, setCanApprove] = useState(false);
+  /** Languages approved one by one; saved as approved with the article. */
+  const [approvedCodes, setApprovedCodes] = useState<string[]>([]);
   /** Countries from the person's business units. Null means every country. */
   const [allowedMarkets, setAllowedMarkets] = useState<string[] | null>(null);
   const [publishing, setPublishing] = useState(false);
@@ -159,6 +162,7 @@ export default function NewArticlePage() {
   const editingName = languages.find(
     (language) => languageKey(language.code) === languageKey(editingCode)
   )?.name;
+  const editingApproved = approvedCodes.includes(languageKey(editingCode));
 
   function liveSource(): SourceContentFields {
     const liveBody = sourceBodyRef.current?.getHTML()?.trim() || body;
@@ -332,6 +336,7 @@ export default function NewArticlePage() {
                 languageCode: code,
                 fields: row.fields,
                 origin: row.origin,
+                approved: approvedCodes.includes(languageKey(code)),
               },
             ];
           }),
@@ -455,6 +460,21 @@ export default function NewArticlePage() {
             }
             options={targetOptions}
             selected={targetLanguages}
+            // Same status chips as the editor: approved, translated, edited, or missing.
+            statuses={targetLanguages.map((code) => {
+              const key = languageKey(code);
+              const row = held[key];
+              return {
+                code,
+                status: approvedCodes.includes(key)
+                  ? "APPROVED"
+                  : !row
+                    ? "MISSING"
+                    : row.origin === "system"
+                      ? "SYSTEM_GENERATED"
+                      : "MANUALLY_MODIFIED",
+              };
+            })}
             activeCode={editingCode || undefined}
             onSelectedChange={setTargetLanguages}
             onActiveChange={setEditingCode}
@@ -484,13 +504,42 @@ export default function NewArticlePage() {
         {editingCode ? (
           <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
             <Card className="overflow-hidden border-[var(--hub-accent)]/20">
-              <div className="border-b border-[var(--hub-border)] bg-[var(--hub-accent-soft)] px-4 py-3">
-                <span className="block text-xs font-semibold tracking-wide text-[var(--hub-accent)] uppercase">
-                  Editing
-                </span>
-                <span className="mt-0.5 block font-semibold text-slate-900">
-                  {editingName ?? editingCode}
-                </span>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--hub-border)] bg-[var(--hub-accent-soft)] px-4 py-3">
+                <div>
+                  <span className="block text-xs font-semibold tracking-wide text-[var(--hub-accent)] uppercase">
+                    Editing
+                  </span>
+                  <span className="mt-0.5 block font-semibold text-slate-900">
+                    {editingName ?? editingCode}
+                  </span>
+                </div>
+                {canApprove ? (
+                  // Approve one language, as in the editor. It is saved with the article.
+                  <div className="flex items-center gap-2">
+                    {editingApproved ? <Badge tone="good">Approved on save</Badge> : null}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={
+                        isTranslating ||
+                        (!editingApproved &&
+                          !draft.title.trim() &&
+                          !draft.summary.trim() &&
+                          !draft.body.trim())
+                      }
+                      onClick={() => {
+                        const key = languageKey(editingCode);
+                        setApprovedCodes((current) =>
+                          current.includes(key)
+                            ? current.filter((item) => item !== key)
+                            : [...current, key]
+                        );
+                      }}
+                    >
+                      {editingApproved ? "Undo approve" : "Approve"}
+                    </Button>
+                  </div>
+                ) : null}
               </div>
               <div className="space-y-3 p-4">
                 <Field label="Title">
@@ -564,7 +613,8 @@ export default function NewArticlePage() {
 
         {canApprove ? (
           <p className="text-sm text-[var(--hub-muted)]">
-            Save as draft leaves this for later review. Save and approve marks the article and its translations approved.
+            Save as draft leaves this for later review. Approve a single language with its Approve button; it is
+            saved approved with the draft. Save and approve marks the article and all its translations approved.
           </p>
         ) : (
           <p className="text-sm text-[var(--hub-muted)]">

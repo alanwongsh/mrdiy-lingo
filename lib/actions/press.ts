@@ -541,6 +541,8 @@ export async function saveNewArticle(input: {
     languageCode: string;
     fields: SourceContentFields;
     origin: "system" | "manual";
+    /** Approve this language on its own, as the editor's Approve button does. */
+    approved?: boolean;
   }>;
 }): Promise<{ id: string }> {
   const approve = input.mode === "approve";
@@ -665,7 +667,8 @@ export async function saveNewArticle(input: {
         seo_description: row.fields.seo_description || row.fields.summary,
       },
       source_type: row.origin === "system" ? "SYSTEM" : "MANUAL",
-      status: approve
+      // Saving as approved checks the approve permission and records who approved it.
+      status: approve || row.approved
         ? "APPROVED"
         : row.origin === "system"
           ? "SYSTEM_GENERATED"
