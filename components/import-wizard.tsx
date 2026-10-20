@@ -157,8 +157,9 @@ function ImportFormatGuide({
             <span className="font-medium text-slate-800">content_type</span>{" "}
             becomes General. A type this app does not have yet is created on
             import.{" "}
-            <span className="font-medium text-slate-800">status</span> is DRAFT,
-            REVIEW, APPROVED, or PUBLISHED.
+            <span className="font-medium text-slate-800">status</span> is DRAFT or
+            REVIEW; a blank status is DRAFT. Approving is chosen with the import button, not
+            the file.
           </li>
           <li>
             <span className="font-medium text-slate-800">market</span> is required: a
@@ -246,7 +247,7 @@ export function ImportWizard({
   fixedApplicationId,
   lockedType,
 }: {
-  applications: (Application & { access?: Pick<AppAccess, "markets"> })[];
+  applications: (Application & { access?: Pick<AppAccess, "markets" | "can_approve"> })[];
   languages: Language[];
   fixedApplicationId?: string;
   lockedType?: "STRING" | "CONTENT";
@@ -287,8 +288,13 @@ export function ImportWizard({
       : `/applications/${applicationId}/translations`
     : "";
 
-  function runImport() {
+  /** Approvers choose: import as draft, or import and approve. */
+  const canApproveImport = importType === "CONTENT" && Boolean(selectedApp?.access?.can_approve);
+  const [importMode, setImportMode] = useState<"draft" | "approve" | null>(null);
+
+  function runImport(approve = false) {
     if (!file || !applicationId || receipt) return;
+    setImportMode(approve ? "approve" : "draft");
     setError("");
     startTransition(async () => {
       try {
@@ -306,6 +312,7 @@ export function ImportWizard({
                 filename: file.name,
                 base64,
                 translateLanguages,
+                approve,
               });
         setReceipt({
           filename: file.name,
@@ -405,18 +412,46 @@ export function ImportWizard({
         ) : null}
 
         <div className="flex flex-wrap gap-2">
-          <Button type="button" onClick={runImport} disabled={!file || pending || !!receipt}>
-            {receipt
-              ? "Imported"
-              : pending
-                ? translateLanguages.length > 0
-                  ? "Importing and translating…"
-                  : "Importing…"
-                : translateLanguages.length > 0
-                  ? "Import and translate"
-                  : "Import"}
-          </Button>
+          {canApproveImport ? (
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => runImport(false)}
+                disabled={!file || pending || !!receipt}
+              >
+                {pending && importMode === "draft" ? "Importing…" : "Import as draft"}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => runImport(true)}
+                disabled={!file || pending || !!receipt}
+              >
+                {pending && importMode === "approve" ? "Importing…" : "Import and approve"}
+              </Button>
+            </>
+          ) : (
+            <Button type="button" onClick={() => runImport(false)} disabled={!file || pending || !!receipt}>
+              {receipt
+                ? "Imported"
+                : pending
+                  ? translateLanguages.length > 0
+                    ? "Importing and translating…"
+                    : "Importing…"
+                  : translateLanguages.length > 0
+                    ? "Import and translate"
+                    : "Import"}
+            </Button>
+          )}
         </div>
+        {canApproveImport ? (
+          <p className="text-xs text-[var(--hub-muted)]">
+            <span className="font-medium text-slate-700">Import as draft</span> saves every article
+            and translation for review; nothing is approved.{" "}
+            <span className="font-medium text-slate-700">Import and approve</span> approves each
+            article and all its translations, from the file and from AI.
+          </p>
+        ) : null}
         {error ? <p className="text-sm text-red-700">{error}</p> : null}
         {receipt ? (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">

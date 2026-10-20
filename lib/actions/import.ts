@@ -25,7 +25,7 @@ import type { ContentLifecycleStatus, SourceContentFields } from "@/lib/types";
 import { emptySourceContent } from "@/lib/types";
 import { requireAppCapability, requireChosenMarket } from "@/lib/auth/access";
 import { normalizeTargetLanguages } from "@/lib/target-languages";
-import { errorMessage } from "@/lib/errors";
+import { UserFacingError, errorMessage } from "@/lib/errors";
 
 export async function previewStringImport(input: {
   applicationId: string;
@@ -225,6 +225,12 @@ export async function confirmStringImport(input: {
   return { imported, updated, unchanged, errors, translated };
 }
 
+/** The status a row gets when imported as a draft. */
+function importedDraftStatus(fileStatus: string): ContentLifecycleStatus {
+  const status = (fileStatus || "DRAFT").trim().toUpperCase();
+  return status === "REVIEW" ? "REVIEW" : "DRAFT";
+}
+
 /** A row that was not imported, with the reason in plain words. */
 export type SkippedImportRow = { row: number; title: string; reason: string };
 
@@ -275,6 +281,11 @@ export async function confirmArticleImport(input: {
   filename: string;
   base64: string;
   translateLanguages?: string[];
+  /**
+   * Approvers only. True approves each article and every translation, from the file and
+   * from AI alike. False imports drafts: nothing is approved, whatever the file says.
+   */
+  approve?: boolean;
 }): Promise<{
   imported: number;
   updated: number;
@@ -288,9 +299,11 @@ export async function confirmArticleImport(input: {
   typesCreated: number;
 }> {
   const grant = await requireAppCapability(input.applicationId, "content.import");
-  const importedTranslationStatus = grant.access.can_approve
-    ? "APPROVED"
-    : "MANUALLY_MODIFIED";
+  const approve = Boolean(input.approve);
+  if (approve && !grant.access.can_approve) {
+    throw new UserFacingError("Your role cannot approve. Import as draft instead.");
+  }
+  const importedTranslationStatus = approve ? "APPROVED" : "MANUALLY_MODIFIED";
   const preview = await previewArticleImport(input);
   const translateLanguages = input.translateLanguages ?? [];
   let imported = 0;
@@ -335,13 +348,12 @@ export async function confirmArticleImport(input: {
         source_content: fields,
         content_type: type.code,
         market: item.market,
+        // Import and approve releases every row. As a draft, the file's DRAFT or REVIEW is kept,
+        // and APPROVED or PUBLISHED becomes DRAFT since nothing was approved.
         // TRANSLATING is retired; older files that still use it import as drafts.
-        status:
-          item.status === "TRANSLATING"
-            ? "DRAFT"
-            : (item.status as ContentLifecycleStatus) || "DRAFT",
+        status: approve ? "APPROVED" : importedDraftStatus(item.status),
         target_languages: targetLanguages,
-        // The file's status column decides, also for approvers.
+        // The status worked out above is stored as is, also for approvers.
         keepStatus: true,
       });
       const contentId = created.id;
@@ -378,7 +390,7 @@ export async function confirmArticleImport(input: {
           contentId,
           targetLanguages: missingTranslate,
           applicationId: input.applicationId,
-          approveTranslations: grant.access.can_approve,
+          approveTranslations: approve,
         });
         translated += results.length;
       }

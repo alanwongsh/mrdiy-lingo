@@ -1298,12 +1298,15 @@ export async function autoTranslateArticleLanguages(input: {
   applicationId: string;
   sourceFields?: SourceContentFields;
   sourceLanguage?: string;
-  /** Approver import: approve each generated translation and keep the article approved. */
+  /**
+   * Approver import: approve each generated translation and keep the article approved.
+   * Off unless asked for: machine translations are saved as AI translated, for everyone,
+   * and an approver approves them with the Approve button like any other draft.
+   */
   approveTranslations?: boolean;
 }): Promise<ContentTranslation[]> {
-  const grant = await requireContentAccess(input.contentId, "edit");
-  const approveTranslations =
-    input.approveTranslations ?? grant.access.can_approve;
+  await requireContentAccess(input.contentId, "edit");
+  const approveTranslations = input.approveTranslations ?? false;
   const article = await getArticle(input.contentId);
   if (!article) throw new UserFacingError("Article not found");
   const sourceLanguage = input.sourceLanguage?.trim() || article.source_language;
