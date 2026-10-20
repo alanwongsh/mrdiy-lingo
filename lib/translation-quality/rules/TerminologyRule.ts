@@ -19,6 +19,13 @@ const FIELDS: Array<{ field: QualityTargetField; text: (input: TranslationQualit
   { field: "content", text: (input) => input.translatedContent },
 ];
 
+/** The source of one field, so a body sentence is lined up with body sentences only. */
+function sourceFieldText(input: TranslationQualityInput, field: QualityTargetField): string {
+  if (field === "title") return input.sourceTitle ?? "";
+  if (field === "summary") return input.sourceSummary ?? "";
+  return input.sourceContent;
+}
+
 function sourceText(input: TranslationQualityInput): string {
   return [input.sourceTitle, input.sourceSummary, input.sourceContent]
     .map((value) => htmlToText(value ?? ""))
@@ -60,27 +67,96 @@ function nameKey(value: string): string {
   return value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 }
 
+/** A wrong spelling found in the translation, and what Accept puts in its place. */
+type TermHit = {
+  index: number;
+  matched: string;
+  suggested: string;
+  /** The spelling is right; only a full stop is doubled, as in "Sdn. Bhd..". */
+  doubledDot?: boolean;
+};
+
+/** Full stops written right after position `end`. */
+function dotsAt(text: string, end: number): string {
+  return text.slice(end).match(/^\.+/)?.[0] ?? "";
+}
+
+/** A spelling without its closing full stops: "Sdn. Bhd." gives "Sdn. Bhd". */
+function withoutClosingDots(spelling: string): string {
+  return spelling.replace(/\.+$/, "");
+}
+
+/**
+ * A spelling that ends in a full stop (Sdn. Bhd., MR. D.I.Y.) shares it with the sentence,
+ * as in normal writing. Before a full stop it drops its own, so a fix never writes "Bhd..".
+ */
+function fitToSentence(text: string, end: number, spelling: string): string {
+  return spelling.endsWith(".") && dotsAt(text, end) ? withoutClosingDots(spelling) : spelling;
+}
+
 /**
  * A brand written with the right letters but other dots, spaces or case, such as MR.D.I.Y
  * or Mr. DIY for MR.DIY, so the avoid list need not name every variant. Web addresses
  * (mrdiy.com) and text inside tags or links are left alone.
  */
-function brandVariantHits(text: string, preferred: string): Array<{ index: number; matched: string }> {
+function brandVariantHits(text: string, preferred: string): TermHit[] {
   const key = nameKey(preferred);
   if (key.length < 3) return [];
+  const core = withoutClosingDots(preferred);
+  const closesWithDot = core !== preferred;
   const body = [...key].map((char) => escapeRegExp(char)).join("[\\s.\\-·'’]*");
   // Not inside a longer word or address; not followed by .com and the like.
   const re = new RegExp(`(?<![\\p{L}\\p{N}./@])${body}(?![\\p{L}\\p{N}])(?!\\.\\p{Ll}{2,})`, "giu");
-  const hits: Array<{ index: number; matched: string }> = [];
+  const hits: TermHit[] = [];
   let match: RegExpExecArray | null;
   while ((match = re.exec(text))) {
     const matched = match[0];
-    if (matched !== preferred && !termHitContext(text, match.index, matched.length).hidden) {
-      hits.push({ index: match.index, matched });
+    if (matched.length === 0) {
+      re.lastIndex += 1;
+      continue;
     }
-    if (matched.length === 0) re.lastIndex += 1;
+    if (termHitContext(text, match.index, matched.length).hidden) continue;
+    const end = match.index + matched.length;
+    const dots = dotsAt(text, end);
+    if (closesWithDot && matched === core) {
+      // "MR. D.I.Y." mid-sentence or at the end is right; "MR. D.I.Y.." is one dot too many.
+      if (dots.length === 1) continue;
+      if (dots.length > 1) {
+        hits.push({ index: match.index, matched: matched + dots, suggested: preferred, doubledDot: true });
+        continue;
+      }
+    } else if (!closesWithDot && matched === preferred) {
+      continue;
+    }
+    if (!dots) {
+      hits.push({ index: match.index, matched, suggested: preferred });
+      continue;
+    }
+    // Dots after a variant such as "MR D.I.Y." are its own when the sentence carries on in
+    // lower case; otherwise the last one is the sentence's full stop and stays, exactly once.
+    const continues = /^\s*(?:<[^>]+>\s*)*\p{Ll}/u.test(text.slice(end + dots.length));
+    if (continues) {
+      hits.push({ index: match.index, matched: matched + dots, suggested: preferred });
+    } else {
+      hits.push({
+        index: match.index,
+        matched: matched + dots.slice(1),
+        suggested: closesWithDot ? core : preferred,
+      });
+    }
   }
   return hits;
+}
+
+/** Any glossary spelling that ends in a full stop, written with one more: "Sdn. Bhd..". */
+function doubledDotHits(text: string, preferred: string): TermHit[] {
+  if (!preferred.endsWith(".")) return [];
+  return visibleTerm(text, preferred).flatMap((hit) => {
+    const extra = dotsAt(text, hit.index + hit.matched.length);
+    return extra
+      ? [{ index: hit.index, matched: hit.matched + extra, suggested: preferred, doubledDot: true }]
+      : [];
+  });
 }
 
 function hasPreferred(text: string, entry: TerminologyEntry, preferred: string): boolean {
@@ -96,18 +172,30 @@ function sourceHasTerm(source: string, term: string): boolean {
   return false;
 }
 
-function sentencesOf(value: string): string[] {
-  return htmlToText(value)
+/** Stands in for a dot inside a protected phrase while sentences are split. */
+const KEPT_DOT = "․";
+
+/**
+ * Sentences of a text. Dots inside the given phrases (glossary spellings such as "Sdn. Bhd."
+ * or "MR. D.I.Y.") do not end a sentence, so "Run by MR DIY Sdn. Bhd." stays one sentence.
+ */
+function sentencesOf(value: string, protect: string[] = []): string[] {
+  let text = htmlToText(value);
+  for (const phrase of protect) {
+    if (!/\.\s/.test(phrase)) continue;
+    text = text.replace(new RegExp(escapeRegExp(phrase), "gi"), (found) => found.replace(/\./g, KEPT_DOT));
+  }
+  return text
     .split(/\n+|(?<=[.!?。！？])\s+/)
-    .map((part) => part.trim())
+    .map((part) => part.split(KEPT_DOT).join(".").trim())
     .filter(Boolean);
 }
 
-function sentenceAt(html: string, index: number, length: number): string {
+function sentenceAt(html: string, index: number, length: number, protect: string[] = []): string {
   const matched = html.slice(index, index + length).trim().toLowerCase();
-  const sentences = sentencesOf(html);
+  const sentences = sentencesOf(html, protect);
   if (!matched) return "";
-  const before = sentencesOf(html.slice(0, index)).length;
+  const before = sentencesOf(html.slice(0, index), protect).length;
   const around = sentences[Math.max(0, before - 1)] ?? "";
   if (around.toLowerCase().includes(matched)) return around;
   return sentences.find((sentence) => sentence.toLowerCase().includes(matched)) ?? around;
@@ -181,23 +269,22 @@ export class TerminologyRule implements TranslationQualityRule {
       const forbidden = entry.forbiddenTranslations.map((item) => item.trim()).filter(Boolean);
       const inSource = sourceHasTerm(source, entry.term);
       const isBrand = entry.category.trim().toLowerCase() === "brand";
-      const forbiddenHits = FIELDS.flatMap((field) => [
-        ...forbidden.flatMap((phrase) =>
-          visibleTerm(field.text(input), phrase).map((hit) => ({
-            field: field.field,
-            hit,
-            phrase,
-          }))
-        ),
-        // Brands also catch spellings nobody listed under avoid.
-        ...(isBrand && preferred
-          ? brandVariantHits(field.text(input), preferred).map((hit) => ({
-              field: field.field,
-              hit,
-              phrase: hit.matched,
+      const replacement = preferred || entry.term;
+      const forbiddenHits = FIELDS.flatMap((field) => {
+        const text = field.text(input);
+        const found: TermHit[] = [
+          // Brand variants first, so a "MR. D.I.Y.." keeps its own message when an avoid word also matches.
+          ...(isBrand && preferred ? brandVariantHits(text, preferred) : []),
+          ...(preferred ? doubledDotHits(text, preferred) : []),
+          ...forbidden.flatMap((phrase) =>
+            visibleTerm(text, phrase).map((hit) => ({
+              ...hit,
+              suggested: fitToSentence(text, hit.index + hit.matched.length, replacement),
             }))
-          : []),
-      ]);
+          ),
+        ];
+        return found.map((hit) => ({ field: field.field, hit }));
+      });
       const seenHits = new Set<string>();
       const uniqueForbiddenHits = forbiddenHits.filter((hit) => {
         const key = `${hit.field}:${hit.hit.index}`;
@@ -211,19 +298,27 @@ export class TerminologyRule implements TranslationQualityRule {
       if (!inSource && forbiddenHits.length === 0 && preferredHits.length === 0) continue;
 
       const brand = entry.category.trim().toLowerCase() === "brand";
+      // This entry's own spellings never split a sentence at their dots.
+      const protectedPhrases = [entry.term, preferred, ...forbidden].filter(Boolean);
       const applicableForbiddenHits = brand
         ? uniqueForbiddenHits
         : uniqueForbiddenHits.filter((hit) => {
-            const translatedSentences = sentencesOf(FIELDS.find((field) => field.field === hit.field)?.text(input) ?? "");
+            // A doubled full stop is wrong whatever the source sentence says.
+            if (hit.hit.doubledDot) return true;
+            const translatedSentences = sentencesOf(
+              FIELDS.find((field) => field.field === hit.field)?.text(input) ?? "",
+              protectedPhrases
+            );
             const translatedSentence = sentenceAt(
               FIELDS.find((field) => field.field === hit.field)?.text(input) ?? "",
               hit.hit.index,
-              hit.hit.matched.length
+              hit.hit.matched.length,
+              protectedPhrases
             );
             const sourceSentence = sourceSentenceForTerm(
               translatedSentence,
               translatedSentences,
-              sentencesOf(source)
+              sentencesOf(sourceFieldText(input, hit.field), protectedPhrases)
             );
             return sourceHasTerm(sourceSentence, entry.term);
           });
@@ -234,19 +329,23 @@ export class TerminologyRule implements TranslationQualityRule {
         for (const hit of applicableForbiddenHits.slice(0, 8)) {
           findings.push({
             severity: "warning",
-            title: brand
-              ? "Brand name not as in glossary"
-              : inconsistent
-                ? "Glossary word used inconsistently"
-                : "Word not as in glossary",
-            explanation: brand
-              ? `The brand name should remain ${preferred || entry.term}.`
-              : inconsistent
-                ? `Use "${preferred}" for ${entry.term}. "${hit.hit.matched}" is not the preferred translation.`
-                : `"${hit.hit.matched}" is not the preferred translation for ${entry.term}. Use "${preferred || entry.term}".`,
+            title: hit.hit.doubledDot
+              ? "Double full stop"
+              : brand
+                ? "Brand name not as in glossary"
+                : inconsistent
+                  ? "Glossary word used inconsistently"
+                  : "Word not as in glossary",
+            explanation: hit.hit.doubledDot
+              ? `"${replacement}" already ends with a full stop, so the sentence needs no second one.`
+              : brand
+                ? `The brand name should remain ${replacement}.`
+                : inconsistent
+                  ? `Use "${preferred}" for ${entry.term}. "${hit.hit.matched}" is not the preferred translation.`
+                  : `"${hit.hit.matched}" is not the preferred translation for ${entry.term}. Use "${replacement}".`,
             sourceText: entry.term,
             translatedText: hit.hit.matched,
-            suggestedText: preferred || entry.term,
+            suggestedText: hit.hit.suggested,
             targetField: hit.field,
             startOffset: hit.hit.index,
             endOffset: hit.hit.index + hit.hit.matched.length,
@@ -254,12 +353,13 @@ export class TerminologyRule implements TranslationQualityRule {
           });
         }
       } else if (inSource && preferred && preferredHits.length === 0) {
-        const replacements = FIELDS.flatMap((field) =>
-          visibleTerm(field.text(input), entry.term).map((hit) => ({
+        const replacements = FIELDS.flatMap((field) => {
+          const text = field.text(input);
+          return visibleTerm(text, entry.term).map((hit) => ({
             field: field.field,
-            hit,
-          }))
-        );
+            hit: { ...hit, suggested: fitToSentence(text, hit.index + hit.matched.length, preferred) },
+          }));
+        });
         if (replacements.length === 0) continue;
         penalty += 8;
         issueNames.push(entry.term);
@@ -270,7 +370,7 @@ export class TerminologyRule implements TranslationQualityRule {
             explanation: `The source uses "${entry.term}". Replace "${hit.hit.matched}" with "${preferred}".`,
             sourceText: entry.term,
             translatedText: hit.hit.matched,
-            suggestedText: preferred,
+            suggestedText: hit.hit.suggested,
             targetField: hit.field,
             startOffset: hit.hit.index,
             endOffset: hit.hit.index + hit.hit.matched.length,

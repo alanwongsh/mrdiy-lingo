@@ -98,7 +98,15 @@ function sourceHtml(value: string) {
 }
 
 /** Wrap the first plain-text match, leaving tags and surrounding formatting in place. */
-function wrapFirstText(html: string, phrase: string, wrap: (matched: string) => string) {
+/** Change marks already drawn. Each accepted fix gets its own occurrence, not the first one again. */
+const DRAWN_CHANGE = /^<(mark|del) class="quality-diff-(?:add|remove)"/;
+
+function wrapFirstText(
+  html: string,
+  phrase: string,
+  wrap: (matched: string) => string,
+  skipDrawn = false
+) {
   const needle = phrase.trim();
   if (!needle || !html) return html;
   const lower = needle.toLowerCase();
@@ -106,6 +114,15 @@ function wrapFirstText(html: string, phrase: string, wrap: (matched: string) => 
   let out = "";
   while (index < html.length) {
     if (html[index] === "<") {
+      const drawn = skipDrawn ? html.slice(index, index + 40).match(DRAWN_CHANGE) : null;
+      if (drawn) {
+        const close = `</${drawn[1]}>`;
+        const closeAt = html.indexOf(close, index);
+        if (closeAt === -1) return out + html.slice(index);
+        out += html.slice(index, closeAt + close.length);
+        index = closeAt + close.length;
+        continue;
+      }
       const end = html.indexOf(">", index);
       if (end === -1) return out + html.slice(index);
       out += html.slice(index, end + 1);
@@ -242,7 +259,8 @@ function decorateField(value: string, marks: ReviewMark[], locateText?: string) 
       html,
       mark.proposed,
       (matched) =>
-        `<del class="quality-diff-remove" data-quality-change="">${escapeHtml(mark.original)}</del><mark class="quality-diff-add">${escapeHtml(matched)}</mark>`
+        `<del class="quality-diff-remove" data-quality-change="">${escapeHtml(mark.original)}</del><mark class="quality-diff-add">${escapeHtml(matched)}</mark>`,
+      true
     );
   }
   if (locateText) {

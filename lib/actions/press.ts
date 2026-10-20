@@ -27,6 +27,7 @@ import {
 } from "@/lib/auth/access";
 import { emptySourceContent, manualSaveStatus } from "@/lib/types";
 import { getTranslationService } from "@/lib/translation/service";
+import { applyGlossaryToTranslation } from "@/lib/translation-quality/glossary-fix";
 import { normalizeSlug } from "@/lib/slug";
 import { DUE_SOON_MS, type PublishDueKind } from "@/lib/publish-due";
 import { requireContentTypeCode } from "@/lib/actions/content-types";
@@ -1251,19 +1252,27 @@ export async function autoTranslateArticle(input: {
   }
 
   const service = getTranslationService(grant.applicationId);
-  const fields = await service.translateArticle({
+  const translated = await service.translateArticle({
     fields: sourceFields,
     sourceLanguage,
     targetLanguage: input.targetLanguage,
   });
 
-  if (!fields.body?.trim() && sourceFields.body?.trim()) {
-    fields.body = await service.translateText({
+  if (!translated.body?.trim() && sourceFields.body?.trim()) {
+    translated.body = await service.translateText({
       text: sourceFields.body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
       sourceLanguage,
       targetLanguage: input.targetLanguage,
     });
   }
+  // Glossary spellings are fixed before saving, so nobody has to accept them one by one.
+  const fields = await applyGlossaryToTranslation({
+    applicationId: grant.applicationId,
+    sourceLanguage,
+    targetLanguage: input.targetLanguage,
+    source: sourceFields,
+    translated,
+  });
 
   const result = await upsertContentTranslation({
     content_id: article.id,
@@ -1392,6 +1401,13 @@ export async function previewTranslateArticle(input: {
         }),
       };
     }
+    fields = await applyGlossaryToTranslation({
+      applicationId: input.applicationId,
+      sourceLanguage,
+      targetLanguage,
+      source: sourceFields,
+      translated: fields,
+    });
     results.push({ language_code: targetLanguage, fields });
   }
   return results;
