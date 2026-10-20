@@ -21,7 +21,10 @@ export type SectionGroup = { label: string; links: SectionLink[] };
 
 /** What the sidebar needs to know about an application. */
 export type SidebarApp = Pick<Application, "id" | "name" | "model_type" | "item_label" | "status"> & {
-  access: Pick<AppAccess, "permissions" | "can_manage" | "can_approve">;
+  access: Pick<
+    AppAccess,
+    "permissions" | "can_manage" | "can_approve" | "role" | "is_owner" | "unit_names" | "markets"
+  >;
   /** Articles in review in this person's markets. Only counted for approvers. */
   reviewCount: number;
 };

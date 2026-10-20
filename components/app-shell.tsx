@@ -79,6 +79,10 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       permissions: app.access.permissions,
       can_manage: app.access.can_manage,
       can_approve: app.access.can_approve,
+      role: app.access.role,
+      is_owner: app.access.is_owner,
+      unit_names: app.access.unit_names,
+      markets: app.access.markets,
     },
     reviewCount: app.model_type === "CONTENT" ? reviewCounts[app.id] ?? 0 : 0,
   }));

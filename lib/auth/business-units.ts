@@ -40,25 +40,35 @@ function toUnit(row: Record<string, unknown>): BusinessUnit {
 }
 
 /**
- * Markets a member may work in, from all of their units. Null means every market,
- * including before migration 032. Empty means the member is in no unit.
+ * A member's business units: the markets they may work in, from all of their units, and the
+ * unit names for display. markets is null for every market, including before migration 032,
+ * and empty when the member is in no unit.
  */
-export async function loadMemberMarkets(memberId: string): Promise<string[] | null> {
+export async function loadMemberUnits(
+  memberId: string
+): Promise<{ markets: string[] | null; names: string[] }> {
   const db = await getDb();
   const { data, error } = await db
     .from("application_member_business_units")
-    .select("unit:business_units(all_markets, markets)")
+    .select("unit:business_units(name, all_markets, markets)")
     .eq("member_id", memberId);
   if (error) {
-    if (isMissingBusinessUnits(error)) return null;
+    if (isMissingBusinessUnits(error)) return { markets: null, names: [] };
     throw new Error(error.message);
   }
   const units = (data ?? []).flatMap((row) => {
     const unit = (row as { unit: unknown }).unit;
     const list = (Array.isArray(unit) ? unit : unit ? [unit] : []) as Record<string, unknown>[];
-    return list.map((item) => ({ all_markets: !!item.all_markets, markets: cleanMarkets(item.markets) }));
+    return list.map((item) => ({
+      name: String(item.name ?? ""),
+      all_markets: !!item.all_markets,
+      markets: cleanMarkets(item.markets),
+    }));
   });
-  return marketsForUnits(units);
+  return {
+    markets: marketsForUnits(units),
+    names: units.map((unit) => unit.name).filter(Boolean).sort(),
+  };
 }
 
 /** Business units of one application, by name. Null when migration 032 has not been run. */

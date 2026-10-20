@@ -4,7 +4,7 @@ import type { HubActor } from "@/lib/auth/actor";
 import { getActor } from "@/lib/auth/actor";
 import { getDb } from "@/lib/db/client";
 import { isMissingAccessRoles, loadAccessRoles } from "@/lib/auth/access-roles";
-import { canSeeMarket, loadMemberMarkets } from "@/lib/auth/business-units";
+import { canSeeMarket, loadMemberUnits } from "@/lib/auth/business-units";
 import { MARKETS, marketName, normalizeMarket } from "@/lib/markets";
 import { bandForLdapRole, loadOrgRoleMap } from "@/lib/auth/org-roles";
 import {
@@ -266,11 +266,13 @@ export function accessFromPermissions(
   role: string | null,
   permissions: readonly PermissionKey[],
   isOwner = false,
-  markets: string[] | null = null
+  markets: string[] | null = null,
+  unitNames: string[] = []
 ): AppAccess {
   return {
     is_owner: isOwner,
     markets,
+    unit_names: unitNames,
     role,
     permissions: [...permissions],
     can_edit: permissions.includes("content.edit"),
@@ -304,8 +306,16 @@ export async function resolveAppAccess(
       (role) => role.id === membership.access_role_id
     );
     if (assigned) {
-      const markets = membership.id ? await loadMemberMarkets(membership.id) : null;
-      return accessFromPermissions(assigned.name, assigned.permissions, false, markets);
+      const units = membership.id
+        ? await loadMemberUnits(membership.id)
+        : { markets: null, names: [] };
+      return accessFromPermissions(
+        assigned.name,
+        assigned.permissions,
+        false,
+        units.markets,
+        units.names
+      );
     }
   }
 

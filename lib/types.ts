@@ -122,6 +122,8 @@ export type AppAccess = {
    * superadmin, or before migration 032). Empty means no articles. Articles only.
    */
   markets: string[] | null;
+  /** Names of the member's business units, for display. Empty for owners and superadmins. */
+  unit_names: string[];
 };
 
 export type VisibleApplication = Application & {

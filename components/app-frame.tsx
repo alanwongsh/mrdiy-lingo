@@ -127,6 +127,22 @@ function SidebarBody({
             <div className="mt-0.5 break-all">{actor.username}</div>
             {isSuperadmin ? (
               <div className="mt-0.5 font-semibold text-[var(--hub-accent)]">Superadmin</div>
+            ) : current ? (
+              // Your role in the open app, and its business unit for article apps.
+              <div className="mt-0.5 font-semibold text-[var(--hub-accent)]">
+                {[
+                  current.access.is_owner ? "Owner" : current.access.role,
+                  // Markets null with no names: business units are not in use (before migration 032).
+                  ...(current.model_type === "CONTENT" && !current.access.is_owner
+                    ? [
+                        current.access.unit_names.join(", ") ||
+                          (current.access.markets === null ? "" : "No business unit"),
+                      ]
+                    : []),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </div>
             ) : null}
             <form action="/embed/sign-out" method="post" className="mt-1">
               <button
