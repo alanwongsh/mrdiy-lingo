@@ -48,6 +48,28 @@ function barClass(score: number | null) {
   return "bg-red-500";
 }
 
+/** Where to point in the article. occurrence 1 is the second time the same words appear. */
+export type QualityLocateTarget = {
+  field: QualityAction["targetField"];
+  text: string;
+  occurrence?: number;
+};
+
+/** How many times a finding's words appear in its field before the finding itself. */
+function occurrenceOf(draft: SourceContentFields, field: QualityAction["targetField"], finding: QualityFinding) {
+  const html = (field === "content" ? draft.body : draft[field]) ?? "";
+  const words = (finding.translatedText ?? "").trim().toLowerCase();
+  if (!words || finding.startOffset == null) return 0;
+  const before = html.slice(0, finding.startOffset).replace(/<[^>]+>/g, "").toLowerCase();
+  let count = 0;
+  let at = before.indexOf(words);
+  while (at >= 0) {
+    count += 1;
+    at = before.indexOf(words, at + words.length);
+  }
+  return count;
+}
+
 const FIELD_NAME: Record<QualityAction["targetField"], string> = {
   title: "Title",
   summary: "Description",
@@ -68,6 +90,8 @@ function groupFindings(findings: QualityFinding[]): QualityFinding[][] {
   }
   return [...groups.values()];
 }
+
+const FIELD_ORDER: QualityAction["targetField"][] = ["title", "summary", "content"];
 
 /** "Title, Body ×2" for the places a grouped finding appears. */
 function placesLabel(fields: QualityAction["targetField"][]): string {
@@ -259,9 +283,9 @@ export function TranslationQualityPanel({
   onAccept: (action: QualityAction, stored?: boolean, quiet?: boolean) => void;
   onIgnore: (actionId: string, stored?: boolean) => void;
   /** Hover a finding to highlight that sentence in the article. */
-  onPreview?: (target: { field: QualityAction["targetField"]; text: string } | null) => void;
+  onPreview?: (target: QualityLocateTarget | null) => void;
   /** Jump to the highlighted sentence. Hover only highlights. */
-  onShow?: (target: { field: QualityAction["targetField"]; text: string }) => void;
+  onShow?: (target: QualityLocateTarget) => void;
   /** Link to the editor. Hidden when this panel is already on the edit page. */
   showEditLink?: boolean;
   /** Score the text in memory. Used on the new-draft page before an article exists. */
@@ -282,6 +306,8 @@ export function TranslationQualityPanel({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, TranslationQualityResult>>({});
   const [open, setOpen] = useState(false);
+  /** Per grouped card: which of its places was shown last, so the next click moves on. */
+  const [shownPlace, setShownPlace] = useState<Record<string, number>>({});
   const [canAnalyze, setCanAnalyze] = useState(false);
   const [versionNumber, setVersionNumber] = useState<number | null>(null);
   const [checkedDraftKey, setCheckedDraftKey] = useState<string | null>(null);
@@ -643,11 +669,10 @@ export function TranslationQualityPanel({
     return (
       <Card className="p-4 xl:sticky xl:top-4 xl:max-h-[calc(100dvh-2rem)] xl:overflow-y-auto">
         {languageChoices && languageChoices.length > 1 ? (
-          <label className="mb-3 block text-xs font-semibold tracking-wide text-slate-500 uppercase">
-            Language
+          <div className="mb-3">
             <FilterSelect
               fullWidth
-              label="Language"
+              label="Translation to check"
               value={languageCode}
               onChange={(value) => onLanguageChange?.(value)}
               options={languageChoices.map((type) => ({
@@ -657,7 +682,7 @@ export function TranslationQualityPanel({
               placeholder="Select language"
               hideEmptyOption
             />
-          </label>
+          </div>
         ) : null}
         <div className="flex items-end justify-between gap-3">
           <p className="text-5xl leading-none font-bold tabular-nums text-slate-950">
@@ -826,26 +851,53 @@ export function TranslationQualityPanel({
                   const ignoreGroup = () => {
                     for (const item of items) if (item.open) ignoreFinding(item.finding.id);
                   };
-                  // Clicking the finding jumps to its wording in the article, in place of a Show button.
-                  const showTarget =
-                    onShow && place && !place.hidden && finding.translatedText
-                      ? { field: place.field, text: finding.translatedText }
-                      : null;
+                  // Clicking the card jumps to its wording in the article. With several places,
+                  // each click moves to the next one and wraps round after the last.
+                  const cardKey = group.map((one) => one.id).join(":");
+                  const targets: QualityLocateTarget[] = items
+                    .flatMap((item) =>
+                      item.place && !item.place.hidden && item.finding.translatedText
+                        ? [
+                            {
+                              field: item.place.field,
+                              text: item.finding.translatedText,
+                              occurrence: occurrenceOf(draft, item.place.field, item.finding),
+                              order: item.finding.startOffset ?? 0,
+                            },
+                          ]
+                        : []
+                    )
+                    .sort(
+                      (left, right) =>
+                        FIELD_ORDER.indexOf(left.field) - FIELD_ORDER.indexOf(right.field) ||
+                        left.order - right.order
+                    )
+                    .map(({ field, text, occurrence }) => ({ field, text, occurrence }));
+                  const showTarget = onShow && targets.length > 0 ? targets : null;
+                  const lastShown = shownPlace[cardKey];
                   const show = () => {
                     if (!showTarget || !onShow) return;
+                    const next = lastShown === undefined ? 0 : (lastShown + 1) % showTarget.length;
+                    setShownPlace((current) => ({ ...current, [cardKey]: next }));
                     pinnedPreview.current = true;
-                    onShow(showTarget);
+                    onShow(showTarget[next]);
                   };
                   return (
                     <li
-                      key={group.map((one) => one.id).join(":")}
+                      key={cardKey}
                       className={`-mx-2 border-t border-[var(--hub-border)] px-2 py-3 ${
                         showTarget
                           ? "cursor-pointer rounded-md transition hover:bg-[var(--diy-yellow-soft)] focus-visible:outline-2 focus-visible:outline-[var(--hub-accent)]"
                           : ""
                       }`}
                       tabIndex={showTarget ? 0 : undefined}
-                      title={showTarget ? "Show in the article" : undefined}
+                      title={
+                        showTarget
+                          ? showTarget.length > 1
+                            ? "Show the next place in the article"
+                            : "Show in the article"
+                          : undefined
+                      }
                       onClick={(event) => {
                         // Accept, Ignore and the edit link do their own thing.
                         if ((event.target as HTMLElement).closest("button, a")) return;
@@ -858,9 +910,9 @@ export function TranslationQualityPanel({
                         show();
                       }}
                       onMouseEnter={() => {
-                        if (!onPreview || !place || place.hidden || !finding.translatedText) return;
+                        if (!onPreview || targets.length === 0) return;
                         pinnedPreview.current = false;
-                        onPreview({ field: place.field, text: finding.translatedText });
+                        onPreview(targets[lastShown ?? 0]);
                       }}
                       onMouseLeave={() => {
                         if (pinnedPreview.current) return;
@@ -885,6 +937,13 @@ export function TranslationQualityPanel({
                         <p className="mt-2 text-xs leading-relaxed text-slate-700">
                           <span className="font-semibold text-slate-500">Found in {group.length} places: </span>
                           {placesLabel(located)}
+                          {targets.length > 1 ? (
+                            <span className="ml-1 text-slate-500">
+                              {lastShown === undefined
+                                ? "· click to step through them"
+                                : `· showing ${lastShown + 1} of ${targets.length}`}
+                            </span>
+                          ) : null}
                         </p>
                       ) : null}
                       {finding.translatedText ? (

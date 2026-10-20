@@ -34,6 +34,16 @@ export function clampScore(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+/** Index of the nth match (0 is the first), or -1. */
+export function nthIndexOf(haystack: string, needle: string, occurrence = 0): number {
+  if (!needle) return -1;
+  let at = haystack.indexOf(needle);
+  for (let skip = occurrence; at >= 0 && skip > 0; skip -= 1) {
+    at = haystack.indexOf(needle, at + needle.length);
+  }
+  return at;
+}
+
 export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

@@ -52,6 +52,7 @@ import { TranslationQualityPanel } from "@/components/translation-quality-panel"
 import { saveReviewedContentTranslation } from "@/lib/actions/quality";
 import { applyQualityAction, qualityActionStillOpen } from "@/lib/translation-quality/apply-action";
 import type { QualityAction, QualityTargetField } from "@/lib/translation-quality/types";
+import { nthIndexOf } from "@/lib/translation-quality/text";
 import { DateTimePicker } from "@/components/date-time-picker";
 import { useTimeZone } from "@/components/time-zone";
 import { formatDateTime } from "@/lib/datetime";
@@ -279,6 +280,8 @@ export function ArticleEditor({
   const [scorePreview, setScorePreview] = useState<{
     field: QualityTargetField;
     text: string;
+    /** Which match of the text: 1 is the second one. */
+    occurrence?: number;
   } | null>(null);
   const [scrollRequest, setScrollRequest] = useState(0);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -621,7 +624,7 @@ export function ArticleEditor({
       }
       const el = preview.field === "title" ? titleRef.current : summaryRef.current;
       if (!el) return;
-      const at = el.value.toLowerCase().indexOf(phrase.toLowerCase());
+      const at = nthIndexOf(el.value.toLowerCase(), phrase.toLowerCase(), preview.occurrence ?? 0);
       el.scrollIntoView({ behavior: "smooth", block: "nearest" });
       if (at >= 0) {
         el.focus({ preventScroll: true });
@@ -1029,6 +1032,7 @@ export function ArticleEditor({
               <HtmlEditor
                 revision={`target-${article.id}-${editingCode}-${bodyEpoch}`}
                 highlight={scorePreview?.field === "content" ? scorePreview.text : ""}
+                    highlightOccurrence={scorePreview?.field === "content" ? scorePreview.occurrence ?? 0 : 0}
                 value={draft.body}
                 disabled={isTranslating}
                 onChange={(html) => setDraft((d) => ({ ...d, body: html }))}

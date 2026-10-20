@@ -197,7 +197,8 @@ const locatePluginKey = new PluginKey("qualityLocate");
 
 function findTextRange(
   doc: ProseNode,
-  phrase: string
+  phrase: string,
+  occurrence = 0
 ): { from: number; to: number } | null {
   const needle = phrase.trim().toLowerCase();
   if (!needle) return null;
@@ -216,7 +217,10 @@ function findTextRange(
       positions.push(pos + index);
     }
   });
-  const at = flat.indexOf(needle);
+  let at = flat.indexOf(needle);
+  for (let skip = occurrence; at >= 0 && skip > 0; skip -= 1) {
+    at = flat.indexOf(needle, at + needle.length);
+  }
   if (at < 0) return null;
   let from = -1;
   let to = -1;
@@ -288,17 +292,18 @@ const RepairPastedHtml = Extension.create({
   },
 });
 
-const QualityLocate = Extension.create<{ getPhrase: () => string }>({
+const QualityLocate = Extension.create<{ getPhrase: () => string; getOccurrence: () => number }>({
   name: "qualityLocate",
   addProseMirrorPlugins() {
     const getPhrase = this.options.getPhrase;
+    const getOccurrence = this.options.getOccurrence;
     return [
       new Plugin({
         key: locatePluginKey,
         props: {
           decorations(state) {
             const phrase = getPhrase();
-            const range = phrase ? findTextRange(state.doc, phrase) : null;
+            const range = phrase ? findTextRange(state.doc, phrase, getOccurrence()) : null;
             if (!range) return null;
             try {
               return DecorationSet.create(state.doc, [
@@ -330,6 +335,8 @@ export const HtmlEditor = forwardRef<
     minHeightClass?: string;
     /** Phrase to highlight inside the body without changing the saved HTML. */
     highlight?: string;
+    /** Which match of the phrase to highlight: 1 is the second one. */
+    highlightOccurrence?: number;
   }
 >(function HtmlEditor(
   {
@@ -340,6 +347,7 @@ export const HtmlEditor = forwardRef<
     placeholder,
     minHeightClass = "min-h-[12rem]",
     highlight = "",
+    highlightOccurrence = 0,
   },
   ref
 ) {
@@ -347,6 +355,8 @@ export const HtmlEditor = forwardRef<
   onChangeRef.current = onChange;
   const highlightRef = useRef(highlight);
   highlightRef.current = highlight;
+  const occurrenceRef = useRef(highlightOccurrence);
+  occurrenceRef.current = highlightOccurrence;
 
   const lastEmittedRef = useRef(normalizeEditorHtml(value || ""));
   // Seed as already-applied so the first effect does not setContent and steal focus.
@@ -381,7 +391,10 @@ export const HtmlEditor = forwardRef<
         placeholder: placeholder ?? "Write…",
       }),
       RepairPastedHtml,
-      QualityLocate.configure({ getPhrase: () => highlightRef.current }),
+      QualityLocate.configure({
+        getPhrase: () => highlightRef.current,
+        getOccurrence: () => occurrenceRef.current,
+      }),
     ],
     // Seed once — after that only `revision` pushes external content in.
     content: value || "",
@@ -464,7 +477,7 @@ export const HtmlEditor = forwardRef<
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     editor.view.dispatch(editor.state.tr);
-  }, [editor, highlight]);
+  }, [editor, highlight, highlightOccurrence]);
 
   // Apply external content only when revision changes — never while syncing
   // every keystroke via `value` (that steals the caret).

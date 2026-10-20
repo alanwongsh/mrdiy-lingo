@@ -6,7 +6,10 @@ import { useRouter } from "next/navigation";
 import { saveReviewedContentTranslation } from "@/lib/actions/quality";
 import { applyQualityAction, qualityActionStillOpen } from "@/lib/translation-quality/apply-action";
 import type { QualityAction, QualityTargetField } from "@/lib/translation-quality/types";
-import { TranslationQualityPanel } from "@/components/translation-quality-panel";
+import {
+  TranslationQualityPanel,
+  type QualityLocateTarget,
+} from "@/components/translation-quality-panel";
 import { PublishLanguagePicker } from "@/components/article-publish-panel";
 import { Badge, Card, inputClass, statusTone } from "@/components/ui";
 import type {
@@ -68,15 +71,20 @@ type Pane = {
   body: string;
   empty: boolean;
   marks?: ReviewMark[];
-  locate?: { field: QualityTargetField; text: string } | null;
+  locate?: QualityLocateTarget | null;
 };
+
+/** Words to point at in one field; occurrence 1 is the second time they appear. */
+type FieldLocate = { text: string; occurrence?: number };
 
 function marksFor(pane: Pane, field: QualityTargetField) {
   return pane.marks?.filter((mark) => mark.field === field);
 }
 
-function locateFor(pane: Pane, field: QualityTargetField) {
-  return pane.locate?.field === field ? pane.locate.text : undefined;
+function locateFor(pane: Pane, field: QualityTargetField): FieldLocate | undefined {
+  return pane.locate?.field === field
+    ? { text: pane.locate.text, occurrence: pane.locate.occurrence }
+    : undefined;
 }
 
 type ReviewMark = {
@@ -105,11 +113,14 @@ function wrapFirstText(
   html: string,
   phrase: string,
   wrap: (matched: string) => string,
-  skipDrawn = false
+  skipDrawn = false,
+  /** Skip this many matches first: 1 wraps the second one. */
+  occurrence = 0
 ) {
   const needle = phrase.trim();
   if (!needle || !html) return html;
   const lower = needle.toLowerCase();
+  let skip = Math.max(0, occurrence);
   let index = 0;
   let out = "";
   while (index < html.length) {
@@ -132,7 +143,13 @@ function wrapFirstText(
     const next = html.indexOf("<", index);
     const end = next === -1 ? html.length : next;
     const text = html.slice(index, end);
-    const at = text.toLowerCase().indexOf(lower);
+    let from = 0;
+    let at = text.toLowerCase().indexOf(lower);
+    while (at >= 0 && skip > 0) {
+      skip -= 1;
+      from = at + needle.length;
+      at = text.toLowerCase().indexOf(lower, from);
+    }
     if (at >= 0) {
       const matched = text.slice(at, at + needle.length);
       return (
@@ -251,7 +268,8 @@ function markAcrossTags(html: string, phrase: string) {
   return out + html.slice(written);
 }
 
-function decorateField(value: string, marks: ReviewMark[], locateText?: string) {
+function decorateField(value: string, marks: ReviewMark[], locate?: FieldLocate) {
+  const locateText = locate?.text;
   let html = sourceHtml(value);
   for (const mark of marks) {
     if (!mark.proposed) continue;
@@ -267,7 +285,9 @@ function decorateField(value: string, marks: ReviewMark[], locateText?: string) 
     const marked = wrapFirstText(
       html,
       locateText,
-      (matched) => `<mark class="quality-locate" data-quality-change="">${escapeHtml(matched)}</mark>`
+      (matched) => `<mark class="quality-locate" data-quality-change="">${escapeHtml(matched)}</mark>`,
+      false,
+      locate?.occurrence ?? 0
     );
     html = marked === html ? markAcrossTags(html, locateText) : marked;
   }
@@ -327,18 +347,18 @@ function paneFor(article: Article, languages: Language[], code: string): Pane {
 function FieldBody({
   value,
   marks = [],
-  locateText,
+  locate,
 }: {
   value: string;
   marks?: ReviewMark[];
-  locateText?: string;
+  locate?: FieldLocate;
 }) {
-  const decorated = marks.length > 0 || locateText;
+  const decorated = marks.length > 0 || locate?.text;
   if (decorated) {
     return (
       <div
         className="html-editor-surface text-sm leading-relaxed text-[var(--hub-fg)]"
-        dangerouslySetInnerHTML={{ __html: decorateField(value, marks, locateText) }}
+        dangerouslySetInnerHTML={{ __html: decorateField(value, marks, locate) }}
       />
     );
   }
@@ -365,13 +385,13 @@ function ReadField({
   label,
   value,
   marks,
-  locateText,
+  locate,
   compact,
 }: {
   label: string;
   value: string;
   marks?: ReviewMark[];
-  locateText?: string;
+  locate?: FieldLocate;
   compact?: boolean;
 }) {
   if (!hasText(value) && !marks?.length) return null;
@@ -386,7 +406,7 @@ function ReadField({
       <div className="text-xs font-semibold tracking-wide text-[var(--hub-muted)] uppercase">
         {label}
       </div>
-      <FieldBody value={value} marks={marks} locateText={locateText} />
+      <FieldBody value={value} marks={marks} locate={locate} />
     </div>
   );
 }
@@ -410,9 +430,9 @@ function ArticleBody({ pane, compact }: { pane: Pane; compact?: boolean }) {
   }
   return (
     <div className="space-y-3">
-      <ReadField label="Title" value={pane.title} marks={marksFor(pane, "title")} locateText={locateFor(pane, "title")} compact={compact} />
-      <ReadField label="Summary" value={pane.summary} marks={marksFor(pane, "summary")} locateText={locateFor(pane, "summary")} compact={compact} />
-      <ReadField label="Body" value={pane.body} marks={marksFor(pane, "content")} locateText={locateFor(pane, "content")} compact={compact} />
+      <ReadField label="Title" value={pane.title} marks={marksFor(pane, "title")} locate={locateFor(pane, "title")} compact={compact} />
+      <ReadField label="Summary" value={pane.summary} marks={marksFor(pane, "summary")} locate={locateFor(pane, "summary")} compact={compact} />
+      <ReadField label="Body" value={pane.body} marks={marksFor(pane, "content")} locate={locateFor(pane, "content")} compact={compact} />
     </div>
   );
 }
@@ -715,7 +735,7 @@ function FieldCompare({ panes }: { panes: Pane[] }) {
                 <FieldBody
                   value={pane[row.key]}
                   marks={marksFor(pane, row.key === "body" ? "content" : row.key)}
-                  locateText={locateFor(pane, row.key === "body" ? "content" : row.key)}
+                  locate={locateFor(pane, row.key === "body" ? "content" : row.key)}
                 />
               </div>
             ))}
@@ -851,7 +871,7 @@ export function ArticleView({
   const [saveError, setSaveError] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [reviewMarks, setReviewMarks] = useState<ReviewMark[]>([]);
-  const [locate, setLocate] = useState<{ field: QualityTargetField; text: string } | null>(null);
+  const [locate, setLocate] = useState<QualityLocateTarget | null>(null);
   const [scrollRequest, setScrollRequest] = useState(0);
   if (draftKey !== savedKey) {
     setDraftKey(savedKey);
@@ -873,7 +893,7 @@ export function ArticleView({
     reviewTextChanged ||
     acceptedActionIds.length > 0 ||
     ignoredActionIds.length > 0;
-  function showInArticle(target: { field: QualityTargetField; text: string }) {
+  function showInArticle(target: QualityLocateTarget) {
     setLocate(target);
     setScrollRequest((current) => current + 1);
   }
