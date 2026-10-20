@@ -7,6 +7,7 @@ import { getApplication } from "@/lib/actions/applications";
 import { listContentTypes } from "@/lib/actions/content-types";
 import { listLanguages } from "@/lib/actions/languages";
 import { previewTranslateArticle, saveNewArticle } from "@/lib/actions/press";
+import { generateArticleDraft } from "@/lib/actions/drafting";
 import { checkIsProduction } from "@/lib/actions/env";
 import { DEFAULT_CONTENT_TYPE_CODE } from "@/lib/content-types";
 import type {
@@ -63,6 +64,12 @@ export default function NewArticlePage() {
   const [held, setHeld] = useState<Record<string, HeldTranslation>>({});
   const [bodyEpoch, setBodyEpoch] = useState(0);
   const [canApprove, setCanApprove] = useState(false);
+  const [canDraft, setCanDraft] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
+  /** The brief behind the draft now in the form, recorded when the article is saved. */
+  const [draftedFrom, setDraftedFrom] = useState("");
+  const [isDrafting, setIsDrafting] = useState(false);
+  const [sourceEpoch, setSourceEpoch] = useState(0);
   /** Languages approved one by one; saved as approved with the article. */
   const [approvedCodes, setApprovedCodes] = useState<string[]>([]);
   /** Countries from the person's business units. Null means every country. */
@@ -94,6 +101,9 @@ export default function NewArticlePage() {
   useEffect(() => {
     getApplication(applicationId).then((app) => {
       setCanApprove(!!app?.access.can_approve);
+      setCanDraft(
+        !!app?.access.can_edit && !!app?.access.permissions.includes("content.generate")
+      );
       const markets = app?.access.markets ?? null;
       setAllowedMarkets(markets);
       // One country to choose from: pick it.
@@ -302,6 +312,44 @@ export default function NewArticlePage() {
     return () => cancelAnimationFrame(frame);
   }, [scrollRequest]);
 
+  async function draftWithAi() {
+    if (!aiPrompt.trim()) {
+      setError("Describe the article you want drafted.");
+      return;
+    }
+    if (!market) {
+      setError("Choose a market first.");
+      return;
+    }
+    const current = liveSource();
+    if (
+      (current.title || current.summary || current.body.replace(/<[^>]+>/g, "").trim()) &&
+      !window.confirm("Replace the title, description, and body with the AI draft?")
+    ) {
+      return;
+    }
+    setError("");
+    setIsDrafting(true);
+    try {
+      const fields = await generateArticleDraft({
+        applicationId,
+        prompt: aiPrompt,
+        contentType,
+        sourceLanguage,
+        market,
+      });
+      setTitle(fields.title);
+      setDescription(fields.summary);
+      setBody(fields.body);
+      setSourceEpoch((epoch) => epoch + 1);
+      setDraftedFrom(aiPrompt.trim());
+    } catch (err) {
+      setError(errorMessage(err, "Drafting failed"));
+    } finally {
+      setIsDrafting(false);
+    }
+  }
+
   function save(mode: "draft" | "review" | "approve") {
     if (!title.trim()) {
       setError("Add a title first.");
@@ -331,6 +379,7 @@ export default function NewArticlePage() {
           targetLanguages,
           scheduledPublishAt: publishing && scheduled ? fromZonedInput(scheduled, timeZone) : null,
           mode,
+          aiPrompt: draftedFrom || null,
           translations: targetLanguages.flatMap((code) => {
             const row = heldRef.current[languageKey(code)];
             if (!row) return [];
@@ -371,6 +420,40 @@ export default function NewArticlePage() {
           save("draft");
         }}
       >
+        {canDraft ? (
+          <Card className="space-y-3 p-5">
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 className="font-semibold text-slate-900">Draft with AI</h2>
+              {draftedFrom ? <Badge tone="warn">AI draft in the form</Badge> : null}
+            </div>
+            <Field label="Brief">
+              <textarea
+                className={textareaClass}
+                rows={4}
+                maxLength={4000}
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                placeholder="What the article is about, key facts, dates, and tone. For example: Press release on the new Penang store opening on 1 Dec, 10% off for the first 3 days."
+              />
+            </Field>
+            <p className="text-xs text-[var(--hub-muted)]">
+              Uses the content type, source language, and market chosen below. AI can get facts
+              wrong. Check every name, date, price, and promotion, and fill any [placeholders],
+              before you submit for review.
+            </p>
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={isDrafting || !aiPrompt.trim()}
+                onClick={draftWithAi}
+              >
+                {isDrafting ? "Drafting…" : draftedFrom ? "Draft again" : "Write draft"}
+              </Button>
+            </div>
+          </Card>
+        ) : null}
+
         <Card className="space-y-4 p-5">
           <Field label="Title">
             <input
@@ -448,6 +531,7 @@ export default function NewArticlePage() {
               ref={sourceBodyRef}
               value={body}
               onChange={setBody}
+              revision={`source-${sourceEpoch}`}
               placeholder="Write article body…"
               minHeightClass="min-h-[14rem]"
             />

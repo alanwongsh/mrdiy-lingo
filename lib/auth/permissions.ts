@@ -14,6 +14,13 @@ export const PERMISSIONS = [
     hint: "Articles, strings, catalog items and their translations. Save drafts, submit for review, auto-translate, run quality checks, delete articles.",
   },
   {
+    key: "content.generate",
+    models: ["CONTENT"],
+    group: "Content",
+    label: "Draft with AI",
+    hint: "Write a new article's first draft from a prompt. The draft still goes through review and approval like any other.",
+  },
+  {
     key: "content.import",
     group: "Content",
     label: "Import files",

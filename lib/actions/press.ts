@@ -458,6 +458,8 @@ export async function createArticle(input: {
   keepAsDraft?: boolean;
   /** Store the given status as is, such as a status column in an import file. */
   keepStatus?: boolean;
+  /** The brief the first draft was written from, when it came from Draft with AI. */
+  ai_prompt?: string | null;
 }): Promise<Content> {
   const grant = await requireAppCapability(input.application_id, "edit");
   const market = requireChosenMarket(grant.access, input.market);
@@ -512,6 +514,9 @@ export async function createArticle(input: {
     event: "CREATED",
     toStatus: status,
     languageCode: input.source_language,
+    detail: input.ai_prompt?.trim()
+      ? { ai_drafted: true, ai_prompt: input.ai_prompt.trim().slice(0, 4000) }
+      : undefined,
   });
 
   await upsertContentTranslation({
@@ -546,6 +551,8 @@ export async function saveNewArticle(input: {
     /** Approve this language on its own, as the editor's Approve button does. */
     approved?: boolean;
   }>;
+  /** The Draft with AI brief, recorded on the article's activity when it is first saved. */
+  aiPrompt?: string | null;
 }): Promise<{ id: string }> {
   const approve = input.mode === "approve";
   const unapprovedStatus: ContentLifecycleStatus =
@@ -578,6 +585,7 @@ export async function saveNewArticle(input: {
       scheduled_publish_at: input.scheduledPublishAt ?? null,
       source_content: sourceFields,
       keepAsDraft: !approve,
+      ai_prompt: input.aiPrompt ?? null,
     });
     articleId = article.id;
   } else {

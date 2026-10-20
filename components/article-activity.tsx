@@ -164,6 +164,9 @@ function detailLines(
     const isHead = event === head;
     const detail = event.detail ?? {};
     switch (event.event) {
+      case "CREATED":
+        if (detail.ai_drafted) lines.push("First draft written with AI");
+        break;
       case "EDITED": {
         const parts: string[] = [];
         if (Array.isArray(detail.fields) && detail.fields.length > 0) {
