@@ -892,6 +892,38 @@ export async function setArticleStatus(
   await persistArticleStatus(id, applicationId, status);
 }
 
+/** Editor hands a draft back to the approver, e.g. after a revoked approval. */
+export async function submitArticleForReview(input: {
+  contentId: string;
+  applicationId: string;
+  /** Posted as a comment on this language when a note is given. */
+  languageCode?: string | null;
+  note?: string;
+}): Promise<void> {
+  await requireContentAccess(input.contentId, "edit");
+  const db = await getDb();
+  const { data, error } = await db
+    .from("content")
+    .select("status")
+    .eq("id", input.contentId)
+    .single();
+  if (error) throw new Error(error.message);
+  if (data.status !== "DRAFT") {
+    throw new UserFacingError("Only a draft can be submitted for review.");
+  }
+  const note = input.note?.trim();
+  // Posted first so a rejected comment leaves the article in draft.
+  if (note) {
+    await addArticleComment({
+      contentId: input.contentId,
+      applicationId: input.applicationId,
+      languageCode: input.languageCode,
+      body: `Submitted for review: ${note}`,
+    });
+  }
+  await persistArticleStatus(input.contentId, input.applicationId, "REVIEW");
+}
+
 export async function deleteArticle(input: {
   contentId: string;
   applicationId: string;

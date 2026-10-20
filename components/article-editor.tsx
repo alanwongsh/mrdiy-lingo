@@ -8,6 +8,7 @@ import {
   deleteContentTranslationVersion,
   listContentTranslationVersions,
   setContentTranslationStatus,
+  submitArticleForReview,
   updateArticle,
 } from "@/lib/actions/press";
 import type {
@@ -1159,6 +1160,35 @@ export function ArticleEditor({
                   }
                 >
                   Approve
+                </Button>
+              ) : article.status === "DRAFT" ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={pending || isTranslating}
+                  onClick={() => {
+                    const note = prompt(
+                      "Submit this article for review?\n\nNote for the approver (optional, posted as a comment):"
+                    );
+                    if (note === null) return;
+                    startTransition(async () => {
+                      setError("");
+                      try {
+                        if (isDirty) await persistDraft();
+                        await submitArticleForReview({
+                          contentId: article.id,
+                          applicationId,
+                          languageCode: editingCode,
+                          note,
+                        });
+                        router.refresh();
+                      } catch (err) {
+                        setError(errorMessage(err, "Submit failed"));
+                      }
+                    });
+                  }}
+                >
+                  Submit for review
                 </Button>
               ) : (
                 <span className="text-xs text-slate-500">
