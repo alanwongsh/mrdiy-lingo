@@ -72,13 +72,13 @@ export const PERMISSIONS = [
     models: ["CONTENT", "CATALOG"],
     group: "People",
     label: "Manage people",
-    hint: "Add and remove people and give them roles. They can only give roles whose permissions they hold.",
+    hint: "Add and remove people and give them roles and, in article apps, business units. They can only give roles whose permissions they hold, and business units within their own countries.",
   },
   {
     key: "roles.manage",
     group: "People",
     label: "Manage roles",
-    hint: "Add, rename, and delete this application's roles and map their permissions. They can only tick permissions they hold.",
+    hint: "Add, rename, and delete this application's roles and map their permissions, and in article apps set up business units. They can only tick permissions they hold, and set up units within their own countries.",
   },
 ] as const satisfies readonly {
   key: string;
