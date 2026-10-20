@@ -55,19 +55,46 @@ export type QualityLocateTarget = {
   occurrence?: number;
 };
 
-/** How many times a finding's words appear in its field before the finding itself. */
-function occurrenceOf(draft: SourceContentFields, field: QualityAction["targetField"], finding: QualityFinding) {
-  const html = (field === "content" ? draft.body : draft[field]) ?? "";
-  const words = (finding.translatedText ?? "").trim().toLowerCase();
-  if (!words || finding.startOffset == null) return 0;
-  const before = html.slice(0, finding.startOffset).replace(/<[^>]+>/g, "").toLowerCase();
+function countIn(text: string, words: string) {
   let count = 0;
-  let at = before.indexOf(words);
+  let at = text.indexOf(words);
   while (at >= 0) {
     count += 1;
-    at = before.indexOf(words, at + words.length);
+    at = text.indexOf(words, at + words.length);
   }
   return count;
+}
+
+/**
+ * Where each place of a grouped finding is in the current text, as "the nth time these words
+ * appear". Places are walked in reading order and each takes the next visible match after the
+ * one before, so positions saved at analysis time only decide the order, never the spot:
+ * a draft that changed a little since then still gets every place.
+ */
+function locatePlaces(
+  draft: SourceContentFields,
+  places: { field: QualityAction["targetField"]; text: string; order: number }[]
+): QualityLocateTarget[] {
+  const after: Partial<Record<QualityAction["targetField"], number>> = {};
+  return [...places]
+    .sort(
+      (left, right) =>
+        FIELD_ORDER.indexOf(left.field) - FIELD_ORDER.indexOf(right.field) || left.order - right.order
+    )
+    .map(({ field, text }) => {
+      const html = (field === "content" ? draft.body : draft[field]) ?? "";
+      const lower = html.toLowerCase();
+      const words = text.trim().toLowerCase();
+      let at = lower.indexOf(words, after[field] ?? 0);
+      // Skip matches inside tags, such as a link address.
+      while (at >= 0 && termHitContext(html, at, words.length).hidden) {
+        at = lower.indexOf(words, at + words.length);
+      }
+      if (at < 0) return { field, text, occurrence: 0 };
+      after[field] = at + words.length;
+      const before = html.slice(0, at).replace(/<[^>]+>/g, "").toLowerCase();
+      return { field, text, occurrence: countIn(before, words) };
+    });
 }
 
 const FIELD_NAME: Record<QualityAction["targetField"], string> = {
@@ -854,25 +881,20 @@ export function TranslationQualityPanel({
                   // Clicking the card jumps to its wording in the article. With several places,
                   // each click moves to the next one and wraps round after the last.
                   const cardKey = group.map((one) => one.id).join(":");
-                  const targets: QualityLocateTarget[] = items
-                    .flatMap((item) =>
+                  const targets = locatePlaces(
+                    draft,
+                    items.flatMap((item) =>
                       item.place && !item.place.hidden && item.finding.translatedText
                         ? [
                             {
                               field: item.place.field,
                               text: item.finding.translatedText,
-                              occurrence: occurrenceOf(draft, item.place.field, item.finding),
                               order: item.finding.startOffset ?? 0,
                             },
                           ]
                         : []
                     )
-                    .sort(
-                      (left, right) =>
-                        FIELD_ORDER.indexOf(left.field) - FIELD_ORDER.indexOf(right.field) ||
-                        left.order - right.order
-                    )
-                    .map(({ field, text, occurrence }) => ({ field, text, occurrence }));
+                  );
                   const showTarget = onShow && targets.length > 0 ? targets : null;
                   const lastShown = shownPlace[cardKey];
                   const show = () => {
