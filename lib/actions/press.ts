@@ -31,6 +31,7 @@ import { applyGlossaryToTranslation } from "@/lib/translation-quality/glossary-f
 import { normalizeSlug } from "@/lib/slug";
 import { DUE_SOON_MS, type PublishDueKind } from "@/lib/publish-due";
 import { requireContentTypeCode } from "@/lib/actions/content-types";
+import { addArticleComment } from "@/lib/actions/comments";
 import { languageKey, normalizeTargetLanguages } from "@/lib/target-languages";
 import { normalizeMarket } from "@/lib/markets";
 import { canSeeMarket, marketScope } from "@/lib/auth/business-units";
@@ -169,8 +170,9 @@ async function syncArticleStatusFromApprovals(
   );
   if (direction === "promote" && allApproved && !isPublishable(data.status)) {
     await persistArticleStatus(contentId, applicationId, "APPROVED");
-  } else if (direction === "demote" && !allApproved && isPublishable(data.status)) {
-    await persistArticleStatus(contentId, applicationId, "REVIEW");
+  } else if (direction === "demote" && !allApproved && data.status !== "DRAFT") {
+    // A revoked language needs the editor's fix, so the article goes back to them.
+    await persistArticleStatus(contentId, applicationId, "DRAFT");
   }
 }
 
@@ -1139,6 +1141,8 @@ export async function setContentTranslationStatus(input: {
   status: TranslationStatus;
   applicationId: string;
   contentId: string;
+  /** Revoking only: posted as a comment on that language for the editor. */
+  reason?: string;
 }): Promise<void> {
   const grant = await requireContentTranslationAccess(
     input.contentTranslationId,
@@ -1154,6 +1158,16 @@ export async function setContentTranslationStatus(input: {
   // Revoking an approval is an approver's call, same as granting one.
   if (before.status === "APPROVED" && input.status !== "APPROVED") {
     await requireContentTranslationAccess(input.contentTranslationId, "approve");
+    const reason = input.reason?.trim();
+    // Posted first so a rejected comment leaves the approval untouched.
+    if (reason) {
+      await addArticleComment({
+        contentId: before.content_id,
+        applicationId: input.applicationId,
+        languageCode: before.language_code,
+        body: `Approval revoked: ${reason}`,
+      });
+    }
   }
   const approval = await approvalStamp(input.status, grant.user.id);
   const { error } = await db

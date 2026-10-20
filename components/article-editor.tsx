@@ -1093,13 +1093,10 @@ export function ArticleEditor({
                   variant="secondary"
                   disabled={pending || isTranslating}
                   onClick={() => {
-                    if (
-                      !confirm(
-                        "Revoke approval for this language? It will go back to review."
-                      )
-                    ) {
-                      return;
-                    }
+                    const reason = prompt(
+                      "Revoke approval for this language? The article goes back to Draft.\n\nReason for the editor (optional, posted as a comment):"
+                    );
+                    if (reason === null) return;
                     startTransition(async () => {
                       setError("");
                       try {
@@ -1108,6 +1105,7 @@ export function ArticleEditor({
                           status: "MANUALLY_MODIFIED",
                           applicationId,
                           contentId: article.id,
+                          reason,
                         });
                         router.refresh();
                       } catch (err) {
