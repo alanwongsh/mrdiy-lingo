@@ -55,6 +55,34 @@ function leadingBrandPresent(text: string, term: string): boolean {
   return new RegExp(`(?:^|[^A-Za-z0-9])${escapeRegExp(head)}`, "i").test(termPlain(text));
 }
 
+/** Letters and digits only, lower case: MR.D.I.Y, Mr DIY and MR.DIY all give "mrdiy". */
+function nameKey(value: string): string {
+  return value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+/**
+ * A brand written with the right letters but other dots, spaces or case, such as MR.D.I.Y
+ * or Mr. DIY for MR.DIY, so the avoid list need not name every variant. Web addresses
+ * (mrdiy.com) and text inside tags or links are left alone.
+ */
+function brandVariantHits(text: string, preferred: string): Array<{ index: number; matched: string }> {
+  const key = nameKey(preferred);
+  if (key.length < 3) return [];
+  const body = [...key].map((char) => escapeRegExp(char)).join("[\\s.\\-·'’]*");
+  // Not inside a longer word or address; not followed by .com and the like.
+  const re = new RegExp(`(?<![\\p{L}\\p{N}./@])${body}(?![\\p{L}\\p{N}])(?!\\.\\p{Ll}{2,})`, "giu");
+  const hits: Array<{ index: number; matched: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text))) {
+    const matched = match[0];
+    if (matched !== preferred && !termHitContext(text, match.index, matched.length).hidden) {
+      hits.push({ index: match.index, matched });
+    }
+    if (matched.length === 0) re.lastIndex += 1;
+  }
+  return hits;
+}
+
 function hasPreferred(text: string, entry: TerminologyEntry, preferred: string): boolean {
   if (containsTerm(text, preferred)) return true;
   const keepAsWritten = preferred.toLowerCase() === entry.term.trim().toLowerCase();
@@ -152,15 +180,24 @@ export class TerminologyRule implements TranslationQualityRule {
       const preferred = entry.preferredTranslation.trim();
       const forbidden = entry.forbiddenTranslations.map((item) => item.trim()).filter(Boolean);
       const inSource = sourceHasTerm(source, entry.term);
-      const forbiddenHits = FIELDS.flatMap((field) =>
-        forbidden.flatMap((phrase) =>
+      const isBrand = entry.category.trim().toLowerCase() === "brand";
+      const forbiddenHits = FIELDS.flatMap((field) => [
+        ...forbidden.flatMap((phrase) =>
           visibleTerm(field.text(input), phrase).map((hit) => ({
             field: field.field,
             hit,
             phrase,
           }))
-        )
-      );
+        ),
+        // Brands also catch spellings nobody listed under avoid.
+        ...(isBrand && preferred
+          ? brandVariantHits(field.text(input), preferred).map((hit) => ({
+              field: field.field,
+              hit,
+              phrase: hit.matched,
+            }))
+          : []),
+      ]);
       const seenHits = new Set<string>();
       const uniqueForbiddenHits = forbiddenHits.filter((hit) => {
         const key = `${hit.field}:${hit.hit.index}`;
