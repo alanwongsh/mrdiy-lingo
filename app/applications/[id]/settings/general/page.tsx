@@ -69,7 +69,7 @@ export default async function SettingsGeneralPage({
             applicationId={app.id}
             tones={tones}
             languages={languages}
-            canEdit={canEditTypes}
+            canEdit={can(app.access, "settings.tones")}
           />
         </SettingsSection>
 

@@ -3,7 +3,8 @@
 -- article can choose its own. allow_adaptation lets machine translation reword and
 -- restructure (transcreation) instead of keeping the source sentence by sentence.
 -- Translations record the tone they were made with.
--- Managed with the settings.content_types permission. Run after 033. Safe to run more than once.
+-- Adds the settings.tones permission to every role that can manage article types.
+-- Run after 033. Safe to run more than once.
 
 create table if not exists tone_profiles (
   id uuid primary key default uuidv7(),
@@ -11,7 +12,7 @@ create table if not exists tone_profiles (
   code text not null,
   name text not null,
   instructions text not null default '',
-  -- Language code -> extra guidance for that language, such as "use anda".
+  -- Language code -> extra guidance for that language, such as "standard Bahasa Melayu, no slang".
   language_notes jsonb not null default '{}'::jsonb,
   allow_adaptation boolean not null default false,
   status text not null default 'ACTIVE' check (status in ('ACTIVE', 'INACTIVE')),
@@ -70,3 +71,9 @@ cross join (
 ) as seed(code, name, instructions, allow_adaptation, sort_order)
 where a.model_type = 'CONTENT'
 on conflict (application_id, code) do nothing;
+
+insert into access_role_permissions (role_id, permission)
+select role_id, 'settings.tones'
+from access_role_permissions
+where permission = 'settings.content_types'
+on conflict do nothing;

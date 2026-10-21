@@ -73,7 +73,7 @@ type ToneInput = {
 export async function createTone(
   input: ToneInput & { application_id: string; code?: string }
 ): Promise<ToneProfile> {
-  await requireAppCapability(input.application_id, "settings.content_types");
+  await requireAppCapability(input.application_id, "settings.tones");
   const name = input.name.trim();
   if (!name) throw new UserFacingError("Name is required.");
   const code = normalizeToneCode(input.code?.trim() ? input.code : name);
@@ -114,7 +114,7 @@ export async function updateTone(
   applicationId: string,
   input: ToneInput & { status: EntityStatus }
 ): Promise<ToneProfile> {
-  await requireAppCapability(applicationId, "settings.content_types");
+  await requireAppCapability(applicationId, "settings.tones");
   const name = input.name.trim();
   if (!name) throw new UserFacingError("Name is required.");
   const db = await getDb();
@@ -138,7 +138,7 @@ export async function updateTone(
 
 /** Only an unused tone can be deleted. A used one is marked inactive instead. */
 export async function deleteTone(id: string, applicationId: string) {
-  await requireAppCapability(applicationId, "settings.content_types");
+  await requireAppCapability(applicationId, "settings.tones");
   const db = await getDb();
   const { data: tone, error: findError } = await db
     .from("tone_profiles")

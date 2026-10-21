@@ -43,8 +43,15 @@ export const PERMISSIONS = [
     key: "settings.content_types",
     models: ["CONTENT"],
     group: "Settings",
-    label: "Article types and tones",
-    hint: "Add, rename, and remove article types and writing tones, and set each type's default tone.",
+    label: "Article types",
+    hint: "Add, rename, and remove article types, and set each type's default tone.",
+  },
+  {
+    key: "settings.tones",
+    models: ["CONTENT"],
+    group: "Settings",
+    label: "Writing tones",
+    hint: "Add, change, and remove writing tones such as Formal, Press, or Social media, including whether machine translation may reword.",
   },
   {
     key: "settings.fields",
@@ -155,6 +162,7 @@ export const EDITOR_PERMISSIONS: readonly PermissionKey[] = [
   "content.edit",
   "content.import",
   "settings.content_types",
+  "settings.tones",
   "settings.terminology",
   "settings.boilerplate",
 ];

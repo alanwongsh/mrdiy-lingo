@@ -307,7 +307,8 @@ Every check runs on the server (`lib/auth/access.ts`). Viewing needs membership.
 | `content.import` | Import articles, strings, or catalog items from a file |
 | `content.approve` | Approve content and translations, request changes, move articles to Approved or Published |
 | `settings.notifications` | Review-email switch |
-| `settings.content_types` | Article types and writing tones |
+| `settings.content_types` | Article types and each type's default tone |
+| `settings.tones` | Writing tones |
 | `settings.fields` | Rename, switch off, and delete catalog field names. Anyone with `content.edit` can add a new name while adding fields to an item |
 | `settings.quality` | Quality scoring, checks, and publish vendors |
 | `settings.terminology` | Terminology entries |
@@ -352,6 +353,7 @@ In the table below, "Editor" means a role with edit only, and "HOD and above" me
 | Turn checks on or off and change weights (Settings → Quality) | | ✓ | ✓ |
 | Add, edit, turn on or off, and delete terminology | ✓ | ✓ | ✓ |
 | Manage boilerplate under Settings → Quality (`settings.boilerplate`) | ✓ | ✓ | ✓ |
+| Manage writing tones under Settings → General (`settings.tones`) | ✓ | ✓ | ✓ |
 | **Content types** (Settings → Types) | | | |
 | Add, edit, and delete types | ✓ | ✓ | ✓ |
 | **Publishing** | | | |

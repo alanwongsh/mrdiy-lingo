@@ -7,6 +7,7 @@ import { createTone, deleteTone, updateTone } from "@/lib/actions/tones";
 import { normalizeToneCode } from "@/lib/tones";
 import type { EntityStatus, Language, ToneProfile } from "@/lib/types";
 import { IconButton, PencilIcon, TrashIcon } from "@/components/icon-button";
+import { FilterSelect } from "@/components/filter-select";
 import {
   Badge,
   Button,
@@ -251,7 +252,8 @@ function ToneDialog({
             <fieldset className="space-y-2">
               <legend className="text-sm font-medium">Notes for each language</legend>
               <p className="text-xs text-[var(--hub-muted)]">
-                Optional. For example, for Malay: use “anda”, not “korang”.
+                Optional. How this tone should read in each language, such as “standard Bahasa
+                Melayu, no slang”. Word choices that never change go in the glossary.
               </p>
               {noteLanguages(languages, notes).map((language) => (
                 <Field key={language.code} label={`${language.name} (${language.code})`}>
@@ -267,14 +269,18 @@ function ToneDialog({
             </fieldset>
             {tone ? (
               <Field label="Status">
-                <select
-                  className={inputClass}
+                <FilterSelect
+                  fullWidth
+                  hideEmptyOption
+                  ariaLabel="Status"
                   value={status}
-                  onChange={(e) => setStatus(e.target.value as EntityStatus)}
-                >
-                  <option value="ACTIVE">ACTIVE</option>
-                  <option value="INACTIVE">INACTIVE</option>
-                </select>
+                  onChange={(value) => setStatus(value as EntityStatus)}
+                  options={[
+                    { value: "ACTIVE", label: "ACTIVE" },
+                    { value: "INACTIVE", label: "INACTIVE" },
+                  ]}
+                  placeholder="Select status"
+                />
               </Field>
             ) : null}
             {error ? <p className="text-sm text-red-700">{error}</p> : null}

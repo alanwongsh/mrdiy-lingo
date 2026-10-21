@@ -9,6 +9,7 @@ import {
 import { normalizeContentTypeCode } from "@/lib/content-types";
 import type { ContentTypeRecord, EntityStatus, ToneProfile } from "@/lib/types";
 import { Button, Card, Field, inputClass, textareaClass } from "@/components/ui";
+import { FilterSelect } from "@/components/filter-select";
 
 export function ContentTypeDialog({
   applicationId,
@@ -133,18 +134,18 @@ export function ContentTypeDialog({
           </Field>
           {tones.length > 0 ? (
             <Field label="Default tone">
-              <select
-                className={inputClass}
+              <FilterSelect
+                fullWidth
+                ariaLabel="Default tone"
                 value={defaultTone}
-                onChange={(e) => setDefaultTone(e.target.value)}
-              >
-                <option value="">No tone</option>
-                {toneChoices.map((tone) => (
-                  <option key={tone.code} value={tone.code}>
-                    {tone.status === "ACTIVE" ? tone.name : `${tone.name} (inactive)`}
-                  </option>
-                ))}
-              </select>
+                onChange={setDefaultTone}
+                options={toneChoices.map((tone) => ({
+                  value: tone.code,
+                  label: tone.status === "ACTIVE" ? tone.name : `${tone.name} (inactive)`,
+                  title: tone.instructions || undefined,
+                }))}
+                placeholder="No tone"
+              />
               <p className="mt-1 text-xs text-[var(--hub-muted)]">
                 Machine translation uses this tone for articles of this type unless an article
                 picks its own.
@@ -153,14 +154,18 @@ export function ContentTypeDialog({
           ) : null}
           {contentType ? (
             <Field label="Status">
-              <select
-                className={inputClass}
+              <FilterSelect
+                fullWidth
+                hideEmptyOption
+                ariaLabel="Status"
                 value={status}
-                onChange={(e) => setStatus(e.target.value as EntityStatus)}
-              >
-                <option value="ACTIVE">ACTIVE</option>
-                <option value="INACTIVE">INACTIVE</option>
-              </select>
+                onChange={(value) => setStatus(value as EntityStatus)}
+                options={[
+                  { value: "ACTIVE", label: "ACTIVE" },
+                  { value: "INACTIVE", label: "INACTIVE" },
+                ]}
+                placeholder="Select status"
+              />
             </Field>
           ) : null}
           {error ? <p className="text-sm text-red-700">{error}</p> : null}
