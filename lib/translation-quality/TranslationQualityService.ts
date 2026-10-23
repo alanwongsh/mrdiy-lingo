@@ -162,7 +162,7 @@ export class TranslationQualityService {
         contentId: request.contentId,
         contentTranslationId: version?.translationId ?? null,
         provider: aiCategories.length > 0 ? providerId : "rules",
-        model: aiCategories.length > 0 && providerId === "gemini" ? config.geminiModel : undefined,
+        model: aiCategories.length > 0 ? config.model : undefined,
         sourceLanguage: request.sourceLanguage,
         targetLanguage: request.targetLanguage,
         requestMetadata: {
@@ -224,7 +224,7 @@ export class TranslationQualityService {
       versionId: version.versionId,
       versionCreatedAt: version.createdAt,
       provider: aiCategories.length > 0 ? providerId : "rules",
-      model: aiCategories.length > 0 && providerId === "gemini" ? config.geminiModel : undefined,
+      model: aiCategories.length > 0 ? config.model : undefined,
       sourceLanguage: request.sourceLanguage,
       targetLanguage: request.targetLanguage,
       requestMetadata: {
@@ -272,7 +272,7 @@ export class TranslationQualityService {
         persisted: true,
       };
     } catch (error) {
-      const message = safeErrorMessage(error, config.geminiApiKey);
+      const message = safeErrorMessage(error, config.apiKey);
       await finishQualityRun({
         runId: run.id,
         status: "failed",
@@ -302,7 +302,7 @@ export class TranslationQualityService {
       translatedContent: input.translatedContent,
     };
     let providerName = aiCategories.length > 0 ? providerId : "rules";
-    let model = aiCategories.length > 0 && providerId === "gemini" ? config.geminiModel : undefined;
+    let model = aiCategories.length > 0 ? config.model : undefined;
     let usage: { promptTokens?: number; outputTokens?: number } | undefined;
     let aiPiece = normalizeRuleResults([], categories, fields);
     let aiError: string | undefined;
@@ -319,7 +319,7 @@ export class TranslationQualityService {
         usage = raw.usage;
         aiPiece = normalizeGeminiResult(raw, categories, fields);
       } catch (error) {
-        aiError = safeErrorMessage(error, config.geminiApiKey);
+        aiError = safeErrorMessage(error, config.apiKey);
         aiPiece = failedAiScores(categories, aiError);
       }
     }

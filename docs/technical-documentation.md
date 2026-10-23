@@ -66,7 +66,7 @@ The browser never calls MyMemory, Gemini, or the database with a user credential
 
 **Supabase database.** Stores source content, translations, version history, workflow status, approvals, comments, users, application membership, quality categories, terminology, boilerplate, quality runs, publish vendors and deliveries, the review-email queue, and the article audit trail. Row-level security is enabled. Current policies allow the server role through; who can see or change an application is enforced in application code (`lib/auth/access.ts`).
 
-**Translation service.** Receives source text from the Next.js server, returns translated text, and the server stores the result for review. The active provider is selected with `TRANSLATION_PROVIDER`: `mymemory`, `mock`, or `gemini`. Gemini uses the same `GEMINI_API_KEY` and `GEMINI_MODEL` as quality review. An OpenAI provider is planned for QAT and production and is not wired in V0.1.
+**Translation service.** Receives source text from the Next.js server, returns translated text, and the server stores the result for review. The active provider is selected with `TRANSLATION_PROVIDER`: `mymemory`, `mock`, `gemini`, or `openrouter`. Model providers are drivers registered in `lib/ai/factory.ts` and read their own key and model variables.
 
 **Quality review.** After a translation exists, the server can score it. Google Gemini scores message, tone, structure, and cross-language. Terminology and boilerplate are checked against lists stored in the database. The article screens do not call Gemini themselves.
 
@@ -724,10 +724,12 @@ Local and Vercel configuration (`.env.local` / Vercel project env):
 | --- | --- |
 | `NEXT_PRIVATE_SUPABASE_URL` | Supabase project URL |
 | `NEXT_PRIVATE_SUPABASE_PUBLISHABLE_KEY` | Supabase key used by the Next.js server |
-| `TRANSLATION_PROVIDER` | `mymemory`, `mock`, or `gemini` |
-| `QUALITY_PROVIDER` | Quality model provider. `gemini` |
+| `TRANSLATION_PROVIDER` | `mymemory`, `mock`, `gemini`, or `openrouter` |
+| `QUALITY_PROVIDER` | Quality model provider. `gemini` or `openrouter` |
 | `GEMINI_API_KEY` | Server-only key for quality analysis |
 | `GEMINI_MODEL` | Gemini model. Default `gemini-3.5-flash-lite` |
+| `OPENROUTER_API_KEY` | Server-only OpenRouter key, used when a provider is `openrouter` |
+| `OPENROUTER_MODEL` | OpenRouter model id. Default `google/gemini-3.5-flash-lite` |
 | `SERVICE_LOG_RETENTION_DAYS` | How many daily log files to keep. Default 7 |
 | `JOGET_EMBED_SECRET` | Shared secret for embed tokens and session cookies |
 | `LINGO_SUPERADMINS` | Comma-separated usernames, emails, or employee IDs |

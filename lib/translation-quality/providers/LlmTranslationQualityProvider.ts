@@ -1,6 +1,5 @@
-import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { isThinkingError, type LlmDriver, type LlmUsage } from "@/lib/ai/driver";
 import { writeServiceLog } from "@/lib/service-log";
-import { qualityConfig } from "@/lib/translation-quality/config";
 import {
   buildTranslationQualityPrompt,
   geminiResponseSchema,
@@ -38,17 +37,17 @@ function parseModelJson(text: string): unknown {
     if (start >= 0 && end > start) {
       return JSON.parse(trimmed.slice(start, end + 1));
     }
-    throw new Error("Gemini returned invalid JSON.");
+    throw new Error("The model returned invalid JSON.");
   }
 }
 
-export function validateGeminiPayload(
+export function validateQualityPayload(
   value: unknown,
   allowedCodes: string[]
 ): ProviderQualityResult["categories"] {
   const root = asRecord(value);
   if (!root || !Array.isArray(root.categories)) {
-    throw new Error("Gemini returned an unexpected quality payload.");
+    throw new Error("The model returned an unexpected quality payload.");
   }
   const allowed = new Set(allowedCodes);
   const categories: ProviderQualityResult["categories"] = [];
@@ -93,50 +92,24 @@ export function validateGeminiPayload(
     });
   }
   if (categories.length === 0) {
-    throw new Error("Gemini did not return any enabled quality categories.");
+    throw new Error("The model did not return any enabled quality categories.");
   }
   return categories;
 }
 
-function isGemini3(model: string) {
-  return /^gemini-3(?:[.-]|$)/i.test(model);
-}
-
-function tokenCount(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-/** Gemini includes these on the response. It does not store the prompt or reply. */
-function tokenUsage(usage: {
-  promptTokenCount?: number;
-  candidatesTokenCount?: number;
-  totalTokenCount?: number;
-  thoughtsTokenCount?: number;
-  cachedContentTokenCount?: number;
-} | null | undefined) {
-  if (!usage) return undefined;
-  const tokens = {
-    promptTokens: tokenCount(usage.promptTokenCount),
-    outputTokens: tokenCount(usage.candidatesTokenCount),
-    totalTokens: tokenCount(usage.totalTokenCount),
-    thoughtsTokens: tokenCount(usage.thoughtsTokenCount),
-    cachedTokens: tokenCount(usage.cachedContentTokenCount),
-  };
-  return Object.values(tokens).some((count) => count !== undefined) ? tokens : undefined;
-}
-
-function logGeminiCall(entry: {
+function logModelCall(entry: {
+  source: string;
   model: string;
   ok: boolean;
   durationMs: number;
   attempt: number;
-  usage?: ReturnType<typeof tokenUsage>;
+  usage?: LlmUsage;
   input: string;
   output?: string;
   error?: string;
 }) {
   return writeServiceLog({
-    source: "gemini",
+    source: entry.source,
     ok: entry.ok,
     message: entry.ok ? "Quality analysis" : "Quality analysis failed",
     durationMs: entry.durationMs,
@@ -147,33 +120,6 @@ function logGeminiCall(entry: {
       model: entry.model,
       attempt: entry.attempt,
       ...(entry.usage ? { usage: entry.usage } : {}),
-    },
-  });
-}
-
-async function generate(
-  ai: GoogleGenAI,
-  model: string,
-  prompt: string,
-  schema: ReturnType<typeof geminiResponseSchema>,
-  withThinkingOff: boolean
-) {
-  const gemini3 = isGemini3(model);
-  return ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      maxOutputTokens: 65536,
-      responseMimeType: "application/json",
-      responseJsonSchema: schema,
-      ...(gemini3
-        ? withThinkingOff
-          ? { thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } }
-          : {}
-        : {
-            temperature: 0.2,
-            ...(withThinkingOff ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
-          }),
     },
   });
 }
@@ -257,15 +203,18 @@ function mergeFocusedFindings(
   return categories;
 }
 
-export class GeminiTranslationQualityProvider implements TranslationQualityProvider {
-  readonly id = "gemini";
-  readonly name = "Google Gemini";
+/** Quality review through any model driver. The prompt and checks are the same for each. */
+export class LlmTranslationQualityProvider implements TranslationQualityProvider {
+  readonly id: string;
+  readonly name: string;
+
+  constructor(private readonly driver: LlmDriver) {
+    this.id = driver.id;
+    this.name = driver.name;
+  }
 
   async analyze(input: TranslationQualityInput): Promise<ProviderQualityResult> {
-    const config = qualityConfig();
-    if (!config.geminiApiKey) {
-      throw new Error("GEMINI_API_KEY is not configured.");
-    }
+    const driver = this.driver;
     const codes = input.enabledCategories
       .filter((category) => category.categoryType === "ai")
       .map((category) => category.code);
@@ -273,26 +222,32 @@ export class GeminiTranslationQualityProvider implements TranslationQualityProvi
       throw new Error("No AI quality categories are enabled.");
     }
 
-    const ai = new GoogleGenAI({ apiKey: config.geminiApiKey });
     const schema = geminiResponseSchema(codes);
-    const call = async (prompt: string, attempt: number, withThinkingOff: boolean) => {
+    const call = async (prompt: string, attempt: number, lowThinking: boolean) => {
       const started = Date.now();
       try {
-        const response = await generate(ai, config.geminiModel, prompt, schema, withThinkingOff);
-        await logGeminiCall({
-          model: config.geminiModel,
+        const response = await driver.generate({
+          prompt,
+          schema,
+          maxOutputTokens: 65536,
+          lowThinking,
+        });
+        await logModelCall({
+          source: driver.id,
+          model: driver.model,
           ok: true,
           durationMs: Date.now() - started,
           attempt,
-          usage: tokenUsage(response.usageMetadata),
+          usage: response.usage,
           input: prompt,
-          output: response.text ?? "",
+          output: response.text,
         });
         return response;
       } catch (error) {
-        const message = safeErrorMessage(error, config.geminiApiKey);
-        await logGeminiCall({
-          model: config.geminiModel,
+        const message = safeErrorMessage(error, driver.secret);
+        await logModelCall({
+          source: driver.id,
+          model: driver.model,
           ok: false,
           durationMs: Date.now() - started,
           attempt,
@@ -308,17 +263,16 @@ export class GeminiTranslationQualityProvider implements TranslationQualityProvi
       try {
         response = await call(prompt, 1, true);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "";
-        if (!/thinking|invalid argument/i.test(message)) throw error;
+        if (!isThinkingError(error)) throw error;
         response = await call(prompt, 2, false);
       }
       const text = response.text;
       if (!text?.trim()) {
-        throw new Error("Gemini returned an empty quality analysis.");
+        throw new Error(`${driver.name} returned an empty quality analysis.`);
       }
       return {
-        categories: validateGeminiPayload(parseModelJson(text), codes),
-        usage: tokenUsage(response.usageMetadata),
+        categories: validateQualityPayload(parseModelJson(text), codes),
+        usage: response.usage,
       };
     };
 
@@ -353,7 +307,7 @@ export class GeminiTranslationQualityProvider implements TranslationQualityProvi
 
     return {
       providerId: this.id,
-      model: config.geminiModel,
+      model: driver.model,
       categories,
       usage:
         promptTokens || outputTokens

@@ -1,6 +1,7 @@
 import type { SourceContentFields } from "@/lib/types";
 import type { TonePrompt } from "@/lib/tones";
-import { GeminiTranslationProvider } from "@/lib/translation/gemini";
+import { LlmDriverFactory } from "@/lib/ai/factory";
+import { LlmTranslationProvider } from "@/lib/translation/llm";
 import { cleanSourceHtml } from "@/lib/translation/cleanup";
 import { keepWordGaps, textNodes } from "@/lib/translation/spacing";
 
@@ -178,8 +179,11 @@ export class TranslationService {
 export function getTranslationService(applicationId: string): TranslationService {
   const providerName = (process.env.TRANSLATION_PROVIDER ?? "mymemory").trim().toLowerCase();
   if (providerName === "mock") return new TranslationService(new MockTranslationProvider());
-  if (providerName === "gemini") {
-    return new TranslationService(new GeminiTranslationProvider(applicationId));
+  // gemini, openrouter, or any other driver registered in LlmDriverFactory.
+  if (LlmDriverFactory.has(providerName)) {
+    return new TranslationService(
+      new LlmTranslationProvider(applicationId, LlmDriverFactory.create(providerName))
+    );
   }
   return new TranslationService(new MyMemoryTranslationProvider());
 }

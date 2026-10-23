@@ -1,23 +1,15 @@
+import { LlmDriverFactory } from "@/lib/ai/factory";
 import { qualityConfig } from "@/lib/translation-quality/config";
-import { GeminiTranslationQualityProvider } from "@/lib/translation-quality/providers/GeminiTranslationQualityProvider";
+import { LlmTranslationQualityProvider } from "@/lib/translation-quality/providers/LlmTranslationQualityProvider";
 import type { TranslationQualityProvider } from "@/lib/translation-quality/providers/provider";
 
-const builders: Record<string, () => TranslationQualityProvider> = {
-  gemini: () => new GeminiTranslationQualityProvider(),
-};
-
-const reserved = new Set(["openai", "claude"]);
-
 export class TranslationQualityProviderFactory {
+  /** Any driver registered in LlmDriverFactory, such as gemini or openrouter. */
   static create(providerId?: string): TranslationQualityProvider {
     const id = (providerId ?? qualityConfig().provider).trim().toLowerCase();
-    const build = builders[id];
-    if (build) return build();
-    if (reserved.has(id)) {
-      throw new Error(
-        `The ${id} provider is not implemented. Register an adapter in TranslationQualityProviderFactory.`
-      );
+    if (!LlmDriverFactory.has(id)) {
+      throw new Error(`Unknown translation quality provider "${id}".`);
     }
-    throw new Error(`Unknown translation quality provider "${id}".`);
+    return new LlmTranslationQualityProvider(LlmDriverFactory.create(id));
   }
 }

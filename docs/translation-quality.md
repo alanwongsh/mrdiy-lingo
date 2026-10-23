@@ -2,7 +2,7 @@
 
 Agent notes for the article quality rail. This is the path that scores an existing translation and writes a suggested wording change into the editor. It is not the path that generates the translation.
 
-Generating a translation lives in `lib/translation/service.ts` and `lib/translation/gemini.ts`. `TRANSLATION_PROVIDER` selects that provider. Quality review always uses `QUALITY_PROVIDER`, `GEMINI_API_KEY`, and `GEMINI_MODEL` from `lib/translation-quality/config.ts`.
+Generating a translation lives in `lib/translation/service.ts` and `lib/translation/llm.ts`. `TRANSLATION_PROVIDER` selects that provider. Quality review uses `QUALITY_PROVIDER` from `lib/translation-quality/config.ts`. Both build their model driver with `LlmDriverFactory` in `lib/ai/factory.ts`, which knows `gemini` and `openrouter`.
 
 Quality review does not change article status and does not block publish.
 
@@ -17,7 +17,8 @@ Quality review does not change article status and does not block publish.
 | Server action wrappers | `lib/actions/quality.ts` |
 | Auth, bounds, save | `lib/translation-quality/handlers.ts` |
 | Score, persist, preview | `lib/translation-quality/TranslationQualityService.ts` |
-| Gemini call | `lib/translation-quality/providers/GeminiTranslationQualityProvider.ts` |
+| Model call | `lib/translation-quality/providers/LlmTranslationQualityProvider.ts` |
+| Model drivers | `lib/ai/gemini.ts`, `lib/ai/openrouter.ts`, `lib/ai/factory.ts` |
 | Prompt and response schema | `lib/translation-quality/prompts/translation-quality-v1.ts` |
 | Findings and actions | `lib/translation-quality/normalizers/GeminiResultNormalizer.ts` |
 | Terminology and boilerplate | `lib/translation-quality/rules/` |
@@ -104,10 +105,12 @@ Ignore on a saved article calls `ignoreTranslationFinding` immediately and sets 
 
 | Variable | Role |
 | --- | --- |
-| `GEMINI_API_KEY` | Required for AI categories. Missing key throws `GEMINI_API_KEY is not configured.` |
+| `GEMINI_API_KEY` | Required for AI categories when `QUALITY_PROVIDER=gemini`. Missing key throws `GEMINI_API_KEY is not configured.` |
 | `GEMINI_MODEL` | Defaults to `gemini-3.5-flash-lite` |
-| `QUALITY_PROVIDER` | Defaults to `gemini`. An unknown id throws from `TranslationQualityProviderFactory` |
+| `QUALITY_PROVIDER` | `gemini` (default) or `openrouter`. An unknown id throws from `TranslationQualityProviderFactory` |
+| `OPENROUTER_API_KEY` | Required when `QUALITY_PROVIDER=openrouter` |
+| `OPENROUTER_MODEL` | OpenRouter model id. Defaults to `google/gemini-3.5-flash-lite` |
 
-Gemini prompt and reply lines go through `writeServiceLog` (`lib/service-log.ts`). On Vercel that directory is `/tmp/lingo-logs` and disappears with the instance. The function log still prints `[service-log]`.
+Model prompt and reply lines go through `writeServiceLog` (`lib/service-log.ts`). On Vercel that directory is `/tmp/lingo-logs` and disappears with the instance. The function log still prints `[service-log]`.
 
 A thrown server action is hidden in production as “An error occurred in the Server Components render.” Quality wrappers already return `{ error }` so the rail can show the message. Translation generation in `lib/actions/press.ts` still rethrows, which is why a failed translate looks like that digest on Vercel.

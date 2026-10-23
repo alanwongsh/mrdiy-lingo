@@ -1,6 +1,5 @@
-import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { isThinkingError, type LlmDriver } from "@/lib/ai/driver";
 import { writeServiceLog } from "@/lib/service-log";
-import { qualityConfig } from "@/lib/translation-quality/config";
 import { listActiveBoilerplate, listActiveTerminology } from "@/lib/translation-quality/repository";
 import { htmlToText } from "@/lib/translation-quality/text";
 import type { BoilerplatePhrase, TerminologyEntry } from "@/lib/translation-quality/types";
@@ -15,32 +14,6 @@ import type {
   TranslateTextInput,
   TranslationProvider,
 } from "@/lib/translation/service";
-
-function isGemini3(model: string) {
-  return /^gemini-3(?:[.-]|$)/i.test(model);
-}
-
-function tokenCount(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function tokenUsage(usage: {
-  promptTokenCount?: number;
-  candidatesTokenCount?: number;
-  totalTokenCount?: number;
-  thoughtsTokenCount?: number;
-  cachedContentTokenCount?: number;
-} | null | undefined) {
-  if (!usage) return undefined;
-  const tokens = {
-    promptTokens: tokenCount(usage.promptTokenCount),
-    outputTokens: tokenCount(usage.candidatesTokenCount),
-    totalTokens: tokenCount(usage.totalTokenCount),
-    thoughtsTokens: tokenCount(usage.thoughtsTokenCount),
-    cachedTokens: tokenCount(usage.cachedContentTokenCount),
-  };
-  return Object.values(tokens).some((count) => count !== undefined) ? tokens : undefined;
-}
 
 function failureMessage(error: unknown, secret: string) {
   const raw = error instanceof Error && error.message ? error.message : "Translation failed.";
@@ -145,14 +118,14 @@ function articleFields(value: unknown, source: SourceContentFields): SourceConte
     }
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Gemini did not return the translated fields separately.");
+    throw new Error("The model did not return the translated fields separately.");
   }
   const row = parsed as Record<string, unknown>;
   const field = (key: keyof SourceContentFields) => {
     if (!source[key].trim()) return "";
     const translated = row[key];
     if (typeof translated !== "string" || !translated.trim()) {
-      throw new Error(`Gemini did not return a translation for ${key}.`);
+      throw new Error(`The model did not return a translation for ${key}.`);
     }
     return translated;
   };
@@ -202,40 +175,18 @@ function promptFor(input: TranslateTextInput, glossary: Glossary) {
   ].join("\n");
 }
 
-async function generate(
-  model: string,
-  apiKey: string,
-  prompt: string,
-  withThinking: boolean,
-  json: boolean,
-  schema: Record<string, unknown> = ARTICLE_SCHEMA
-) {
-  const ai = new GoogleGenAI({ apiKey });
-  const gemini3 = isGemini3(model);
-  return ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      maxOutputTokens: json ? 16384 : 8192,
-      ...(json ? { responseMimeType: "application/json", responseJsonSchema: schema } : {}),
-      ...(gemini3
-        ? withThinking
-          ? { thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } }
-          : {}
-        : {
-            temperature: 0.2,
-            ...(withThinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
-          }),
-    },
-  });
-}
-
-export class GeminiTranslationProvider implements TranslationProvider {
-  readonly name = "gemini";
+/** Translation through any model driver, such as Gemini or OpenRouter. */
+export class LlmTranslationProvider implements TranslationProvider {
+  readonly name: string;
   private glossary: Promise<Glossary> | null = null;
 
   /** Terminology and boilerplate come from this application only. */
-  constructor(private readonly applicationId: string) {}
+  constructor(
+    private readonly applicationId: string,
+    private readonly driver: LlmDriver
+  ) {
+    this.name = driver.id;
+  }
 
   /** Loaded once per request. Translation still runs if the glossary tables cannot be read. */
   private loadGlossary(): Promise<Glossary> {
@@ -441,33 +392,28 @@ export class GeminiTranslationProvider implements TranslationProvider {
     json: boolean,
     schema: Record<string, unknown> = ARTICLE_SCHEMA
   ): Promise<string> {
-    const config = qualityConfig();
-    if (!config.geminiApiKey) {
-      throw new Error("GEMINI_API_KEY is not configured.");
-    }
-    const call = async (attempt: number, withThinking: boolean) => {
+    const driver = this.driver;
+    const call = async (attempt: number, lowThinking: boolean) => {
       const started = Date.now();
       try {
-        const response = await generate(
-          config.geminiModel,
-          config.geminiApiKey,
+        const response = await driver.generate({
           prompt,
-          withThinking,
-          json,
-          schema
-        );
-        const output = plainReply(response.text ?? "");
-        if (!output) throw new Error("Gemini returned an empty translation.");
-        const usage = tokenUsage(response.usageMetadata);
+          schema: json ? schema : undefined,
+          maxOutputTokens: json ? 16384 : 8192,
+          lowThinking,
+        });
+        const output = plainReply(response.text);
+        if (!output) throw new Error(`${driver.name} returned an empty translation.`);
+        const usage = response.usage;
         await writeServiceLog({
-          source: "gemini",
+          source: driver.id,
           ok: true,
           message: json ? "Article translation" : "Translation",
           durationMs: Date.now() - started,
           input: prompt,
           output,
           metadata: {
-            model: config.geminiModel,
+            model: driver.model,
             attempt,
             purpose: "translation",
             ...(usage ? { usage } : {}),
@@ -475,16 +421,16 @@ export class GeminiTranslationProvider implements TranslationProvider {
         });
         return output;
       } catch (error) {
-        const message = failureMessage(error, config.geminiApiKey);
+        const message = failureMessage(error, driver.secret);
         await writeServiceLog({
-          source: "gemini",
+          source: driver.id,
           ok: false,
           message: "Translation failed",
           durationMs: Date.now() - started,
           input: prompt,
           error: message,
           metadata: {
-            model: config.geminiModel,
+            model: driver.model,
             attempt,
             purpose: "translation",
           },
@@ -496,8 +442,7 @@ export class GeminiTranslationProvider implements TranslationProvider {
     try {
       return await call(1, true);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      if (!/thinking|invalid argument/i.test(message)) throw error;
+      if (!isThinkingError(error)) throw error;
       return call(2, false);
     }
   }
